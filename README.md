@@ -1,21 +1,37 @@
-# Biometric Authentication System
+# Meri Ungli - Enhanced Biometric Authentication System
 
-A complete biometric authentication system with fingerprint and face recognition, featuring Node.js backend and Android app using Kotlin.
+A complete biometric authentication system with enhanced multi-angle fingerprint and camera-based face recognition, featuring Node.js backend and Android app using Kotlin.
 
-## Features
+## 🚀 Features
 
-- **Fingerprint Registration**: Users can register their fingerprint with a username
-- **Face Registration**: Users can register their face for authentication
-- **Dual Biometric Authentication**: Support for both fingerprint and face verification
-- **Secure Authentication**: Advanced biometric verification for login
-- **Server Integration**: Data stored securely on MongoDB server
-- **Real-time Verification**: Instant biometric matching and welcome messages
-- **Flexible Authentication**: Choose between fingerprint or face login
+### 🔐 Enhanced Fingerprint Authentication
+- **Multi-Angle Registration**: 5-step fingerprint capture from different angles
+- **Comprehensive Coverage**: Center, left tilt, right tilt, finger tip, and lower area
+- **Enhanced Security**: Better recognition accuracy with more finger surface area
+- **Guided Process**: Step-by-step instructions for each scan position
 
-## Project Structure
+### 📷 Camera-Based Face Authentication  
+- **Real Camera Capture**: Uses device camera for actual face photos
+- **Live Preview**: Full-screen camera preview during registration/login
+- **Image Processing**: Optimized image compression and Base64 encoding
+- **Secure Storage**: Face data encrypted and hashed on server
+
+### 🎯 Smart User Interface
+- **Choice-Based Authentication**: Select fingerprint or face authentication
+- **Progressive Registration**: Guided multi-step processes
+- **Visual Feedback**: Clear instructions and progress indicators
+- **Modern UI**: Enhanced layouts with icons and elevation
+
+### 🔒 Advanced Security
+- **Enhanced Encryption**: bcrypt hashing with strength 12
+- **Comprehensive Validation**: Server-side data validation
+- **Secure API**: RESTful endpoints with detailed error handling
+- **Performance Tracking**: Authentication timing measurements
+
+## 📱 Project Structure
 
 ```
-├── server.js              # Node.js Express server
+├── server.js              # Enhanced Node.js Express server
 ├── package.json           # Server dependencies
 ├── android/               # Android app (Kotlin)
 │   ├── app/
@@ -237,6 +253,10 @@ Verify user face for authentication.
 3. **Database**: Check MongoDB for stored user data with both biometric types
 4. **Biometric Testing**: Test both authentication methods separately and together
 
-## License
+## 📄 License
 
 MIT License - Feel free to use and modify as needed.
+
+---
+
+**Meri Ungli** - Advanced Biometric Authentication System with Enhanced Multi-Angle Fingerprint and Camera-Based Face Recognition.
