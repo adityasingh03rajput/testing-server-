@@ -1,50 +1,50 @@
 * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+margin: 0;
+padding: 0;
+box-sizing: border-box;
 }
 
 :root {
-    --primary: #00d9ff;
-    --primary-dark: #00a8cc;
-    --secondary: #7c3aed;
-    --bg-dark: #0a0e27;
-    --bg-card: #1a1f3a;
-    --bg-hover: #252b4a;
-    --text-primary: #ffffff;
-    --text-secondary: #a0aec0;
-    --border: #2d3748;
-    --success: #10b981;
-    --warning: #f59e0b;
-    --danger: #ef4444;
+--primary: #00d9ff;
+--primary-dark: #00a8cc;
+--secondary: #7c3aed;
+--bg-dark: #0a0e27;
+--bg-card: #1a1f3a;
+--bg-hover: #252b4a;
+--text-primary: #ffffff;
+--text-secondary: #a0aec0;
+--border: #2d3748;
+--success: #10b981;
+--warning: #f59e0b;
+--danger: #ef4444;
 }
 
 /* Light Theme */
 [data-theme="light"] {
-    --primary: #fbbf24;
-    --primary-dark: #f59e0b;
-    --secondary: #10b981;
-    --bg-dark: #f3f4f6;
-    --bg-card: #ffffff;
-    --bg-hover: #e5e7eb;
-    --text-primary: #1f2937;
-    --text-secondary: #6b7280;
-    --border: #d1d5db;
-    --success: #10b981;
-    --warning: #fbbf24;
-    --danger: #ef4444;
+--primary: #3b82f6;
+--primary-dark: #2563eb;
+--secondary: #10b981;
+--bg-dark: #f3f4f6;
+--bg-card: #ffffff;
+--bg-hover: #e5e7eb;
+--text-primary: #1f2937;
+--text-secondary: #6b7280;
+--border: #d1d5db;
+--success: #10b981;
+--warning: #f59e0b;
+--danger: #ef4444;
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    background: var(--bg-dark);
-    color: var(--text-primary);
-    overflow: hidden;
+font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+background: var(--bg-dark);
+color: var(--text-primary);
+overflow: hidden;
 }
 
 .app-container {
-    display: flex;
-    height: 100vh;
+display: flex;
+height: 100vh;
 }
 
 /* Sidebar */
@@ -136,8 +136,15 @@ body {
 }
 
 @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
 }
 
 /* Main Content */
@@ -302,7 +309,8 @@ body {
     margin-bottom: 20px;
 }
 
-.filter-select, .search-input {
+.filter-select,
+.search-input {
     padding: 10px 16px;
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -443,7 +451,9 @@ body {
     color: var(--text-secondary);
 }
 
-.form-input, .form-select, .form-textarea {
+.form-input,
+.form-select,
+.form-textarea {
     width: 100%;
     padding: 12px 16px;
     background: var(--bg-dark);
@@ -453,7 +463,9 @@ body {
     font-size: 14px;
 }
 
-.form-input:focus, .form-select:focus, .form-textarea:focus {
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
     outline: none;
     border-color: var(--primary);
 }
@@ -596,6 +608,7 @@ body {
         transform: translateX(400px);
         opacity: 0;
     }
+
     to {
         transform: translateX(0);
         opacity: 1;
@@ -611,6 +624,7 @@ body {
         transform: translateX(0);
         opacity: 1;
     }
+
     to {
         transform: translateX(400px);
         opacity: 0;
@@ -702,7 +716,9 @@ body {
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* Empty State */
@@ -805,8 +821,13 @@ body {
 }
 
 @keyframes loading {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
 }
 
 .skeleton-text {
@@ -825,7 +846,7 @@ body {
     .sidebar {
         width: 220px;
     }
-    
+
     .stats-grid {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -835,16 +856,16 @@ body {
     .sidebar {
         width: 70px;
     }
-    
+
     .sidebar .logo h1,
     .sidebar .nav-item span:not(.icon) {
         display: none;
     }
-    
+
     .stats-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .notification {
         right: 10px;
         left: 10px;
@@ -854,6 +875,7 @@ body {
 
 /* Print Styles */
 @media print {
+
     .sidebar,
     .top-bar,
     .action-buttons,
@@ -861,15 +883,15 @@ body {
     .notification {
         display: none !important;
     }
-    
+
     .main-content {
         margin: 0;
     }
-    
+
     .content-area {
         padding: 0;
     }
-    
+
     .data-table {
         font-size: 10px;
     }
@@ -1120,7 +1142,14 @@ body {
 .room-card:hover {
     border-color: var(--primary);
     transform: translateY(-2px);
+}
+
+[data-theme="dark"] .room-card:hover {
     box-shadow: 0 4px 12px rgba(0, 217, 255, 0.2);
+}
+
+[data-theme="light"] .room-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .room-number {

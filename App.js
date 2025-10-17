@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ActivityIndicator,
-  Animated, TextInput, ScrollView, FlatList, AppState
+  Animated, TextInput, ScrollView, FlatList, AppState, useColorScheme
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -31,12 +31,12 @@ const THEMES = {
     statusBar: 'light',
   },
   light: {
-    background: '#f5f5f5',
-    cardBackground: '#ffffff',
-    text: '#2d3748',
-    textSecondary: '#4a5568',
-    primary: '#fbbf24',
-    border: '#fbbf24',
+    background: '#fef3e2',      // Warm cream background
+    cardBackground: '#ffffff',   // Pure white cards
+    text: '#2c1810',            // Rich brown text
+    textSecondary: '#8b6f47',   // Warm brown secondary
+    primary: '#d97706',         // Vibrant amber/orange
+    border: '#f3d5a0',          // Light golden border
     statusBar: 'dark',
   }
 };
@@ -112,9 +112,14 @@ export default function App() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [userData, setUserData] = useState(null);
 
-  // Theme state
-  const [isDarkTheme, setIsDarkTheme] = useState(true);
+  // Theme state - sync with system theme
+  const systemColorScheme = useColorScheme();
+  const [themeMode, setThemeMode] = useState('system'); // 'system', 'dark', 'light'
+  const isDarkTheme = themeMode === 'system' ? systemColorScheme === 'dark' : themeMode === 'dark';
   const theme = isDarkTheme ? THEMES.dark : THEMES.light;
+
+  // Loading state for better UX
+  const [isInitializing, setIsInitializing] = useState(true);
 
   const intervalRef = useRef(null);
   const socketRef = useRef(null);
@@ -125,6 +130,7 @@ export default function App() {
   const glowAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const scaleAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -132,22 +138,42 @@ export default function App() {
       duration: 800,
       useNativeDriver: true,
     }).start();
+  }, []);
 
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowAnim, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(glowAnim, {
-          toValue: 0,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
+  useEffect(() => {
+    // Only animate glow in dark theme
+    if (isDarkTheme) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(glowAnim, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(glowAnim, {
+            toValue: 0,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    }
+  }, [isDarkTheme]);
 
+  useEffect(() => {
+    // Animate modal when it opens
+    if (selectedStudent) {
+      scaleAnim.setValue(0);
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 7,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [selectedStudent]);
+
+  useEffect(() => {
     loadConfig();
     setupSocket();
 
@@ -199,54 +225,81 @@ export default function App() {
 
   const loadConfig = async () => {
     try {
+      // Load all data in parallel for better performance
+      const [savedTheme, cachedUserData, cachedLoginId, cachedConfig] = await Promise.all([
+        AsyncStorage.getItem(THEME_KEY),
+        AsyncStorage.getItem(USER_DATA_KEY),
+        AsyncStorage.getItem(LOGIN_ID_KEY),
+        AsyncStorage.getItem(CACHE_KEY)
+      ]);
+
       // Load theme preference
-      const savedTheme = await AsyncStorage.getItem(THEME_KEY);
       if (savedTheme !== null) {
-        setIsDarkTheme(savedTheme === 'dark');
+        setThemeMode(savedTheme); // 'system', 'dark', or 'light'
       }
 
       // Check for saved login data
-      const cachedUserData = await AsyncStorage.getItem(USER_DATA_KEY);
-      const cachedLoginId = await AsyncStorage.getItem(LOGIN_ID_KEY);
-
       if (cachedUserData && cachedLoginId) {
-        const userData = JSON.parse(cachedUserData);
-        setUserData(userData);
-        setLoginId(cachedLoginId);
-        setSelectedRole(userData.role);
-        setShowLogin(false);
+        try {
+          const userData = JSON.parse(cachedUserData);
+          setUserData(userData);
+          setLoginId(cachedLoginId);
+          setSelectedRole(userData.role);
+          setShowLogin(false);
 
-        if (userData.role === 'student') {
-          setStudentName(userData.name);
-          setStudentId(userData._id);
-          setSemester(userData.semester);
-          setBranch(userData.course);
-        } else if (userData.role === 'teacher') {
-          setSemester(userData.semester || '1');
-          setBranch(userData.department);
-          fetchStudents();
+          if (userData.role === 'student') {
+            setStudentName(userData.name);
+            setStudentId(userData._id);
+            setSemester(userData.semester);
+            setBranch(userData.course);
+          } else if (userData.role === 'teacher') {
+            setSemester(userData.semester || '1');
+            setBranch(userData.department);
+            fetchStudents();
+          }
+        } catch (parseError) {
+          console.log('Error parsing cached user data:', parseError);
+          // Clear corrupted data
+          await AsyncStorage.multiRemove([USER_DATA_KEY, LOGIN_ID_KEY]);
         }
       }
 
-      const cachedConfig = await AsyncStorage.getItem(CACHE_KEY);
+      // Load cached config
       if (cachedConfig) {
-        setConfig(JSON.parse(cachedConfig));
+        try {
+          setConfig(JSON.parse(cachedConfig));
+        } catch (parseError) {
+          console.log('Error parsing cached config:', parseError);
+        }
       }
 
+      // Fetch fresh config from server
       fetchConfig();
     } catch (error) {
       console.log('Error loading cache:', error);
+    } finally {
+      setIsInitializing(false);
     }
   };
 
   const toggleTheme = async () => {
-    const newTheme = !isDarkTheme;
-    setIsDarkTheme(newTheme);
-    try {
-      await AsyncStorage.setItem(THEME_KEY, newTheme ? 'dark' : 'light');
-    } catch (error) {
-      console.log('Error saving theme:', error);
+    // Cycle through: system -> light -> dark -> system
+    let newMode = 'system';
+    if (themeMode === 'system') {
+      newMode = 'light';
+    } else if (themeMode === 'light') {
+      newMode = 'dark';
+    } else {
+      newMode = 'system';
     }
+
+    // Update state immediately for instant UI feedback
+    setThemeMode(newMode);
+
+    // Save to storage in background
+    AsyncStorage.setItem(THEME_KEY, newMode).catch(error => {
+      console.log('Error saving theme:', error);
+    });
   };
 
   const fetchConfig = async () => {
@@ -278,22 +331,22 @@ export default function App() {
   const fetchStudentDetails = async (student) => {
     setSelectedStudent(student);
     setLoadingDetails(true);
-    
+
     try {
       // Fetch student management details
       const detailsResponse = await fetch(`${SOCKET_URL}/api/student-management?enrollmentNo=${student.enrollmentNumber || student._id}`);
       const detailsData = await detailsResponse.json();
-      
+
       // Fetch attendance records (last 30 days)
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const recordsResponse = await fetch(`${SOCKET_URL}/api/attendance/records?studentId=${student._id}&startDate=${thirtyDaysAgo.toISOString()}`);
       const recordsData = await recordsResponse.json();
-      
+
       // Fetch attendance statistics
       const statsResponse = await fetch(`${SOCKET_URL}/api/attendance/stats?studentId=${student._id}`);
       const statsData = await statsResponse.json();
-      
+
       if (detailsData.success) {
         setStudentDetails(detailsData.student);
       }
@@ -497,10 +550,13 @@ export default function App() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Glow effect only in dark theme
   const glowOpacity = glowAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.3, 0.8],
+    outputRange: isDarkTheme ? [0.3, 0.8] : [0, 0],
   });
+
+
 
   // Login function
   const handleLogin = async () => {
@@ -525,27 +581,38 @@ export default function App() {
       const data = await response.json();
 
       if (data.success) {
+        // Update state first for instant UI feedback
         setUserData(data.user);
         setSelectedRole(data.user.role);
         setShowLogin(false);
 
-        // Save login data for persistence
-        await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(data.user));
-        await AsyncStorage.setItem(LOGIN_ID_KEY, loginId.trim());
-        await AsyncStorage.setItem(ROLE_KEY, data.user.role);
+        // Prepare storage data
+        const storageData = [
+          [USER_DATA_KEY, JSON.stringify(data.user)],
+          [LOGIN_ID_KEY, loginId.trim()],
+          [ROLE_KEY, data.user.role]
+        ];
 
         if (data.user.role === 'student') {
           setStudentName(data.user.name);
           setStudentId(data.user._id);
           setSemester(data.user.semester);
           setBranch(data.user.course);
-          await AsyncStorage.setItem(STUDENT_NAME_KEY, data.user.name);
-          await AsyncStorage.setItem(STUDENT_ID_KEY, data.user._id);
+
+          storageData.push(
+            [STUDENT_NAME_KEY, data.user.name],
+            [STUDENT_ID_KEY, data.user._id]
+          );
         } else if (data.user.role === 'teacher') {
           setSemester(data.user.semester || '1');
           setBranch(data.user.department);
           fetchStudents();
         }
+
+        // Save all data in parallel (non-blocking)
+        AsyncStorage.multiSet(storageData).catch(error => {
+          console.log('Error saving login data:', error);
+        });
       } else {
         setLoginError(data.message || 'Invalid credentials');
       }
@@ -557,25 +624,41 @@ export default function App() {
     }
   };
 
+  // Loading Screen
+  if (isInitializing) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <StatusBar style={theme.statusBar} />
+        <Text style={{ fontSize: 48, marginBottom: 20 }}>🎓</Text>
+        <Text style={{ fontSize: 24, color: theme.primary, fontWeight: 'bold' }}>College App</Text>
+        <Text style={{ fontSize: 14, color: theme.textSecondary, marginTop: 10 }}>Loading...</Text>
+      </View>
+    );
+  }
+
   // Login Screen
   if (showLogin) {
     return (
-      <Animated.View style={[styles.container, { backgroundColor: '#0a1628', opacity: fadeAnim }]}>
-        <StatusBar style="light" />
+      <Animated.View style={[styles.container, { backgroundColor: theme.background, opacity: fadeAnim }]}>
+        <StatusBar style={theme.statusBar} />
         <View style={styles.loginContainer}>
-          <Text style={[styles.glowText, { fontSize: 36, marginBottom: 10 }]}>
+          <Text style={[styles.glowText, { fontSize: 36, marginBottom: 10, color: theme.primary }]}>
             🎓 College App
           </Text>
-          <Text style={{ color: '#00d9ff', fontSize: 16, marginBottom: 40 }}>
+          <Text style={{ color: theme.textSecondary, fontSize: 16, marginBottom: 40 }}>
             Login to continue
           </Text>
 
           <View style={styles.loginForm}>
-            <Text style={styles.loginLabel}>Enrollment / Employee ID</Text>
+            <Text style={[styles.loginLabel, { color: theme.textSecondary }]}>Enrollment / Employee ID</Text>
             <TextInput
-              style={styles.loginInput}
+              style={[styles.loginInput, {
+                backgroundColor: theme.cardBackground,
+                borderColor: theme.border,
+                color: theme.text
+              }]}
               placeholder="Enter your ID"
-              placeholderTextColor="#00d9ff80"
+              placeholderTextColor={theme.textSecondary + '80'}
               value={loginId}
               onChangeText={(text) => {
                 setLoginId(text);
@@ -585,11 +668,15 @@ export default function App() {
               autoCorrect={false}
             />
 
-            <Text style={[styles.loginLabel, { marginTop: 20 }]}>Password</Text>
+            <Text style={[styles.loginLabel, { marginTop: 20, color: theme.textSecondary }]}>Password</Text>
             <TextInput
-              style={styles.loginInput}
+              style={[styles.loginInput, {
+                backgroundColor: theme.cardBackground,
+                borderColor: theme.border,
+                color: theme.text
+              }]}
               placeholder="Enter your password"
-              placeholderTextColor="#00d9ff80"
+              placeholderTextColor={theme.textSecondary + '80'}
               value={loginPassword}
               onChangeText={(text) => {
                 setLoginPassword(text);
@@ -610,7 +697,7 @@ export default function App() {
               style={styles.loginButton}
             >
               <Animated.View style={[styles.loginButtonInner, {
-                shadowColor: '#00f5ff',
+                shadowColor: theme.primary,
                 shadowOpacity: glowOpacity,
                 shadowRadius: 20,
               }]}>
@@ -633,17 +720,17 @@ export default function App() {
   if (!selectedRole) {
     const roleConfig = config?.roleSelection || getDefaultConfig().roleSelection;
     return (
-      <Animated.View style={[styles.container, { backgroundColor: roleConfig?.backgroundColor || '#0a1628', opacity: fadeAnim }]}>
-        <StatusBar style="light" />
+      <Animated.View style={[styles.container, { backgroundColor: theme.background, opacity: fadeAnim }]}>
+        <StatusBar style={theme.statusBar} />
         <Text style={[styles.glowText, {
           fontSize: roleConfig?.title?.fontSize || 36,
-          color: roleConfig?.title?.color || '#00f5ff',
+          color: theme.primary,
         }]}>
           {roleConfig?.title?.text || 'Who are you?'}
         </Text>
         <Text style={{
           fontSize: roleConfig?.subtitle?.fontSize || 16,
-          color: roleConfig?.subtitle?.color || '#00d9ff',
+          color: theme.textSecondary,
           marginBottom: 60,
         }}>
           {roleConfig?.subtitle?.text || 'Select your role to continue'}
@@ -660,8 +747,8 @@ export default function App() {
                 style={[
                   styles.roleButton,
                   {
-                    backgroundColor: role?.backgroundColor || '#00d9ff',
-                    shadowColor: '#00f5ff',
+                    backgroundColor: role?.backgroundColor || theme.primary,
+                    shadowColor: theme.primary,
                     shadowOpacity: glowOpacity,
                     shadowRadius: 20,
                     elevation: 15,
@@ -701,16 +788,16 @@ export default function App() {
         </Text>
 
         <Animated.View style={[styles.inputContainer, {
-          backgroundColor: nameConfig?.inputBackgroundColor || '#0d1f3c',
-          borderColor: nameConfig?.inputBorderColor || '#00d9ff',
-          shadowColor: '#00f5ff',
+          backgroundColor: nameConfig?.inputBackgroundColor || theme.cardBackground,
+          borderColor: nameConfig?.inputBorderColor || theme.border,
+          shadowColor: theme.primary,
           shadowOpacity: glowOpacity,
           shadowRadius: 15,
         }]}>
           <TextInput
-            style={[styles.input, { color: nameConfig?.inputTextColor || '#00f5ff' }]}
+            style={[styles.input, { color: nameConfig?.inputTextColor || theme.primary }]}
             placeholder={nameConfig?.placeholder || 'Your Name'}
-            placeholderTextColor="#00d9ff80"
+            placeholderTextColor={theme.textSecondary + '80'}
             value={studentName}
             onChangeText={setStudentName}
             autoFocus
@@ -719,7 +806,7 @@ export default function App() {
 
         <TouchableOpacity onPress={handleNameSubmit} activeOpacity={0.8}>
           <Animated.View style={[styles.submitButton, {
-            shadowColor: '#00f5ff',
+            shadowColor: theme.primary,
             shadowOpacity: glowOpacity,
             shadowRadius: 20,
           }]}>
@@ -735,9 +822,10 @@ export default function App() {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const daysFull = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const isTeacher = selectedRole === 'teacher';
+    const canEdit = isTeacher && (userData?.canEditTimetable || false);
 
     const handleCellPress = (dayIdx, periodIdx) => {
-      if (!isTeacher) return;
+      if (!canEdit) return;
       const period = timetable.timetable[daysFull[dayIdx]][periodIdx];
       setEditingCell({ dayIdx, periodIdx });
       setEditSubject(period.subject || '');
@@ -759,7 +847,7 @@ export default function App() {
     };
 
     const handleToggleBreak = (dayIdx, periodIdx) => {
-      if (!isTeacher) return;
+      if (!canEdit) return;
       const updatedTimetable = { ...timetable };
       const currentBreak = updatedTimetable.timetable[daysFull[dayIdx]][periodIdx].isBreak;
       updatedTimetable.timetable[daysFull[dayIdx]][periodIdx] = {
@@ -776,23 +864,23 @@ export default function App() {
     };
 
     return (
-      <Animated.View style={[styles.container, { backgroundColor: '#0a1628', opacity: fadeAnim }]}>
-        <StatusBar style="light" />
+      <Animated.View style={[styles.container, { backgroundColor: theme.background, opacity: fadeAnim }]}>
+        <StatusBar style={theme.statusBar} />
         <View style={styles.timetableHeader}>
-          <Text style={[styles.glowText, { fontSize: 24, color: '#00f5ff' }]}>
-            📅 Timetable {isTeacher && '(Edit Mode)'}
+          <Text style={[styles.glowText, { fontSize: 24, color: theme.primary }]}>
+            📅 Timetable {canEdit ? '(Edit Mode)' : '(View Only)'}
           </Text>
-          <Text style={{ color: '#00d9ff', fontSize: 14, marginTop: 5 }}>
+          <Text style={{ color: theme.textSecondary, fontSize: 14, marginTop: 5 }}>
             Sem {timetable.semester} - {timetable.branch}
           </Text>
           <View style={{ flexDirection: 'row', gap: 15, marginTop: 10 }}>
-            {isTeacher && (
+            {canEdit && (
               <TouchableOpacity onPress={handleSaveTimetable}>
-                <Text style={{ color: '#00ff88', fontSize: 14, fontWeight: 'bold' }}>💾 Save</Text>
+                <Text style={{ color: isDarkTheme ? '#00ff88' : '#10b981', fontSize: 14, fontWeight: 'bold' }}>💾 Save</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={() => { setShowTimetable(false); setEditingCell(null); }}>
-              <Text style={{ color: '#00f5ff', fontSize: 14 }}>✕ Close</Text>
+              <Text style={{ color: theme.primary, fontSize: 14 }}>✕ Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -800,13 +888,19 @@ export default function App() {
         <ScrollView horizontal style={styles.timetableScrollHorizontal}>
           <View style={styles.timetableGrid}>
             <View style={styles.gridRow}>
-              <View style={[styles.gridCell, styles.cornerCell]}>
-                <Text style={styles.cornerText}>Day/Period</Text>
+              <View style={[styles.gridCell, styles.cornerCell, {
+                backgroundColor: theme.cardBackground,
+                borderColor: theme.border
+              }]}>
+                <Text style={[styles.cornerText, { color: theme.textSecondary }]}>Day/Period</Text>
               </View>
               {timetable.periods.map((period, idx) => (
-                <View key={idx} style={[styles.gridCell, styles.headerCell]}>
-                  <Text style={styles.periodHeaderText}>P{period.number}</Text>
-                  <Text style={styles.timeText}>
+                <View key={idx} style={[styles.gridCell, styles.headerCell, {
+                  backgroundColor: theme.cardBackground,
+                  borderColor: theme.border
+                }]}>
+                  <Text style={[styles.periodHeaderText, { color: theme.primary }]}>P{period.number}</Text>
+                  <Text style={[styles.timeText, { color: theme.textSecondary }]}>
                     {period.startTime}-{period.endTime}
                   </Text>
                 </View>
@@ -815,27 +909,39 @@ export default function App() {
 
             {days.map((day, dayIdx) => (
               <View key={day} style={styles.gridRow}>
-                <View style={[styles.gridCell, styles.dayCell]}>
-                  <Text style={styles.dayText}>{day}</Text>
+                <View style={[styles.gridCell, styles.dayCell, {
+                  backgroundColor: theme.cardBackground,
+                  borderColor: theme.border
+                }]}>
+                  <Text style={[styles.dayText, { color: theme.primary }]}>{day}</Text>
                 </View>
                 {timetable.timetable[daysFull[dayIdx]].map((period, periodIdx) => (
                   <TouchableOpacity
                     key={periodIdx}
                     onPress={() => handleCellPress(dayIdx, periodIdx)}
-                    onLongPress={() => isTeacher && handleToggleBreak(dayIdx, periodIdx)}
-                    disabled={!isTeacher}
-                    activeOpacity={isTeacher ? 0.7 : 1}
+                    onLongPress={() => canEdit && handleToggleBreak(dayIdx, periodIdx)}
+                    disabled={!canEdit}
+                    activeOpacity={canEdit ? 0.7 : 1}
                   >
-                    <View style={[styles.gridCell, styles.dataCell, period.isBreak && styles.breakCell]}>
+                    <View style={[
+                      styles.gridCell,
+                      styles.dataCell,
+                      {
+                        backgroundColor: period.isBreak
+                          ? (isDarkTheme ? '#1a2a3a' : '#fef3c7')
+                          : theme.background,
+                        borderColor: theme.border
+                      }
+                    ]}>
                       {period.isBreak ? (
-                        <Text style={styles.breakTextSmall}>☕</Text>
+                        <Text style={[styles.breakTextSmall, { color: theme.textSecondary }]}>☕</Text>
                       ) : (
                         <>
-                          <Text style={styles.subjectTextSmall} numberOfLines={2}>
+                          <Text style={[styles.subjectTextSmall, { color: theme.text }]} numberOfLines={2}>
                             {period.subject || '-'}
                           </Text>
                           {period.room && (
-                            <Text style={styles.roomTextSmall} numberOfLines={1}>
+                            <Text style={[styles.roomTextSmall, { color: theme.textSecondary }]} numberOfLines={1}>
                               {period.room}
                             </Text>
                           )}
@@ -849,37 +955,48 @@ export default function App() {
           </View>
         </ScrollView>
 
-        {editingCell && isTeacher && (
+        {editingCell && canEdit && (
           <View style={styles.editModal}>
-            <View style={styles.editModalContent}>
-              <Text style={styles.editModalTitle}>Edit Period</Text>
-              <Text style={styles.editModalSubtitle}>
+            <View style={[styles.editModalContent, {
+              backgroundColor: theme.cardBackground,
+              borderColor: theme.border
+            }]}>
+              <Text style={[styles.editModalTitle, { color: theme.primary }]}>Edit Period</Text>
+              <Text style={[styles.editModalSubtitle, { color: theme.textSecondary }]}>
                 {days[editingCell.dayIdx]} - Period {editingCell.periodIdx + 1}
               </Text>
 
               <TextInput
-                style={styles.editInput}
+                style={[styles.editInput, {
+                  backgroundColor: theme.background,
+                  borderColor: theme.border,
+                  color: theme.text
+                }]}
                 placeholder="Subject Name"
-                placeholderTextColor="#00d9ff80"
+                placeholderTextColor={theme.textSecondary + '80'}
                 value={editSubject}
                 onChangeText={setEditSubject}
                 autoFocus
               />
 
               <TextInput
-                style={styles.editInput}
+                style={[styles.editInput, {
+                  backgroundColor: theme.background,
+                  borderColor: theme.border,
+                  color: theme.text
+                }]}
                 placeholder="Room Number"
-                placeholderTextColor="#00d9ff80"
+                placeholderTextColor={theme.textSecondary + '80'}
                 value={editRoom}
                 onChangeText={setEditRoom}
               />
 
               <View style={styles.editModalButtons}>
-                <TouchableOpacity onPress={handleSaveCell} style={styles.editModalButton}>
-                  <Text style={styles.editModalButtonText}>✓ Save</Text>
+                <TouchableOpacity onPress={handleSaveCell} style={[styles.editModalButton, { backgroundColor: theme.primary }]}>
+                  <Text style={[styles.editModalButtonText, { color: isDarkTheme ? '#0a1628' : '#ffffff' }]}>✓ Save</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setEditingCell(null)} style={[styles.editModalButton, styles.editModalCancelButton]}>
-                  <Text style={styles.editModalButtonText}>✕ Cancel</Text>
+                <TouchableOpacity onPress={() => setEditingCell(null)} style={[styles.editModalButton, styles.editModalCancelButton, { backgroundColor: theme.border }]}>
+                  <Text style={[styles.editModalButtonText, { color: theme.text }]}>✕ Cancel</Text>
                 </TouchableOpacity>
               </View>
 
@@ -893,22 +1010,29 @@ export default function App() {
 
   // Logout function
   const handleLogout = async () => {
-    setShowLogin(true);
-    setSelectedRole(null);
+    // Clear all stored data FIRST
+    try {
+      await AsyncStorage.multiRemove([
+        ROLE_KEY,
+        STUDENT_NAME_KEY,
+        STUDENT_ID_KEY,
+        USER_DATA_KEY,
+        LOGIN_ID_KEY
+      ]);
+    } catch (error) {
+      console.log('Error clearing storage:', error);
+    }
+
+    // Then clear state
+    setIsRunning(false);
+    clearInterval(intervalRef.current);
     setUserData(null);
     setLoginId('');
     setLoginPassword('');
     setStudentName('');
     setStudentId(null);
-    setIsRunning(false);
-    clearInterval(intervalRef.current);
-
-    // Clear all stored data
-    await AsyncStorage.removeItem(ROLE_KEY);
-    await AsyncStorage.removeItem(STUDENT_NAME_KEY);
-    await AsyncStorage.removeItem(STUDENT_ID_KEY);
-    await AsyncStorage.removeItem(USER_DATA_KEY);
-    await AsyncStorage.removeItem(LOGIN_ID_KEY);
+    setSelectedRole(null);
+    setShowLogin(true);
   };
 
   // Teacher Dashboard
@@ -953,7 +1077,9 @@ export default function App() {
           </View>
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <TouchableOpacity onPress={toggleTheme} style={styles.themeButton}>
-              <Text style={styles.themeButtonText}>{isDarkTheme ? '☀️' : '🌙'}</Text>
+              <Text style={styles.themeButtonText}>
+                {themeMode === 'system' ? '🔄' : isDarkTheme ? '☀️' : '🌙'}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
               <Text style={styles.logoutButtonText}>🚪 Logout</Text>
@@ -963,16 +1089,16 @@ export default function App() {
 
         {/* Statistics Cards */}
         <View style={styles.statsContainer}>
-          <View style={[styles.statCard, { borderColor: isDarkTheme ? '#00f5ff' : '#fbbf24', backgroundColor: theme.cardBackground }]}>
-            <Text style={[styles.statNumber, { color: isDarkTheme ? '#00f5ff' : '#fbbf24' }]}>{totalStudents}</Text>
+          <View style={[styles.statCard, { borderColor: theme.primary, backgroundColor: theme.cardBackground }]}>
+            <Text style={[styles.statNumber, { color: theme.primary }]}>{totalStudents}</Text>
             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total</Text>
           </View>
-          <View style={[styles.statCard, { borderColor: '#00ff88', backgroundColor: theme.cardBackground }]}>
-            <Text style={[styles.statNumber, { color: '#00ff88' }]}>{presentStudents}</Text>
+          <View style={[styles.statCard, { borderColor: isDarkTheme ? '#00ff88' : '#10b981', backgroundColor: theme.cardBackground }]}>
+            <Text style={[styles.statNumber, { color: isDarkTheme ? '#00ff88' : '#10b981' }]}>{presentStudents}</Text>
             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Present</Text>
           </View>
-          <View style={[styles.statCard, { borderColor: '#ffaa00', backgroundColor: theme.cardBackground }]}>
-            <Text style={[styles.statNumber, { color: '#ffaa00' }]}>{attendingStudents}</Text>
+          <View style={[styles.statCard, { borderColor: isDarkTheme ? '#ffaa00' : '#f59e0b', backgroundColor: theme.cardBackground }]}>
+            <Text style={[styles.statNumber, { color: isDarkTheme ? '#ffaa00' : '#f59e0b' }]}>{attendingStudents}</Text>
             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Active</Text>
           </View>
           <View style={[styles.statCard, { borderColor: '#ff4444', backgroundColor: theme.cardBackground }]}>
@@ -1001,22 +1127,22 @@ export default function App() {
           style={{ marginBottom: 15, paddingHorizontal: 20 }}
         >
           <Animated.View style={{
-            backgroundColor: canEditTimetable ? '#00bfff' : '#00d9ff80',
+            backgroundColor: canEditTimetable ? theme.primary : theme.primary + '80',
             paddingVertical: 15,
             paddingHorizontal: 30,
             borderRadius: 15,
             alignItems: 'center',
-            shadowColor: '#00bfff',
+            shadowColor: theme.primary,
             shadowOpacity: glowOpacity,
             shadowRadius: 15,
             elevation: 10,
           }}>
-            <Text style={{ color: '#0a1628', fontSize: 16, fontWeight: 'bold' }}>
+            <Text style={{ color: isDarkTheme ? '#0a1628' : '#ffffff', fontSize: 16, fontWeight: 'bold' }}>
               📅 {canEditTimetable ? 'MANAGE TIMETABLE' : 'VIEW TIMETABLE'}
             </Text>
             {!canEditTimetable && (
-              <Text style={{ color: '#0a1628', fontSize: 11, marginTop: 3 }}>
-                (View Only - No Edit Permission)
+              <Text style={{ color: isDarkTheme ? '#0a1628' : '#ffffff', fontSize: 11, marginTop: 3 }}>
+                (View Only)
               </Text>
             )}
           </Animated.View>
@@ -1053,7 +1179,7 @@ export default function App() {
                     backgroundColor: theme.cardBackground,
                     borderColor: statusColor,
                     borderWidth: 2,
-                    shadowColor: statusColor,
+                    shadowColor: isDarkTheme ? statusColor : 'transparent',
                     shadowOpacity: glowOpacity,
                     shadowRadius: 15,
                   }]}
@@ -1093,12 +1219,14 @@ export default function App() {
         {selectedStudent && (
           <View style={styles.modalOverlay}>
             <Animated.View style={[styles.modalContent, {
+              backgroundColor: theme.cardBackground,
+              borderColor: theme.border,
               transform: [{ scale: scaleAnim }]
             }]}>
               <ScrollView>
                 {/* Header */}
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>📊 Student Details</Text>
+                <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+                  <Text style={[styles.modalTitle, { color: theme.primary }]}>📊 Student Details</Text>
                   <TouchableOpacity onPress={closeStudentDetails}>
                     <Text style={styles.modalClose}>✕</Text>
                   </TouchableOpacity>
@@ -1106,45 +1234,45 @@ export default function App() {
 
                 {loadingDetails ? (
                   <View style={styles.loadingContainer}>
-                    <Text style={styles.loadingText}>Loading...</Text>
+                    <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading...</Text>
                   </View>
                 ) : (
                   <>
                     {/* Student Info */}
-                    <View style={styles.detailSection}>
-                      <Text style={styles.sectionTitle}>👤 Personal Information</Text>
+                    <View style={[styles.detailSection, { borderBottomColor: theme.border + '40' }]}>
+                      <Text style={[styles.sectionTitle, { color: theme.primary }]}>👤 Personal Information</Text>
                       <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Name:</Text>
-                        <Text style={styles.infoValue}>{selectedStudent?.name || 'Unknown'}</Text>
+                        <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Name:</Text>
+                        <Text style={[styles.infoValue, { color: theme.text }]}>{selectedStudent?.name || 'Unknown'}</Text>
                       </View>
                       <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Enrollment:</Text>
-                        <Text style={styles.infoValue}>{studentDetails?.enrollmentNo || selectedStudent?.enrollmentNumber || 'N/A'}</Text>
+                        <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Enrollment:</Text>
+                        <Text style={[styles.infoValue, { color: theme.text }]}>{studentDetails?.enrollmentNo || selectedStudent?.enrollmentNumber || 'N/A'}</Text>
                       </View>
                       {studentDetails && (
                         <>
                           {studentDetails.email && (
                             <View style={styles.infoRow}>
-                              <Text style={styles.infoLabel}>Email:</Text>
-                              <Text style={styles.infoValue}>{studentDetails.email}</Text>
+                              <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Email:</Text>
+                              <Text style={[styles.infoValue, { color: theme.text }]}>{studentDetails.email}</Text>
                             </View>
                           )}
                           {studentDetails.course && (
                             <View style={styles.infoRow}>
-                              <Text style={styles.infoLabel}>Course:</Text>
-                              <Text style={styles.infoValue}>{studentDetails.course}</Text>
+                              <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Course:</Text>
+                              <Text style={[styles.infoValue, { color: theme.text }]}>{studentDetails.course}</Text>
                             </View>
                           )}
                           {studentDetails.semester && (
                             <View style={styles.infoRow}>
-                              <Text style={styles.infoLabel}>Semester:</Text>
-                              <Text style={styles.infoValue}>{studentDetails.semester}</Text>
+                              <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Semester:</Text>
+                              <Text style={[styles.infoValue, { color: theme.text }]}>{studentDetails.semester}</Text>
                             </View>
                           )}
                           {studentDetails.phone && (
                             <View style={styles.infoRow}>
-                              <Text style={styles.infoLabel}>Phone:</Text>
-                              <Text style={styles.infoValue}>{studentDetails.phone}</Text>
+                              <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Phone:</Text>
+                              <Text style={[styles.infoValue, { color: theme.text }]}>{studentDetails.phone}</Text>
                             </View>
                           )}
                         </>
@@ -1152,47 +1280,59 @@ export default function App() {
                     </View>
 
                     {/* Current Status */}
-                    <View style={styles.detailSection}>
-                      <Text style={styles.sectionTitle}>⏱️ Current Session</Text>
+                    <View style={[styles.detailSection, { borderBottomColor: theme.border + '40' }]}>
+                      <Text style={[styles.sectionTitle, { color: theme.primary }]}>⏱️ Current Session</Text>
                       <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Status:</Text>
-                        <Text style={[styles.infoValue, { 
-                          color: (selectedStudent?.status === 'present') ? '#00ff88' : 
-                                 (selectedStudent?.status === 'attending') ? '#ffaa00' : '#ff4444'
+                        <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Status:</Text>
+                        <Text style={[styles.infoValue, {
+                          color: (selectedStudent?.status === 'present') ? (isDarkTheme ? '#00ff88' : '#059669') :
+                            (selectedStudent?.status === 'attending') ? (isDarkTheme ? '#ffaa00' : '#d97706') : (isDarkTheme ? '#ff4444' : '#dc2626')
                         }]}>
                           {(selectedStudent?.status || 'absent').toUpperCase()}
                         </Text>
                       </View>
                       <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Timer:</Text>
-                        <Text style={styles.infoValue}>{formatTime(selectedStudent?.timerValue || 0)}</Text>
+                        <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Timer:</Text>
+                        <Text style={[styles.infoValue, { color: theme.text }]}>{formatTime(selectedStudent?.timerValue || 0)}</Text>
                       </View>
                       <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Active:</Text>
-                        <Text style={styles.infoValue}>{selectedStudent?.isRunning ? 'Yes ●' : 'No'}</Text>
+                        <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Active:</Text>
+                        <Text style={[styles.infoValue, { color: theme.text }]}>{selectedStudent?.isRunning ? 'Yes ●' : 'No'}</Text>
                       </View>
                     </View>
 
                     {/* Attendance Statistics */}
                     {attendanceStats && attendanceStats.total !== undefined && (
-                      <View style={styles.detailSection}>
-                        <Text style={styles.sectionTitle}>📈 Attendance Statistics</Text>
+                      <View style={[styles.detailSection, { borderBottomColor: theme.border + '40' }]}>
+                        <Text style={[styles.sectionTitle, { color: theme.primary }]}>📈 Attendance Statistics</Text>
                         <View style={styles.statsGrid}>
-                          <View style={styles.statBox}>
-                            <Text style={styles.statNumber}>{attendanceStats.total || 0}</Text>
-                            <Text style={styles.statLabel}>Total Days</Text>
+                          <View style={[styles.statBox, { 
+                            backgroundColor: isDarkTheme ? '#0a1628' : '#f9fafb',
+                            borderColor: theme.border 
+                          }]}>
+                            <Text style={[styles.statNumber, { color: theme.primary }]}>{attendanceStats.total || 0}</Text>
+                            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Days</Text>
                           </View>
-                          <View style={styles.statBox}>
-                            <Text style={[styles.statNumber, { color: '#00ff88' }]}>{attendanceStats.present || 0}</Text>
-                            <Text style={styles.statLabel}>Present</Text>
+                          <View style={[styles.statBox, { 
+                            backgroundColor: isDarkTheme ? '#0a1628' : '#f9fafb',
+                            borderColor: theme.border 
+                          }]}>
+                            <Text style={[styles.statNumber, { color: isDarkTheme ? '#00ff88' : '#059669' }]}>{attendanceStats.present || 0}</Text>
+                            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Present</Text>
                           </View>
-                          <View style={styles.statBox}>
-                            <Text style={[styles.statNumber, { color: '#ff4444' }]}>{attendanceStats.absent || 0}</Text>
-                            <Text style={styles.statLabel}>Absent</Text>
+                          <View style={[styles.statBox, { 
+                            backgroundColor: isDarkTheme ? '#0a1628' : '#f9fafb',
+                            borderColor: theme.border 
+                          }]}>
+                            <Text style={[styles.statNumber, { color: isDarkTheme ? '#ff4444' : '#dc2626' }]}>{attendanceStats.absent || 0}</Text>
+                            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Absent</Text>
                           </View>
-                          <View style={styles.statBox}>
-                            <Text style={[styles.statNumber, { color: '#00d9ff' }]}>{attendanceStats.percentage || 0}%</Text>
-                            <Text style={styles.statLabel}>Percentage</Text>
+                          <View style={[styles.statBox, { 
+                            backgroundColor: isDarkTheme ? '#0a1628' : '#f9fafb',
+                            borderColor: theme.border 
+                          }]}>
+                            <Text style={[styles.statNumber, { color: theme.primary }]}>{attendanceStats.percentage || 0}%</Text>
+                            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Percentage</Text>
                           </View>
                         </View>
                       </View>
@@ -1200,21 +1340,23 @@ export default function App() {
 
                     {/* Attendance History */}
                     {attendanceRecords && attendanceRecords.length > 0 && (
-                      <View style={styles.detailSection}>
-                        <Text style={styles.sectionTitle}>📅 Recent Attendance (Last 30 Days)</Text>
+                      <View style={[styles.detailSection, { borderBottomWidth: 0 }]}>
+                        <Text style={[styles.sectionTitle, { color: theme.primary }]}>📅 Recent Attendance (Last 30 Days)</Text>
                         {attendanceRecords.slice(0, 10).map((record, index) => {
                           if (!record || !record.date) return null;
                           return (
-                            <View key={index} style={styles.recordRow}>
-                              <Text style={styles.recordDate}>
-                                {new Date(record.date).toLocaleDateString('en-US', { 
-                                  month: 'short', 
+                            <View key={index} style={[styles.recordRow, { borderBottomColor: theme.border + '20' }]}>
+                              <Text style={[styles.recordDate, { color: theme.text }]}>
+                                {new Date(record.date).toLocaleDateString('en-US', {
+                                  month: 'short',
                                   day: 'numeric',
                                   year: 'numeric'
                                 })}
                               </Text>
                               <Text style={[styles.recordStatus, {
-                                color: record.status === 'present' ? '#00ff88' : '#ff4444'
+                                color: record.status === 'present'
+                                  ? (isDarkTheme ? '#00ff88' : '#059669')
+                                  : (isDarkTheme ? '#ff4444' : '#dc2626')
                               }]}>
                                 {record.status === 'present' ? '✅ Present' : '❌ Absent'}
                               </Text>
@@ -1239,40 +1381,47 @@ export default function App() {
   const resetBtn = screen?.buttons?.[1] || getDefaultConfig().studentScreen.buttons[1];
 
   return (
-    <Animated.View style={[styles.container, { backgroundColor: screen?.backgroundColor || '#0a1628', opacity: fadeAnim, paddingTop: 50 }]}>
-      <StatusBar style="light" />
+    <Animated.View style={[styles.container, { backgroundColor: theme.background, opacity: fadeAnim, paddingTop: 50 }]}>
+      <StatusBar style={theme.statusBar} />
 
-      {/* Logout Button for Student */}
-      <TouchableOpacity onPress={handleLogout} style={[styles.logoutButton, { position: 'absolute', top: 50, right: 20, zIndex: 10 }]}>
-        <Text style={styles.logoutButtonText}>🚪</Text>
-      </TouchableOpacity>
+      {/* Theme Toggle and Logout Buttons for Student */}
+      <View style={{ position: 'absolute', top: 50, right: 20, zIndex: 10, flexDirection: 'row', gap: 10 }}>
+        <TouchableOpacity onPress={toggleTheme} style={styles.themeButton}>
+          <Text style={styles.themeButtonText}>
+            {themeMode === 'system' ? '🔄' : isDarkTheme ? '☀️' : '🌙'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+          <Text style={styles.logoutButtonText}>🚪</Text>
+        </TouchableOpacity>
+      </View>
 
       <Text style={[styles.glowText, {
         fontSize: screen?.title?.fontSize || 32,
-        color: screen?.title?.color || '#00f5ff',
+        color: theme.primary,
         marginBottom: 20,
       }]}>
         {screen?.title?.text || 'Countdown Timer'}
       </Text>
-      <Text style={styles.studentNameDisplay}>👋 {studentName}</Text>
+      <Text style={[styles.studentNameDisplay, { color: theme.text }]}>👋 {studentName}</Text>
 
       <Animated.View style={{
         backgroundColor: screen?.timer?.backgroundColor || '#0d1f3c',
         borderRadius: screen?.timer?.borderRadius || 20,
         padding: 40,
         marginBottom: 50,
-        shadowColor: '#00f5ff',
+        shadowColor: theme.primary,
         shadowOpacity: glowOpacity,
         shadowRadius: 30,
         elevation: 20,
         borderWidth: 2,
-        borderColor: '#00d9ff',
+        borderColor: theme.border,
         transform: [{ scale: pulseAnim }],
       }}>
         <Text style={{
           fontSize: screen?.timer?.fontSize || 72,
           fontWeight: 'bold',
-          color: screen?.timer?.textColor || '#00f5ff',
+          color: screen?.timer?.textColor || theme.primary,
         }}>
           {formatTime(timeLeft)}
         </Text>
@@ -1281,13 +1430,13 @@ export default function App() {
       <View style={styles.buttonContainer}>
         <TouchableOpacity onPress={handleStartPause} activeOpacity={0.8}>
           <Animated.View style={[styles.button, {
-            backgroundColor: startPauseBtn?.backgroundColor || '#00f5ff',
-            shadowColor: '#00f5ff',
+            backgroundColor: startPauseBtn?.backgroundColor || theme.primary,
+            shadowColor: theme.primary,
             shadowOpacity: glowOpacity,
             shadowRadius: 15,
           }]}>
             <Text style={[styles.buttonText, {
-              color: startPauseBtn?.textColor || '#0a1628',
+              color: isDarkTheme ? '#0a1628' : '#ffffff',
               fontSize: startPauseBtn?.fontSize || 18
             }]}>
               {isRunning ? (startPauseBtn?.pauseText || 'PAUSE') : (startPauseBtn?.text || 'START')}
@@ -1297,13 +1446,13 @@ export default function App() {
 
         <TouchableOpacity onPress={handleReset} activeOpacity={0.8}>
           <Animated.View style={[styles.button, {
-            backgroundColor: resetBtn?.backgroundColor || '#00d9ff',
-            shadowColor: '#00d9ff',
+            backgroundColor: resetBtn?.backgroundColor || theme.border,
+            shadowColor: theme.primary,
             shadowOpacity: glowOpacity,
             shadowRadius: 15,
           }]}>
             <Text style={[styles.buttonText, {
-              color: resetBtn?.textColor || '#0a1628',
+              color: theme.text,
               fontSize: resetBtn?.fontSize || 18
             }]}>
               {resetBtn?.text || 'RESET'}
@@ -1322,8 +1471,8 @@ export default function App() {
           shadowOpacity: glowOpacity,
           shadowRadius: 15,
         }]}>
-          <Text style={[styles.buttonText, { color: '#0a1628', fontSize: 16 }]}>
-            📅 VIEW TIMETABLE
+          <Text style={[styles.buttonText, { color: '#060c15ff', fontSize: 16 }]}>
+            VIEW TIMETABLE
           </Text>
         </Animated.View>
       </TouchableOpacity>
