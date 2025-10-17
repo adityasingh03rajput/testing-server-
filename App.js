@@ -1087,10 +1087,19 @@ export default function App() {
               alignItems: 'center',
               borderWidth: 3,
               borderColor: theme.border,
+              overflow: 'hidden',
             }}>
-              <Text style={{ fontSize: 24, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
-                {getInitials(userData?.name || 'Teacher')}
-              </Text>
+              {userData?.photoUrl ? (
+                <Image
+                  source={{ uri: userData.photoUrl }}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={{ fontSize: 24, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
+                  {getInitials(userData?.name || 'Teacher')}
+                </Text>
+              )}
             </View>
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 15 }}>
@@ -1346,30 +1355,30 @@ export default function App() {
                       <View style={[styles.detailSection, { borderBottomColor: theme.border + '40' }]}>
                         <Text style={[styles.sectionTitle, { color: theme.primary }]}>📈 Attendance Statistics</Text>
                         <View style={styles.statsGrid}>
-                          <View style={[styles.statBox, { 
+                          <View style={[styles.statBox, {
                             backgroundColor: isDarkTheme ? '#0a1628' : '#f9fafb',
-                            borderColor: theme.border 
+                            borderColor: theme.border
                           }]}>
                             <Text style={[styles.statNumber, { color: theme.primary }]}>{attendanceStats.total || 0}</Text>
                             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Days</Text>
                           </View>
-                          <View style={[styles.statBox, { 
+                          <View style={[styles.statBox, {
                             backgroundColor: isDarkTheme ? '#0a1628' : '#f9fafb',
-                            borderColor: theme.border 
+                            borderColor: theme.border
                           }]}>
                             <Text style={[styles.statNumber, { color: isDarkTheme ? '#00ff88' : '#059669' }]}>{attendanceStats.present || 0}</Text>
                             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Present</Text>
                           </View>
-                          <View style={[styles.statBox, { 
+                          <View style={[styles.statBox, {
                             backgroundColor: isDarkTheme ? '#0a1628' : '#f9fafb',
-                            borderColor: theme.border 
+                            borderColor: theme.border
                           }]}>
                             <Text style={[styles.statNumber, { color: isDarkTheme ? '#ff4444' : '#dc2626' }]}>{attendanceStats.absent || 0}</Text>
                             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Absent</Text>
                           </View>
-                          <View style={[styles.statBox, { 
+                          <View style={[styles.statBox, {
                             backgroundColor: isDarkTheme ? '#0a1628' : '#f9fafb',
-                            borderColor: theme.border 
+                            borderColor: theme.border
                           }]}>
                             <Text style={[styles.statNumber, { color: theme.primary }]}>{attendanceStats.percentage || 0}%</Text>
                             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Percentage</Text>
@@ -1447,10 +1456,19 @@ export default function App() {
                       borderWidth: 4,
                       borderColor: theme.border,
                       marginBottom: 15,
+                      overflow: 'hidden',
                     }}>
-                      <Text style={{ fontSize: 48, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
-                        {getInitials(userData?.name || 'User')}
-                      </Text>
+                      {userData?.photoUrl ? (
+                        <Image
+                          source={{ uri: userData.photoUrl }}
+                          style={{ width: '100%', height: '100%' }}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <Text style={{ fontSize: 48, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
+                          {getInitials(userData?.name || 'User')}
+                        </Text>
+                      )}
                     </View>
                     <Text style={{ fontSize: 24, fontWeight: 'bold', color: theme.text }}>
                       {userData?.name || 'User'}
@@ -1463,7 +1481,7 @@ export default function App() {
                   {/* Profile Information */}
                   <View style={[styles.detailSection, { borderBottomColor: theme.border + '40' }]}>
                     <Text style={[styles.sectionTitle, { color: theme.primary }]}>📋 Personal Information</Text>
-                    
+
                     <View style={styles.infoRow}>
                       <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Name:</Text>
                       <Text style={[styles.infoValue, { color: theme.text }]}>{userData?.name || 'N/A'}</Text>
@@ -1561,7 +1579,7 @@ export default function App() {
   const currentStatus = timeLeft === 0 ? 'present' : isRunning ? 'attending' : 'absent';
   const statusColor = currentStatus === 'present' ? (isDarkTheme ? '#00ff88' : '#059669') :
     currentStatus === 'attending' ? (isDarkTheme ? '#ffaa00' : '#d97706') :
-    (isDarkTheme ? '#ff4444' : '#dc2626');
+      (isDarkTheme ? '#ff4444' : '#dc2626');
   const statusText = currentStatus === 'present' ? '✅ Completed' :
     currentStatus === 'attending' ? '⏱️ In Progress' : '❌ Not Started';
 
@@ -1581,10 +1599,19 @@ export default function App() {
             alignItems: 'center',
             borderWidth: 2,
             borderColor: theme.border,
+            overflow: 'hidden',
           }}>
-            <Text style={{ fontSize: 20, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
-              {getInitials(studentName || 'Student')}
-            </Text>
+            {userData?.photoUrl ? (
+              <Image
+                source={{ uri: userData.photoUrl }}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="cover"
+              />
+            ) : (
+              <Text style={{ fontSize: 20, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
+                {getInitials(studentName || 'Student')}
+              </Text>
+            )}
           </View>
         </TouchableOpacity>
       </View>
@@ -1606,7 +1633,7 @@ export default function App() {
       }]}>
         {screen?.title?.text || 'Countdown Timer'}
       </Text>
-      
+
       {/* Student Info Card */}
       <View style={{
         backgroundColor: theme.cardBackground,
@@ -1816,10 +1843,19 @@ export default function App() {
                     borderWidth: 4,
                     borderColor: theme.border,
                     marginBottom: 15,
+                    overflow: 'hidden',
                   }}>
-                    <Text style={{ fontSize: 48, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
-                      {getInitials(userData?.name || studentName || 'User')}
-                    </Text>
+                    {userData?.photoUrl ? (
+                      <Image
+                        source={{ uri: userData.photoUrl }}
+                        style={{ width: '100%', height: '100%' }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Text style={{ fontSize: 48, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
+                        {getInitials(userData?.name || studentName || 'User')}
+                      </Text>
+                    )}
                   </View>
                   <Text style={{ fontSize: 24, fontWeight: 'bold', color: theme.text }}>
                     {userData?.name || studentName || 'User'}
@@ -1832,7 +1868,7 @@ export default function App() {
                 {/* Profile Information */}
                 <View style={[styles.detailSection, { borderBottomColor: theme.border + '40' }]}>
                   <Text style={[styles.sectionTitle, { color: theme.primary }]}>📋 Personal Information</Text>
-                  
+
                   <View style={styles.infoRow}>
                     <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Name:</Text>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{userData?.name || studentName || 'N/A'}</Text>
