@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ActivityIndicator,
-  Animated, TextInput, ScrollView, FlatList, AppState, useColorScheme
+  Animated, TextInput, ScrollView, FlatList, AppState, useColorScheme, Image, Modal
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -121,6 +121,9 @@ export default function App() {
   // Loading state for better UX
   const [isInitializing, setIsInitializing] = useState(true);
 
+  // Profile modal state
+  const [showProfile, setShowProfile] = useState(false);
+
   const intervalRef = useRef(null);
   const socketRef = useRef(null);
   const appState = useRef(AppState.currentState);
@@ -131,6 +134,7 @@ export default function App() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0)).current;
+  const profileScaleAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -172,6 +176,19 @@ export default function App() {
       }).start();
     }
   }, [selectedStudent]);
+
+  useEffect(() => {
+    // Animate profile modal when it opens
+    if (showProfile) {
+      profileScaleAnim.setValue(0);
+      Animated.spring(profileScaleAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 7,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [showProfile]);
 
   useEffect(() => {
     loadConfig();
@@ -548,6 +565,13 @@ export default function App() {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getInitials = (name) => {
+    if (!name) return '?';
+    const parts = name.trim().split(' ');
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
   };
 
   // Glow effect only in dark theme
@@ -1053,24 +1077,40 @@ export default function App() {
 
         {/* Teacher Info Header */}
         <View style={styles.teacherHeader}>
-          <View style={{ flex: 1 }}>
+          <TouchableOpacity onPress={() => setShowProfile(true)} activeOpacity={0.8}>
+            <View style={{
+              width: 60,
+              height: 60,
+              borderRadius: 30,
+              backgroundColor: theme.primary,
+              justifyContent: 'center',
+              alignItems: 'center',
+              borderWidth: 3,
+              borderColor: theme.border,
+            }}>
+              <Text style={{ fontSize: 24, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
+                {getInitials(userData?.name || 'Teacher')}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 15 }}>
             <Text style={[styles.glowText, {
-              fontSize: 28,
+              fontSize: 24,
               color: theme.primary,
             }]}>
               {teacherConfig?.title?.text || 'Teacher Dashboard'}
             </Text>
             <Text style={{
-              fontSize: 16,
+              fontSize: 14,
               color: theme.textSecondary,
-              marginTop: 5,
+              marginTop: 3,
             }}>
               👨‍🏫 {userData?.name || 'Teacher'}
             </Text>
             <Text style={{
-              fontSize: 13,
+              fontSize: 12,
               color: theme.textSecondary + '80',
-              marginTop: 2,
+              marginTop: 1,
             }}>
               {userData?.department || ''} Department
             </Text>
@@ -1082,7 +1122,7 @@ export default function App() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-              <Text style={styles.logoutButtonText}>🚪 Logout</Text>
+              <Text style={styles.logoutButtonText}>🚪</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1371,6 +1411,143 @@ export default function App() {
             </Animated.View>
           </View>
         )}
+
+        {/* Profile Modal */}
+        {showProfile && (
+          <Modal
+            transparent={true}
+            visible={showProfile}
+            animationType="fade"
+            onRequestClose={() => setShowProfile(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <Animated.View style={[styles.profileModalContent, {
+                backgroundColor: theme.cardBackground,
+                borderColor: theme.border,
+                transform: [{ scale: profileScaleAnim }]
+              }]}>
+                <ScrollView>
+                  {/* Header */}
+                  <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+                    <Text style={[styles.modalTitle, { color: theme.primary }]}>👤 Profile</Text>
+                    <TouchableOpacity onPress={() => setShowProfile(false)}>
+                      <Text style={styles.modalClose}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Profile Avatar */}
+                  <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+                    <View style={{
+                      width: 120,
+                      height: 120,
+                      borderRadius: 60,
+                      backgroundColor: theme.primary,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      borderWidth: 4,
+                      borderColor: theme.border,
+                      marginBottom: 15,
+                    }}>
+                      <Text style={{ fontSize: 48, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
+                        {getInitials(userData?.name || 'User')}
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 24, fontWeight: 'bold', color: theme.text }}>
+                      {userData?.name || 'User'}
+                    </Text>
+                    <Text style={{ fontSize: 14, color: theme.textSecondary, marginTop: 5 }}>
+                      {selectedRole === 'teacher' ? '👨‍🏫 Teacher' : '🎓 Student'}
+                    </Text>
+                  </View>
+
+                  {/* Profile Information */}
+                  <View style={[styles.detailSection, { borderBottomColor: theme.border + '40' }]}>
+                    <Text style={[styles.sectionTitle, { color: theme.primary }]}>📋 Personal Information</Text>
+                    
+                    <View style={styles.infoRow}>
+                      <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Name:</Text>
+                      <Text style={[styles.infoValue, { color: theme.text }]}>{userData?.name || 'N/A'}</Text>
+                    </View>
+
+                    {selectedRole === 'teacher' ? (
+                      <>
+                        <View style={styles.infoRow}>
+                          <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Employee ID:</Text>
+                          <Text style={[styles.infoValue, { color: theme.text }]}>{userData?.employeeId || loginId || 'N/A'}</Text>
+                        </View>
+                        <View style={styles.infoRow}>
+                          <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Department:</Text>
+                          <Text style={[styles.infoValue, { color: theme.text }]}>{userData?.department || 'N/A'}</Text>
+                        </View>
+                        {userData?.email && (
+                          <View style={styles.infoRow}>
+                            <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Email:</Text>
+                            <Text style={[styles.infoValue, { color: theme.text }]}>{userData.email}</Text>
+                          </View>
+                        )}
+                        {userData?.phone && (
+                          <View style={styles.infoRow}>
+                            <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Phone:</Text>
+                            <Text style={[styles.infoValue, { color: theme.text }]}>{userData.phone}</Text>
+                          </View>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <View style={styles.infoRow}>
+                          <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Enrollment No:</Text>
+                          <Text style={[styles.infoValue, { color: theme.text }]}>{userData?.enrollmentNo || loginId || 'N/A'}</Text>
+                        </View>
+                        <View style={styles.infoRow}>
+                          <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Course:</Text>
+                          <Text style={[styles.infoValue, { color: theme.text }]}>{userData?.course || branch || 'N/A'}</Text>
+                        </View>
+                        <View style={styles.infoRow}>
+                          <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Semester:</Text>
+                          <Text style={[styles.infoValue, { color: theme.text }]}>{userData?.semester || semester || 'N/A'}</Text>
+                        </View>
+                        {userData?.email && (
+                          <View style={styles.infoRow}>
+                            <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Email:</Text>
+                            <Text style={[styles.infoValue, { color: theme.text }]}>{userData.email}</Text>
+                          </View>
+                        )}
+                        {userData?.phone && (
+                          <View style={styles.infoRow}>
+                            <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Phone:</Text>
+                            <Text style={[styles.infoValue, { color: theme.text }]}>{userData.phone}</Text>
+                          </View>
+                        )}
+                      </>
+                    )}
+                  </View>
+
+                  {/* Actions */}
+                  <View style={{ padding: 20 }}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setShowProfile(false);
+                        setTimeout(() => handleLogout(), 300);
+                      }}
+                      activeOpacity={0.8}
+                      style={{
+                        backgroundColor: isDarkTheme ? '#ff4444' : '#dc2626',
+                        paddingVertical: 15,
+                        paddingHorizontal: 30,
+                        borderRadius: 12,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: 'bold' }}>
+                        🚪 Logout
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              </Animated.View>
+            </View>
+          </Modal>
+        )}
       </Animated.View>
     );
   }
@@ -1392,7 +1569,25 @@ export default function App() {
     <Animated.View style={[styles.container, { backgroundColor: theme.background, opacity: fadeAnim, paddingTop: 50 }]}>
       <StatusBar style={theme.statusBar} />
 
-      {/* Theme Toggle and Logout Buttons for Student */}
+      {/* Profile, Theme Toggle and Logout Buttons for Student */}
+      <View style={{ position: 'absolute', top: 50, left: 20, zIndex: 10 }}>
+        <TouchableOpacity onPress={() => setShowProfile(true)} activeOpacity={0.8}>
+          <View style={{
+            width: 50,
+            height: 50,
+            borderRadius: 25,
+            backgroundColor: theme.primary,
+            justifyContent: 'center',
+            alignItems: 'center',
+            borderWidth: 2,
+            borderColor: theme.border,
+          }}>
+            <Text style={{ fontSize: 20, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
+              {getInitials(studentName || 'Student')}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
       <View style={{ position: 'absolute', top: 50, right: 20, zIndex: 10, flexDirection: 'row', gap: 10 }}>
         <TouchableOpacity onPress={toggleTheme} style={styles.themeButton}>
           <Text style={styles.themeButtonText}>
@@ -1585,6 +1780,116 @@ export default function App() {
           </Text>
         </View>
       </View>
+
+      {/* Profile Modal */}
+      {showProfile && (
+        <Modal
+          transparent={true}
+          visible={showProfile}
+          animationType="fade"
+          onRequestClose={() => setShowProfile(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <Animated.View style={[styles.profileModalContent, {
+              backgroundColor: theme.cardBackground,
+              borderColor: theme.border,
+              transform: [{ scale: profileScaleAnim }]
+            }]}>
+              <ScrollView>
+                {/* Header */}
+                <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+                  <Text style={[styles.modalTitle, { color: theme.primary }]}>👤 Profile</Text>
+                  <TouchableOpacity onPress={() => setShowProfile(false)}>
+                    <Text style={styles.modalClose}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Profile Avatar */}
+                <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+                  <View style={{
+                    width: 120,
+                    height: 120,
+                    borderRadius: 60,
+                    backgroundColor: theme.primary,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    borderWidth: 4,
+                    borderColor: theme.border,
+                    marginBottom: 15,
+                  }}>
+                    <Text style={{ fontSize: 48, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
+                      {getInitials(userData?.name || studentName || 'User')}
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 24, fontWeight: 'bold', color: theme.text }}>
+                    {userData?.name || studentName || 'User'}
+                  </Text>
+                  <Text style={{ fontSize: 14, color: theme.textSecondary, marginTop: 5 }}>
+                    🎓 Student
+                  </Text>
+                </View>
+
+                {/* Profile Information */}
+                <View style={[styles.detailSection, { borderBottomColor: theme.border + '40' }]}>
+                  <Text style={[styles.sectionTitle, { color: theme.primary }]}>📋 Personal Information</Text>
+                  
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Name:</Text>
+                    <Text style={[styles.infoValue, { color: theme.text }]}>{userData?.name || studentName || 'N/A'}</Text>
+                  </View>
+
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Enrollment No:</Text>
+                    <Text style={[styles.infoValue, { color: theme.text }]}>{userData?.enrollmentNo || loginId || 'N/A'}</Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Course:</Text>
+                    <Text style={[styles.infoValue, { color: theme.text }]}>{userData?.course || branch || 'N/A'}</Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Semester:</Text>
+                    <Text style={[styles.infoValue, { color: theme.text }]}>{userData?.semester || semester || 'N/A'}</Text>
+                  </View>
+                  {userData?.email && (
+                    <View style={styles.infoRow}>
+                      <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Email:</Text>
+                      <Text style={[styles.infoValue, { color: theme.text }]}>{userData.email}</Text>
+                    </View>
+                  )}
+                  {userData?.phone && (
+                    <View style={styles.infoRow}>
+                      <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Phone:</Text>
+                      <Text style={[styles.infoValue, { color: theme.text }]}>{userData.phone}</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Actions */}
+                <View style={{ padding: 20 }}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowProfile(false);
+                      setTimeout(() => handleLogout(), 300);
+                    }}
+                    activeOpacity={0.8}
+                    style={{
+                      backgroundColor: isDarkTheme ? '#ff4444' : '#dc2626',
+                      paddingVertical: 15,
+                      paddingHorizontal: 30,
+                      borderRadius: 12,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: 'bold' }}>
+                      🚪 Logout
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </Animated.View>
+          </View>
+        </Modal>
+      )}
     </Animated.View>
   );
 }
@@ -1795,6 +2100,15 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     width: '100%',
     maxHeight: '90%',
+    borderWidth: 2,
+    borderColor: '#00d9ff',
+  },
+  profileModalContent: {
+    backgroundColor: '#0d1f3c',
+    borderRadius: 20,
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: '85%',
     borderWidth: 2,
     borderColor: '#00d9ff',
   },
