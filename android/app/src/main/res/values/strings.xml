@@ -1,12 +1,3 @@
 <resources>
-    <string name="app_name">Ungli Meri</string>
-    <string name="fingerprint_title">Fingerprint Authentication</string>
-    <string name="fingerprint_subtitle">Touch the fingerprint sensor</string>
-    <string name="fingerprint_description">Use your fingerprint to authenticate</string>
-    <string name="fingerprint_hint">Touch sensor</string>
-    <string name="fingerprint_not_recognized">Fingerprint not recognized. Try again</string>
-    <string name="fingerprint_success">Fingerprint recognized</string>
-    <string name="fingerprint_error_hw_unavailable">Fingerprint hardware is unavailable</string>
-    <string name="fingerprint_error_no_fingerprints">No fingerprints enrolled</string>
-    <string name="fingerprint_error_user_cancel">User cancelled fingerprint authentication</string>
+  <string name="app_name">CountdownTimer</string>
 </resources>

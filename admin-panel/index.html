@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>College Admin Panel</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">🎓</div>
+                <h1>Admin Panel</h1>
+            </div>
+            
+            <nav class="nav-menu">
+                <button class="nav-item active" data-section="dashboard">
+                    <span class="icon">📊</span>
+                    <span>Dashboard</span>
+                </button>
+                <button class="nav-item" data-section="students">
+                    <span class="icon">👨‍🎓</span>
+                    <span>Students</span>
+                </button>
+                <button class="nav-item" data-section="teachers">
+                    <span class="icon">👨‍🏫</span>
+                    <span>Teachers</span>
+                </button>
+                <button class="nav-item" data-section="timetable">
+                    <span class="icon">📅</span>
+                    <span>Timetable</span>
+                </button>
+                <button class="nav-item" data-section="classrooms">
+                    <span class="icon">🏫</span>
+                    <span>Classrooms</span>
+                </button>
+                <button class="nav-item" data-section="settings">
+                    <span class="icon">⚙️</span>
+                    <span>Settings</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="server-status">
+                    <div class="status-indicator" id="serverStatus"></div>
+                    <span id="serverStatusText">Connecting...</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="search-bar">
+                    <input type="text" placeholder="Search..." id="globalSearch">
+                </div>
+                <div class="user-info">
+                    <span class="user-name">Admin User</span>
+                    <div class="user-avatar">A</div>
+                </div>
+            </header>
+
+            <div class="content-area">
+                <!-- Dashboard Section -->
+                <section id="dashboard-section" class="section active">
+                    <h2 class="section-title">Dashboard Overview</h2>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">👨‍🎓</div>
+                            <div class="stat-info">
+                                <h3 id="totalStudents">0</h3>
+                                <p>Total Students</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">👨‍🏫</div>
+                            <div class="stat-info">
+                                <h3 id="totalTeachers">0</h3>
+                                <p>Total Teachers</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">🏫</div>
+                            <div class="stat-info">
+                                <h3 id="totalClassrooms">0</h3>
+                                <p>Classrooms</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">📚</div>
+                            <div class="stat-info">
+                                <h3 id="totalCourses">0</h3>
+                                <p>Courses</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="recent-activity">
+                        <h3>Recent Activity</h3>
+                        <div id="activityList" class="activity-list">
+                            <!-- Activity items will be added here -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Students Section -->
+                <section id="students-section" class="section">
+                    <div class="section-header">
+                        <h2 class="section-title">Student Management</h2>
+                        <div class="action-buttons">
+                            <button class="btn btn-secondary" id="bulkStudentBtn">📤 Bulk Import</button>
+                            <button class="btn btn-primary" id="addStudentBtn">➕ Add Student</button>
+                        </div>
+                    </div>
+
+                    <div class="filters">
+                        <select id="semesterFilter" class="filter-select">
+                            <option value="">All Semesters</option>
+                            <option value="1">Semester 1</option>
+                            <option value="2">Semester 2</option>
+                            <option value="3">Semester 3</option>
+                            <option value="4">Semester 4</option>
+                            <option value="5">Semester 5</option>
+                            <option value="6">Semester 6</option>
+                            <option value="7">Semester 7</option>
+                            <option value="8">Semester 8</option>
+                        </select>
+                        <select id="courseFilter" class="filter-select">
+                            <option value="">All Courses</option>
+                            <option value="CSE">Computer Science</option>
+                            <option value="ECE">Electronics</option>
+                            <option value="ME">Mechanical</option>
+                            <option value="CE">Civil</option>
+                        </select>
+                        <input type="text" id="studentSearch" class="search-input" placeholder="Search students...">
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Enrollment No</th>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Course</th>
+                                    <th>Semester</th>
+                                    <th>DOB</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="studentsTableBody">
+                                <!-- Student rows will be added here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Teachers Section -->
+                <section id="teachers-section" class="section">
+                    <div class="section-header">
+                        <h2 class="section-title">Teacher Management</h2>
+                        <div class="action-buttons">
+                            <button class="btn btn-secondary" id="bulkTeacherBtn">📤 Bulk Import</button>
+                            <button class="btn btn-primary" id="addTeacherBtn">➕ Add Teacher</button>
+                        </div>
+                    </div>
+
+                    <div class="filters">
+                        <select id="departmentFilter" class="filter-select">
+                            <option value="">All Departments</option>
+                            <option value="CSE">Computer Science</option>
+                            <option value="ECE">Electronics</option>
+                            <option value="ME">Mechanical</option>
+                            <option value="CE">Civil</option>
+                        </select>
+                        <input type="text" id="teacherSearch" class="search-input" placeholder="Search teachers...">
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Employee ID</th>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Department</th>
+                                    <th>DOB</th>
+                                    <th>Timetable Access</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="teachersTableBody">
+                                <!-- Teacher rows will be added here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Timetable Section -->
+                <section id="timetable-section" class="section">
+                    <div class="section-header">
+                        <h2 class="section-title">Timetable Management</h2>
+                        <div class="action-buttons">
+                            <button class="btn btn-primary" id="createTimetableBtn">➕ Create Timetable</button>
+                        </div>
+                    </div>
+
+                    <div class="filters">
+                        <select id="timetableSemester" class="filter-select">
+                            <option value="">Select Semester</option>
+                            <option value="1">Semester 1</option>
+                            <option value="2">Semester 2</option>
+                            <option value="3">Semester 3</option>
+                            <option value="4">Semester 4</option>
+                            <option value="5">Semester 5</option>
+                            <option value="6">Semester 6</option>
+                            <option value="7">Semester 7</option>
+                            <option value="8">Semester 8</option>
+                        </select>
+                        <select id="timetableCourse" class="filter-select">
+                            <option value="">Select Course</option>
+                            <option value="CSE">Computer Science</option>
+                            <option value="ECE">Electronics</option>
+                            <option value="ME">Mechanical</option>
+                            <option value="CE">Civil</option>
+                        </select>
+                        <button class="btn btn-secondary" id="loadTimetableBtn">Load Timetable</button>
+                    </div>
+
+                    <div id="timetableEditor" class="timetable-editor">
+                        <!-- Timetable grid will be rendered here -->
+                    </div>
+                </section>
+
+                <!-- Classrooms Section -->
+                <section id="classrooms-section" class="section">
+                    <div class="section-header">
+                        <h2 class="section-title">Classroom Management</h2>
+                        <div class="action-buttons">
+                            <button class="btn btn-primary" id="addClassroomBtn">➕ Add Classroom</button>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Room Number</th>
+                                    <th>Building</th>
+                                    <th>Capacity</th>
+                                    <th>WiFi BSSID</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="classroomsTableBody">
+                                <!-- Classroom rows will be added here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Settings Section -->
+                <section id="settings-section" class="section">
+                    <h2 class="section-title">Settings</h2>
+                    
+                    <div class="settings-grid">
+                        <div class="settings-card">
+                            <h3>Server Configuration</h3>
+                            <div class="form-group">
+                                <label>Server URL</label>
+                                <input type="text" id="serverUrl" value="http://localhost:3000" class="form-input">
+                            </div>
+                            <button class="btn btn-primary" id="saveServerBtn">Save</button>
+                        </div>
+
+                        <div class="settings-card">
+                            <h3>Database</h3>
+                            <div class="form-group">
+                                <label>MongoDB URI</label>
+                                <input type="text" id="mongoUri" value="mongodb://localhost:27017/attendance_app" class="form-input">
+                            </div>
+                            <button class="btn btn-primary" id="saveDbBtn">Save</button>
+                        </div>
+
+                        <div class="settings-card">
+                            <h3>Backup & Restore</h3>
+                            <button class="btn btn-secondary">📥 Backup Database</button>
+                            <button class="btn btn-secondary">📤 Restore Database</button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>
