@@ -858,3 +858,675 @@ body {
         font-size: 10px;
     }
 }
+
+/* Dashboard Sections */
+.dashboard-section {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 24px;
+    margin-top: 24px;
+}
+
+.dashboard-section h3 {
+    font-size: 18px;
+    margin-bottom: 20px;
+    color: var(--text-primary);
+}
+
+/* Course Stats */
+.course-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 16px;
+}
+
+.course-stat {
+    background: var(--bg-dark);
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    border: 1px solid var(--border);
+    transition: all 0.3s ease;
+}
+
+.course-stat:hover {
+    border-color: var(--primary);
+    transform: translateY(-2px);
+}
+
+.course-name {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.course-count {
+    font-size: 32px;
+    font-weight: bold;
+    color: var(--primary);
+}
+
+/* Semester Stats */
+.semester-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+}
+
+.semester-stat {
+    background: var(--bg-dark);
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    border: 1px solid var(--border);
+    transition: all 0.3s ease;
+}
+
+.semester-stat:hover {
+    border-color: var(--secondary);
+    transform: translateY(-2px);
+}
+
+.semester-name {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.semester-count {
+    font-size: 32px;
+    font-weight: bold;
+    color: var(--secondary);
+}
+
+/* Attendance Overview */
+.attendance-overview {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.attendance-stat {
+    background: var(--bg-dark);
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    border: 1px solid var(--border);
+}
+
+.attendance-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.attendance-value {
+    font-size: 28px;
+    font-weight: bold;
+    color: var(--success);
+}
+
+/* Timetable Improvements */
+.timetable-info {
+    background: var(--bg-card);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+    border-left: 4px solid var(--primary);
+}
+
+.timetable-info p {
+    margin: 4px 0;
+    color: var(--text-secondary);
+}
+
+.timetable-info strong {
+    color: var(--text-primary);
+}
+
+.timetable-grid {
+    display: grid;
+    grid-template-columns: 120px repeat(8, 1fr);
+    gap: 2px;
+    background: var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.timetable-cell {
+    background: var(--bg-card);
+    padding: 12px;
+    min-height: 80px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.timetable-cell.header {
+    background: var(--bg-dark);
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.timetable-cell.break-header {
+    background: var(--bg-dark);
+    color: var(--warning);
+}
+
+.timetable-cell.editable {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.timetable-cell.editable:hover {
+    background: var(--bg-hover);
+    transform: scale(1.02);
+}
+
+.timetable-cell.break-cell {
+    background: rgba(245, 158, 11, 0.1);
+    border-left: 3px solid var(--warning);
+}
+
+.subject-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.room-name {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.break-label {
+    font-weight: 600;
+    color: var(--warning);
+}
+
+.timetable-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 12px;
+}
+
+/* Export function placeholder */
+.btn-secondary {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+    background: var(--bg-hover);
+}
+
+/* Rooms Section */
+.rooms-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.building-section {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 24px;
+}
+
+.building-name {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--primary);
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--border);
+}
+
+.rooms-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.room-card {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    transition: all 0.3s ease;
+}
+
+.room-card:hover {
+    border-color: var(--primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 217, 255, 0.2);
+}
+
+.room-number {
+    font-size: 20px;
+    font-weight: bold;
+    color: var(--primary);
+    margin-bottom: 12px;
+    text-align: center;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.room-details {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.room-detail-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+}
+
+.detail-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.detail-value {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+}
+
+.room-info {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.room-building {
+    background: var(--bg-hover);
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+/* Student Name Link */
+.student-name-link {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.student-name-link:hover {
+    color: var(--primary-dark);
+    text-decoration: underline;
+}
+
+/* Attendance Report Modal */
+.modal-large {
+    max-width: 1200px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.attendance-report {
+    padding: 20px;
+}
+
+.report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--border);
+}
+
+.report-header h2 {
+    font-size: 28px;
+    color: var(--text-primary);
+}
+
+.student-info-card {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+    border-left: 4px solid var(--primary);
+}
+
+.student-info-card h3 {
+    font-size: 24px;
+    margin-bottom: 16px;
+    color: var(--primary);
+}
+
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 12px;
+}
+
+.info-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+}
+
+.info-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.info-value {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.stat-box {
+    background: var(--bg-card);
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    border: 1px solid var(--border);
+}
+
+.stat-number {
+    font-size: 32px;
+    font-weight: bold;
+    color: var(--primary);
+    margin-bottom: 8px;
+}
+
+.stat-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.stat-box.stat-total .stat-number {
+    color: var(--primary);
+}
+
+.stat-box.stat-present .stat-number {
+    color: var(--success);
+}
+
+.stat-box.stat-absent .stat-number {
+    color: var(--danger);
+}
+
+.stat-box.stat-rate .stat-number {
+    color: var(--secondary);
+}
+
+.attendance-table-container {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 24px;
+}
+
+.attendance-table-container h3 {
+    font-size: 20px;
+    margin-bottom: 16px;
+    color: var(--text-primary);
+}
+
+.attendance-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.attendance-table thead {
+    background: var(--bg-dark);
+}
+
+.attendance-table th {
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--primary);
+    border-bottom: 2px solid var(--border);
+}
+
+.attendance-table td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+}
+
+.attendance-table tbody tr:hover {
+    background: var(--bg-hover);
+}
+
+.status-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-present {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--success);
+}
+
+.status-absent {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--danger);
+}
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    font-size: 18px;
+    color: var(--text-secondary);
+}
+
+.error-state {
+    text-align: center;
+    padding: 40px;
+    font-size: 18px;
+    color: var(--danger);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 40px;
+    font-size: 18px;
+    color: var(--text-secondary);
+}
+
+/* Classroom Table Enhancements */
+.bssid-code {
+    font-family: 'Courier New', monospace;
+    background: var(--bg-dark);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--primary);
+}
+
+.status-active {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--success);
+}
+
+.status-inactive {
+    background: rgba(107, 114, 128, 0.2);
+    color: var(--text-secondary);
+}
+
+.action-btn {
+    padding: 6px 12px;
+    margin: 0 4px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s ease;
+}
+
+.action-btn.edit {
+    background: var(--primary);
+    color: var(--bg-dark);
+}
+
+.action-btn.edit:hover {
+    background: var(--primary-dark);
+}
+
+.action-btn.delete {
+    background: var(--danger);
+    color: white;
+}
+
+.action-btn.delete:hover {
+    background: #dc2626;
+}
+
+/* Student Photo */
+.student-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.student-photo {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--primary);
+}
+
+.csv-template {
+    margin-top: 20px;
+    padding: 16px;
+    background: var(--bg-dark);
+    border-radius: 8px;
+}
+
+.csv-template h3 {
+    font-size: 14px;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+}
+
+.csv-template pre {
+    background: var(--bg-card);
+    padding: 12px;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+
+/* Button Group */
+.button-group {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.button-group .btn {
+    flex: 1;
+}
+
+/* Photo Capture */
+.photo-capture {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.photo-preview {
+    width: 150px;
+    height: 150px;
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: var(--bg-dark);
+}
+
+.photo-placeholder {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.captured-photo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.photo-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.photo-buttons .btn {
+    flex: 1;
+    min-width: 120px;
+}
+
+/* Camera Modal */
+.camera-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.95);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.camera-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+}
+
+#cameraVideo {
+    max-width: 640px;
+    max-height: 480px;
+    border-radius: 8px;
+    border: 2px solid var(--primary);
+}
+
+.camera-controls {
+    display: flex;
+    gap: 12px;
+}
+
+.camera-controls .btn {
+    min-width: 150px;
+}
+
+.btn-danger {
+    background: var(--danger);
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}

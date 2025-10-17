@@ -83,17 +83,78 @@
                             </div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-icon">🏫</div>
+                            <div class="stat-icon">📅</div>
                             <div class="stat-info">
-                                <h3 id="totalClassrooms">0</h3>
-                                <p>Classrooms</p>
+                                <h3 id="totalTimetables">0</h3>
+                                <p>Timetables</p>
                             </div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-icon">📚</div>
+                            <div class="stat-icon">📊</div>
                             <div class="stat-info">
-                                <h3 id="totalCourses">0</h3>
-                                <p>Courses</p>
+                                <h3 id="totalAttendance">0</h3>
+                                <p>Attendance Records</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Course Distribution -->
+                    <div class="dashboard-section">
+                        <h3>Students by Course</h3>
+                        <div class="course-stats" id="courseStats">
+                            <div class="course-stat">
+                                <div class="course-name">CSE</div>
+                                <div class="course-count" id="cseCount">0</div>
+                            </div>
+                            <div class="course-stat">
+                                <div class="course-name">ECE</div>
+                                <div class="course-count" id="eceCount">0</div>
+                            </div>
+                            <div class="course-stat">
+                                <div class="course-name">ME</div>
+                                <div class="course-count" id="meCount">0</div>
+                            </div>
+                            <div class="course-stat">
+                                <div class="course-name">Civil</div>
+                                <div class="course-count" id="civilCount">0</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Semester Distribution -->
+                    <div class="dashboard-section">
+                        <h3>Students by Semester</h3>
+                        <div class="semester-stats" id="semesterStats">
+                            <div class="semester-stat">
+                                <div class="semester-name">Semester 1</div>
+                                <div class="semester-count" id="sem1Count">0</div>
+                            </div>
+                            <div class="semester-stat">
+                                <div class="semester-name">Semester 3</div>
+                                <div class="semester-count" id="sem3Count">0</div>
+                            </div>
+                            <div class="semester-stat">
+                                <div class="semester-name">Semester 5</div>
+                                <div class="semester-count" id="sem5Count">0</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Attendance Overview -->
+                    <div class="dashboard-section">
+                        <h3>Attendance Overview</h3>
+                        <div class="attendance-overview" id="attendanceOverview">
+                            <div class="attendance-stat">
+                                <div class="attendance-label">Overall Rate</div>
+                                <div class="attendance-value" id="overallRate">0%</div>
+                            </div>
+                            <div class="attendance-stat">
+                                <div class="attendance-label">Present Today</div>
+                                <div class="attendance-value" id="presentToday">0</div>
+                            </div>
+                            <div class="attendance-stat">
+                                <div class="attendance-label">Total Days</div>
+                                <div class="attendance-value" id="totalDays">0</div>
                             </div>
                         </div>
                     </div>
@@ -187,6 +248,7 @@
                                     <th>Name</th>
                                     <th>Email</th>
                                     <th>Department</th>
+                                    <th>Subject</th>
                                     <th>DOB</th>
                                     <th>Timetable Access</th>
                                     <th>Actions</th>
@@ -240,6 +302,7 @@
                     <div class="section-header">
                         <h2 class="section-title">Classroom Management</h2>
                         <div class="action-buttons">
+                            <button class="btn btn-secondary" id="bulkClassroomBtn">📥 Bulk Import</button>
                             <button class="btn btn-primary" id="addClassroomBtn">➕ Add Classroom</button>
                         </div>
                     </div>
@@ -302,6 +365,16 @@
         <div class="modal-content">
             <span class="modal-close">&times;</span>
             <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <!-- Attendance Report Modal -->
+    <div id="attendanceModal" class="modal">
+        <div class="modal-content modal-large">
+            <span class="modal-close" onclick="closeAttendanceModal()">&times;</span>
+            <div id="attendanceModalBody">
+                <!-- Attendance report will be rendered here -->
+            </div>
         </div>
     </div>
 

@@ -1,3 +1,4 @@
+
 // Configuration
 let SERVER_URL = 'http://localhost:3000';
 
@@ -31,28 +32,29 @@ function setupEventListeners() {
     // Student Management
     document.getElementById('addStudentBtn').addEventListener('click', showAddStudentModal);
     document.getElementById('bulkStudentBtn').addEventListener('click', showBulkStudentModal);
-    
+
     // Teacher Management
     document.getElementById('addTeacherBtn').addEventListener('click', showAddTeacherModal);
     document.getElementById('bulkTeacherBtn').addEventListener('click', showBulkTeacherModal);
-    
+
     // Classroom Management
     document.getElementById('addClassroomBtn').addEventListener('click', showAddClassroomModal);
-    
+    document.getElementById('bulkClassroomBtn').addEventListener('click', showBulkClassroomModal);
+
     // Timetable
     document.getElementById('loadTimetableBtn').addEventListener('click', loadTimetable);
     document.getElementById('createTimetableBtn').addEventListener('click', createNewTimetable);
-    
+
     // Settings
     document.getElementById('saveServerBtn').addEventListener('click', saveServerSettings);
 
-    
+
     // Modal close
     document.querySelector('.modal-close').addEventListener('click', closeModal);
     document.getElementById('modal').addEventListener('click', (e) => {
         if (e.target.id === 'modal') closeModal();
     });
-    
+
     // Filters
     document.getElementById('studentSearch').addEventListener('input', filterStudents);
     document.getElementById('semesterFilter').addEventListener('change', filterStudents);
@@ -65,12 +67,12 @@ function setupEventListeners() {
 function switchSection(sectionName) {
     document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
     document.querySelectorAll('.section').forEach(section => section.classList.remove('active'));
-    
+
     document.querySelector(`[data-section="${sectionName}"]`).classList.add('active');
     document.getElementById(`${sectionName}-section`).classList.add('active');
-    
+
     // Load section data
-    switch(sectionName) {
+    switch (sectionName) {
         case 'students': loadStudents(); break;
         case 'teachers': loadTeachers(); break;
         case 'classrooms': loadClassrooms(); break;
@@ -109,20 +111,64 @@ function updateServerStatus(connected) {
 // Dashboard
 async function loadDashboardData() {
     try {
-        const [studentsRes, teachersRes, classroomsRes] = await Promise.all([
+        const [studentsRes, teachersRes, attendanceRes] = await Promise.all([
             fetch(`${SERVER_URL}/api/students`),
             fetch(`${SERVER_URL}/api/teachers`),
-            fetch(`${SERVER_URL}/api/classrooms`)
+            fetch(`${SERVER_URL}/api/attendance/records`)
         ]);
-        
+
         const studentsData = await studentsRes.json();
         const teachersData = await teachersRes.json();
-        const classroomsData = await classroomsRes.json();
-        
-        document.getElementById('totalStudents').textContent = studentsData.students?.length || 0;
-        document.getElementById('totalTeachers').textContent = teachersData.teachers?.length || 0;
-        document.getElementById('totalClassrooms').textContent = classroomsData.classrooms?.length || 0;
-        
+        const attendanceData = await attendanceRes.json();
+
+        const students = studentsData.students || [];
+        const teachers = teachersData.teachers || [];
+        const records = attendanceData.records || [];
+
+        // Basic stats
+        document.getElementById('totalStudents').textContent = students.length;
+        document.getElementById('totalTeachers').textContent = teachers.length;
+        document.getElementById('totalTimetables').textContent = '12'; // 4 courses × 3 semesters
+        document.getElementById('totalAttendance').textContent = records.length;
+
+        // Course distribution
+        const courseCounts = students.reduce((acc, s) => {
+            acc[s.course] = (acc[s.course] || 0) + 1;
+            return acc;
+        }, {});
+
+        document.getElementById('cseCount').textContent = courseCounts.CSE || 0;
+        document.getElementById('eceCount').textContent = courseCounts.ECE || 0;
+        document.getElementById('meCount').textContent = courseCounts.ME || 0;
+        document.getElementById('civilCount').textContent = courseCounts.Civil || 0;
+
+        // Semester distribution
+        const semesterCounts = students.reduce((acc, s) => {
+            acc[`sem${s.semester}`] = (acc[`sem${s.semester}`] || 0) + 1;
+            return acc;
+        }, {});
+
+        document.getElementById('sem1Count').textContent = semesterCounts.sem1 || 0;
+        document.getElementById('sem3Count').textContent = semesterCounts.sem3 || 0;
+        document.getElementById('sem5Count').textContent = semesterCounts.sem5 || 0;
+
+        // Attendance stats
+        if (records.length > 0) {
+            const presentCount = records.filter(r => r.status === 'present').length;
+            const attendanceRate = ((presentCount / records.length) * 100).toFixed(1);
+            document.getElementById('overallRate').textContent = `${attendanceRate}%`;
+
+            // Today's attendance
+            const today = new Date().toDateString();
+            const todayRecords = records.filter(r => new Date(r.date).toDateString() === today);
+            const todayPresent = todayRecords.filter(r => r.status === 'present').length;
+            document.getElementById('presentToday').textContent = todayPresent;
+
+            // Total days
+            const uniqueDates = [...new Set(records.map(r => new Date(r.date).toDateString()))];
+            document.getElementById('totalDays').textContent = uniqueDates.length;
+        }
+
         // Load recent activity
         loadRecentActivity();
     } catch (error) {
@@ -163,10 +209,26 @@ async function loadStudents() {
 
 function renderStudents(studentsToRender) {
     const tbody = document.getElementById('studentsTableBody');
-    tbody.innerHTML = studentsToRender.map(student => `
+    tbody.innerHTML = studentsToRender.map(student => {
+        // Check localStorage for photo first
+        let photoUrl = student.photoUrl;
+        if (photoUrl && photoUrl.startsWith('student_photo_')) {
+            photoUrl = localStorage.getItem(photoUrl) || `https://ui-avatars.com/api/?name=${encodeURIComponent(student.name)}&background=00d9ff&color=fff&size=128`;
+        } else if (!photoUrl) {
+            photoUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(student.name)}&background=00d9ff&color=fff&size=128`;
+        }
+
+        return `
         <tr>
             <td>${student.enrollmentNo}</td>
-            <td>${student.name}</td>
+            <td>
+                <div class="student-info">
+                    <img src="${photoUrl}" alt="${student.name}" class="student-photo" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(student.name)}&background=00d9ff&color=fff&size=128'">
+                    <a href="#" class="student-name-link" onclick="showStudentAttendance('${student.enrollmentNo}', '${student.name}'); return false;">
+                        ${student.name}
+                    </a>
+                </div>
+            </td>
             <td>${student.email}</td>
             <td>${student.course}</td>
             <td>${student.semester}</td>
@@ -176,7 +238,7 @@ function renderStudents(studentsToRender) {
                 <button class="action-btn delete" onclick="deleteStudent('${student._id}')">Delete</button>
             </td>
         </tr>
-    `).join('');
+    `}).join('');
 }
 
 
@@ -184,15 +246,15 @@ function filterStudents() {
     const search = document.getElementById('studentSearch').value.toLowerCase();
     const semester = document.getElementById('semesterFilter').value;
     const course = document.getElementById('courseFilter').value;
-    
+
     const filtered = students.filter(student => {
-        const matchesSearch = student.name.toLowerCase().includes(search) || 
-                            student.enrollmentNo.toLowerCase().includes(search);
+        const matchesSearch = student.name.toLowerCase().includes(search) ||
+            student.enrollmentNo.toLowerCase().includes(search);
         const matchesSemester = !semester || student.semester === semester;
         const matchesCourse = !course || student.course === course;
         return matchesSearch && matchesSemester && matchesCourse;
     });
-    
+
     renderStudents(filtered);
 }
 
@@ -231,7 +293,7 @@ function showAddStudentModal() {
                 <label>Semester *</label>
                 <select name="semester" class="form-select" required>
                     <option value="">Select Semester</option>
-                    ${[1,2,3,4,5,6,7,8].map(s => `<option value="${s}">${s}</option>`).join('')}
+                    ${[1, 2, 3, 4, 5, 6, 7, 8].map(s => `<option value="${s}">${s}</option>`).join('')}
                 </select>
             </div>
             <div class="form-group">
@@ -242,27 +304,143 @@ function showAddStudentModal() {
                 <label>Phone Number</label>
                 <input type="tel" name="phone" class="form-input">
             </div>
+            <div class="form-group">
+                <label>Profile Photo</label>
+                <div class="photo-capture">
+                    <div class="photo-preview" id="photoPreview">
+                        <div class="photo-placeholder">📷 No photo</div>
+                    </div>
+                    <div class="photo-buttons">
+                        <button type="button" class="btn btn-secondary" onclick="openCamera()">📸 Take Photo</button>
+                        <button type="button" class="btn btn-secondary" onclick="uploadPhoto()">📁 Upload</button>
+                        <button type="button" class="btn btn-danger" onclick="clearPhoto()" style="display:none;" id="clearPhotoBtn">🗑️ Clear</button>
+                    </div>
+                    <input type="file" id="photoUpload" accept="image/*" style="display:none;" onchange="handlePhotoUpload(event)">
+                    <input type="hidden" name="photoData" id="photoData">
+                </div>
+            </div>
             <button type="submit" class="btn btn-primary">Add Student</button>
         </form>
+        
+        <!-- Camera Modal -->
+        <div id="cameraModal" class="camera-modal" style="display:none;">
+            <div class="camera-content">
+                <video id="cameraVideo" autoplay playsinline></video>
+                <canvas id="cameraCanvas" style="display:none;"></canvas>
+                <div class="camera-controls">
+                    <button type="button" class="btn btn-primary" onclick="capturePhoto()">📸 Capture</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeCamera()">❌ Cancel</button>
+                </div>
+            </div>
+        </div>
     `;
-    
+
     document.getElementById('studentForm').addEventListener('submit', handleAddStudent);
     openModal();
 }
 
 
+// Camera Functions
+let cameraStream = null;
+
+function openCamera() {
+    const cameraModal = document.getElementById('cameraModal');
+    const video = document.getElementById('cameraVideo');
+
+    cameraModal.style.display = 'flex';
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+        .then(stream => {
+            cameraStream = stream;
+            video.srcObject = stream;
+        })
+        .catch(err => {
+            showNotification('Camera access denied: ' + err.message, 'error');
+            closeCamera();
+        });
+}
+
+function closeCamera() {
+    const cameraModal = document.getElementById('cameraModal');
+    const video = document.getElementById('cameraVideo');
+
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+    }
+    video.srcObject = null;
+    cameraModal.style.display = 'none';
+}
+
+function capturePhoto() {
+    const video = document.getElementById('cameraVideo');
+    const canvas = document.getElementById('cameraCanvas');
+    const ctx = canvas.getContext('2d');
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+
+    const photoData = canvas.toDataURL('image/jpeg', 0.8);
+    displayPhoto(photoData);
+    closeCamera();
+}
+
+function uploadPhoto() {
+    document.getElementById('photoUpload').click();
+}
+
+function handlePhotoUpload(event) {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            displayPhoto(e.target.result);
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function displayPhoto(photoData) {
+    const preview = document.getElementById('photoPreview');
+    const photoDataInput = document.getElementById('photoData');
+    const clearBtn = document.getElementById('clearPhotoBtn');
+
+    preview.innerHTML = `<img src="${photoData}" alt="Profile Photo" class="captured-photo">`;
+    photoDataInput.value = photoData;
+    clearBtn.style.display = 'inline-block';
+}
+
+function clearPhoto() {
+    const preview = document.getElementById('photoPreview');
+    const photoDataInput = document.getElementById('photoData');
+    const clearBtn = document.getElementById('clearPhotoBtn');
+
+    preview.innerHTML = '<div class="photo-placeholder">📷 No photo</div>';
+    photoDataInput.value = '';
+    clearBtn.style.display = 'none';
+}
+
 async function handleAddStudent(e) {
     e.preventDefault();
     const formData = new FormData(e.target);
     const studentData = Object.fromEntries(formData);
-    
+
+    // Store photo in localStorage if captured
+    if (studentData.photoData) {
+        const photoKey = `student_photo_${studentData.enrollmentNo}`;
+        localStorage.setItem(photoKey, studentData.photoData);
+        studentData.photoUrl = photoKey; // Store reference
+        delete studentData.photoData; // Don't send base64 in API call
+    }
+
     try {
         const response = await fetch(`${SERVER_URL}/api/students`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(studentData)
         });
-        
+
         if (response.ok) {
             showNotification('Student added successfully', 'success');
             closeModal();
@@ -292,7 +470,7 @@ function showBulkStudentModal() {
         </div>
         <button class="btn btn-primary" onclick="processBulkStudents()">Import Students</button>
     `;
-    
+
     document.getElementById('csvFile').addEventListener('change', handleCSVUpload);
     openModal();
 }
@@ -312,7 +490,7 @@ async function processBulkStudents() {
     const csvData = document.getElementById('csvPreview').value;
     const lines = csvData.split('\n');
     const headers = lines[0].split(',').map(h => h.trim());
-    
+
     const students = [];
     for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
@@ -323,14 +501,14 @@ async function processBulkStudents() {
         });
         students.push(student);
     }
-    
+
     try {
         const response = await fetch(`${SERVER_URL}/api/students/bulk`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ students })
         });
-        
+
         if (response.ok) {
             showNotification(`${students.length} students imported successfully`, 'success');
             closeModal();
@@ -358,12 +536,27 @@ async function loadTeachers() {
 
 function renderTeachers(teachersToRender) {
     const tbody = document.getElementById('teachersTableBody');
-    tbody.innerHTML = teachersToRender.map(teacher => `
+    tbody.innerHTML = teachersToRender.map(teacher => {
+        // Check localStorage for photo first
+        let photoUrl = teacher.photoUrl;
+        if (photoUrl && photoUrl.startsWith('teacher_photo_')) {
+            photoUrl = localStorage.getItem(photoUrl) || `https://ui-avatars.com/api/?name=${encodeURIComponent(teacher.name)}&background=7c3aed&color=fff&size=128`;
+        } else if (!photoUrl) {
+            photoUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(teacher.name)}&background=7c3aed&color=fff&size=128`;
+        }
+
+        return `
         <tr>
             <td>${teacher.employeeId}</td>
-            <td>${teacher.name}</td>
+            <td>
+                <div class="student-info">
+                    <img src="${photoUrl}" alt="${teacher.name}" class="student-photo" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(teacher.name)}&background=7c3aed&color=fff&size=128'">
+                    ${teacher.name}
+                </div>
+            </td>
             <td>${teacher.email}</td>
             <td>${teacher.department}</td>
+            <td>${teacher.subject || 'N/A'}</td>
             <td>${formatDate(teacher.dob)}</td>
             <td>
                 <span class="access-toggle ${teacher.canEditTimetable ? 'enabled' : 'disabled'}" 
@@ -376,20 +569,20 @@ function renderTeachers(teachersToRender) {
                 <button class="action-btn delete" onclick="deleteTeacher('${teacher._id}')">Delete</button>
             </td>
         </tr>
-    `).join('');
+    `}).join('');
 }
 
 function filterTeachers() {
     const search = document.getElementById('teacherSearch').value.toLowerCase();
     const department = document.getElementById('departmentFilter').value;
-    
+
     const filtered = teachers.filter(teacher => {
-        const matchesSearch = teacher.name.toLowerCase().includes(search) || 
-                            teacher.employeeId.toLowerCase().includes(search);
+        const matchesSearch = teacher.name.toLowerCase().includes(search) ||
+            teacher.employeeId.toLowerCase().includes(search);
         const matchesDepartment = !department || teacher.department === department;
         return matchesSearch && matchesDepartment;
     });
-    
+
     renderTeachers(filtered);
 }
 
@@ -425,6 +618,14 @@ function showAddTeacherModal() {
                 </select>
             </div>
             <div class="form-group">
+                <label>Subject *</label>
+                <input type="text" name="subject" class="form-input" placeholder="e.g., Data Structures" required>
+            </div>
+            <div class="form-group">
+                <label>Semester</label>
+                <input type="text" name="semester" class="form-input" placeholder="e.g., 3">
+            </div>
+            <div class="form-group">
                 <label>Date of Birth *</label>
                 <input type="date" name="dob" class="form-input" required>
             </div>
@@ -433,14 +634,41 @@ function showAddTeacherModal() {
                 <input type="tel" name="phone" class="form-input">
             </div>
             <div class="form-group">
+                <label>Profile Photo</label>
+                <div class="photo-capture">
+                    <div class="photo-preview" id="photoPreview">
+                        <div class="photo-placeholder">📷 No photo</div>
+                    </div>
+                    <div class="photo-buttons">
+                        <button type="button" class="btn btn-secondary" onclick="openCamera()">📸 Take Photo</button>
+                        <button type="button" class="btn btn-secondary" onclick="uploadPhoto()">📁 Upload</button>
+                        <button type="button" class="btn btn-danger" onclick="clearPhoto()" style="display:none;" id="clearPhotoBtn">🗑️ Clear</button>
+                    </div>
+                    <input type="file" id="photoUpload" accept="image/*" style="display:none;" onchange="handlePhotoUpload(event)">
+                    <input type="hidden" name="photoData" id="photoData">
+                </div>
+            </div>
+            <div class="form-group">
                 <label>
                     <input type="checkbox" name="canEditTimetable"> Can Edit Timetable
                 </label>
             </div>
             <button type="submit" class="btn btn-primary">Add Teacher</button>
         </form>
+        
+        <!-- Camera Modal -->
+        <div id="cameraModal" class="camera-modal" style="display:none;">
+            <div class="camera-content">
+                <video id="cameraVideo" autoplay playsinline></video>
+                <canvas id="cameraCanvas" style="display:none;"></canvas>
+                <div class="camera-controls">
+                    <button type="button" class="btn btn-primary" onclick="capturePhoto()">📸 Capture</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeCamera()">❌ Cancel</button>
+                </div>
+            </div>
+        </div>
     `;
-    
+
     document.getElementById('teacherForm').addEventListener('submit', handleAddTeacher);
     openModal();
 }
@@ -451,14 +679,22 @@ async function handleAddTeacher(e) {
     const formData = new FormData(e.target);
     const teacherData = Object.fromEntries(formData);
     teacherData.canEditTimetable = formData.has('canEditTimetable');
-    
+
+    // Store photo in localStorage if captured
+    if (teacherData.photoData) {
+        const photoKey = `teacher_photo_${teacherData.employeeId}`;
+        localStorage.setItem(photoKey, teacherData.photoData);
+        teacherData.photoUrl = photoKey; // Store reference
+        delete teacherData.photoData; // Don't send base64 in API call
+    }
+
     try {
         const response = await fetch(`${SERVER_URL}/api/teachers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(teacherData)
         });
-        
+
         if (response.ok) {
             showNotification('Teacher added successfully', 'success');
             closeModal();
@@ -488,7 +724,7 @@ function showBulkTeacherModal() {
         </div>
         <button class="btn btn-primary" onclick="processBulkTeachers()">Import Teachers</button>
     `;
-    
+
     document.getElementById('csvFile').addEventListener('change', handleCSVUpload);
     openModal();
 }
@@ -497,7 +733,7 @@ async function processBulkTeachers() {
     const csvData = document.getElementById('csvPreview').value;
     const lines = csvData.split('\n');
     const headers = lines[0].split(',').map(h => h.trim());
-    
+
     const teachers = [];
     for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
@@ -512,14 +748,14 @@ async function processBulkTeachers() {
         });
         teachers.push(teacher);
     }
-    
+
     try {
         const response = await fetch(`${SERVER_URL}/api/teachers/bulk`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ teachers })
         });
-        
+
         if (response.ok) {
             showNotification(`${teachers.length} teachers imported successfully`, 'success');
             closeModal();
@@ -539,7 +775,7 @@ async function toggleTimetableAccess(teacherId, canEdit) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ canEditTimetable: canEdit })
         });
-        
+
         if (response.ok) {
             showNotification('Timetable access updated', 'success');
             loadTeachers();
@@ -566,16 +802,16 @@ async function loadClassrooms() {
 
 function renderClassrooms(classroomsToRender) {
     const tbody = document.getElementById('classroomsTableBody');
-    tbody.innerHTML = classroomsToRender.map(classroom => `
+    tbody.innerHTML = classroomsToRender.map((classroom, index) => `
         <tr>
             <td>${classroom.roomNumber}</td>
             <td>${classroom.building}</td>
             <td>${classroom.capacity}</td>
-            <td>${classroom.wifiBSSID || 'N/A'}</td>
-            <td><span class="access-toggle ${classroom.isActive ? 'enabled' : 'disabled'}">${classroom.isActive ? 'Active' : 'Inactive'}</span></td>
+            <td><code class="bssid-code">${classroom.wifiBSSID || 'N/A'}</code></td>
+            <td><span class="status-badge ${classroom.isActive ? 'status-active' : 'status-inactive'}">${classroom.isActive ? 'Active' : 'Inactive'}</span></td>
             <td>
-                <button class="action-btn edit" onclick="editClassroom('${classroom._id}')">Edit</button>
-                <button class="action-btn delete" onclick="deleteClassroom('${classroom._id}')">Delete</button>
+                <button class="action-btn edit" onclick="editClassroom('${classroom._id}')">✏️ Edit</button>
+                <button class="action-btn delete" onclick="deleteClassroom('${classroom._id}')">🗑️ Delete</button>
             </td>
         </tr>
     `).join('');
@@ -610,7 +846,7 @@ function showAddClassroomModal() {
             <button type="submit" class="btn btn-primary">Add Classroom</button>
         </form>
     `;
-    
+
     document.getElementById('classroomForm').addEventListener('submit', handleAddClassroom);
     openModal();
 }
@@ -620,14 +856,14 @@ async function handleAddClassroom(e) {
     const formData = new FormData(e.target);
     const classroomData = Object.fromEntries(formData);
     classroomData.isActive = formData.has('isActive');
-    
+
     try {
         const response = await fetch(`${SERVER_URL}/api/classrooms`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(classroomData)
         });
-        
+
         if (response.ok) {
             showNotification('Classroom added successfully', 'success');
             closeModal();
@@ -640,21 +876,141 @@ async function handleAddClassroom(e) {
     }
 }
 
+function showBulkClassroomModal() {
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>Bulk Import Classrooms</h2>
+        <p>Upload a CSV file with columns: roomNumber, building, capacity, wifiBSSID</p>
+        <form id="bulkClassroomForm">
+            <div class="form-group">
+                <label>CSV File *</label>
+                <input type="file" name="file" accept=".csv" class="form-input" required>
+            </div>
+            <div class="button-group">
+                <button type="button" class="btn btn-secondary" onclick="downloadClassroomTemplate()">📥 Download Template</button>
+                <button type="submit" class="btn btn-primary">📤 Import Classrooms</button>
+            </div>
+        </form>
+        <div class="csv-template">
+            <h3>CSV Template Example:</h3>
+            <pre>roomNumber,building,capacity,wifiBSSID
+CS-101,CS,60,00:1A:2B:3C:4D:01
+EC-101,EC,60,00:1A:2B:3C:5D:01
+ME-101,ME,60,00:1A:2B:3C:6D:01</pre>
+        </div>
+    `;
+
+    document.getElementById('bulkClassroomForm').addEventListener('submit', handleBulkClassroomImport);
+    openModal();
+}
+
+function downloadClassroomTemplate() {
+    const template = `roomNumber,building,capacity,wifiBSSID
+CS-101,CS,60,00:1A:2B:3C:4D:01
+EC-101,EC,60,00:1A:2B:3C:5D:01
+ME-101,ME,60,00:1A:2B:3C:6D:01
+CE-101,CE,60,00:1A:2B:3C:7D:01`;
+
+    const blob = new Blob([template], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'classroom_template.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+    showNotification('Template downloaded!', 'success');
+}
+
+async function handleBulkClassroomImport(e) {
+    e.preventDefault();
+    const fileInput = e.target.querySelector('input[type="file"]');
+    const file = fileInput.files[0];
+
+    if (!file) {
+        showNotification('Please select a CSV file', 'warning');
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async function (event) {
+        try {
+            const csv = event.target.result;
+            const lines = csv.split('\n').filter(line => line.trim());
+
+            if (lines.length < 2) {
+                showNotification('CSV file is empty or invalid', 'error');
+                return;
+            }
+
+            // Parse CSV
+            const headers = lines[0].split(',').map(h => h.trim());
+            const classroomsToImport = [];
+
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',').map(v => v.trim());
+                if (values.length >= 3) {
+                    const classroom = {
+                        roomNumber: values[0],
+                        building: values[1],
+                        capacity: parseInt(values[2]),
+                        wifiBSSID: values[3] || '',
+                        isActive: true
+                    };
+                    classroomsToImport.push(classroom);
+                }
+            }
+
+            if (classroomsToImport.length === 0) {
+                showNotification('No valid classroom data found in CSV', 'error');
+                return;
+            }
+
+            // Save to database
+            let successCount = 0;
+            for (const classroom of classroomsToImport) {
+                try {
+                    const response = await fetch(`${SERVER_URL}/api/classrooms`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(classroom)
+                    });
+                    if (response.ok) successCount++;
+                } catch (err) {
+                    console.error('Error saving classroom:', err);
+                }
+            }
+
+            showNotification(`Successfully imported ${successCount} classrooms!`, 'success');
+            closeModal();
+            loadClassrooms();
+
+        } catch (error) {
+            showNotification('Error parsing CSV file: ' + error.message, 'error');
+        }
+    };
+
+    reader.onerror = function () {
+        showNotification('Error reading file', 'error');
+    };
+
+    reader.readAsText(file);
+}
+
 
 // Timetable Management
 async function loadTimetable() {
     const semester = document.getElementById('timetableSemester').value;
     const course = document.getElementById('timetableCourse').value;
-    
+
     if (!semester || !course) {
         showNotification('Please select semester and course', 'warning');
         return;
     }
-    
+
     try {
         const response = await fetch(`${SERVER_URL}/api/timetable/${semester}/${course}`);
         const data = await response.json();
-        
+
         if (data.success) {
             currentTimetable = data.timetable;
             renderTimetableEditor(currentTimetable);
@@ -669,74 +1025,82 @@ async function loadTimetable() {
 function createNewTimetable() {
     const semester = document.getElementById('timetableSemester').value;
     const course = document.getElementById('timetableCourse').value;
-    
+
     if (!semester || !course) {
         showNotification('Please select semester and course', 'warning');
         return;
     }
-    
-    // Create default timetable structure
-    const periods = [];
-    for (let i = 0; i < 8; i++) {
-        const startHour = 8 + Math.floor((i * 45) / 60);
-        const startMinute = (i * 45) % 60;
-        const endHour = 8 + Math.floor(((i + 1) * 45) / 60);
-        const endMinute = ((i + 1) * 45) % 60;
-        
-        periods.push({
-            number: i + 1,
-            startTime: `${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}`,
-            endTime: `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`
-        });
-    }
-    
-    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+    // Create default timetable structure with actual college timings
+    const periods = [
+        { number: 1, startTime: '09:40', endTime: '10:40' },
+        { number: 2, startTime: '10:40', endTime: '11:40' },
+        { number: 3, startTime: '11:40', endTime: '12:10' },
+        { number: 4, startTime: '12:10', endTime: '13:10' }, // Lunch
+        { number: 5, startTime: '13:10', endTime: '14:10' },
+        { number: 6, startTime: '14:10', endTime: '14:20' }, // Break
+        { number: 7, startTime: '14:20', endTime: '15:30' },
+        { number: 8, startTime: '15:30', endTime: '16:10' }
+    ];
+
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
     const timetable = {};
     days.forEach(day => {
         timetable[day] = periods.map(p => ({
             period: p.number,
-            subject: '',
+            subject: p.number === 4 ? 'Lunch Break' : p.number === 6 ? 'Break' : '',
             room: '',
-            isBreak: false
+            isBreak: p.number === 4 || p.number === 6
         }));
     });
-    
+
     currentTimetable = { semester, branch: course, periods, timetable };
     renderTimetableEditor(currentTimetable);
 }
 
 function renderTimetableEditor(timetable) {
     const editor = document.getElementById('timetableEditor');
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    
-    let html = '<div class="timetable-grid">';
-    
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+
+    let html = '<div class="timetable-info">';
+    html += `<p><strong>Course:</strong> ${timetable.branch} | <strong>Semester:</strong> ${timetable.semester}</p>`;
+    html += `<p><strong>Schedule:</strong> Monday to Friday | <strong>Periods:</strong> 8 (including breaks)</p>`;
+    html += '</div>';
+
+    html += '<div class="timetable-grid">';
+
     // Header row
     html += '<div class="timetable-cell header">Day/Period</div>';
     timetable.periods.forEach(period => {
-        html += `<div class="timetable-cell header">
-            P${period.number}<br>
+        const isBreak = period.number === 4 || period.number === 6;
+        html += `<div class="timetable-cell header ${isBreak ? 'break-header' : ''}">
+            ${isBreak ? (period.number === 4 ? '🍽️' : '☕') : `P${period.number}`}<br>
             <small>${period.startTime}-${period.endTime}</small>
         </div>`;
     });
-    
+
     // Data rows
     days.forEach((day, dayIdx) => {
         html += `<div class="timetable-cell header">${day}</div>`;
-        timetable.timetable[dayKeys[dayIdx]].forEach((period, periodIdx) => {
-            html += `<div class="timetable-cell editable" onclick="editTimetableCell(${dayIdx}, ${periodIdx})">
-                ${period.isBreak ? '☕ Break' : `
-                    <div><strong>${period.subject || '-'}</strong></div>
-                    <div><small>${period.room || ''}</small></div>
+        const daySchedule = timetable.timetable[dayKeys[dayIdx]] || [];
+        daySchedule.forEach((period, periodIdx) => {
+            const isBreak = period.isBreak || period.subject.includes('Break');
+            html += `<div class="timetable-cell ${isBreak ? 'break-cell' : 'editable'}" ${!isBreak ? `onclick="editTimetableCell(${dayIdx}, ${periodIdx})"` : ''}>
+                ${isBreak ? `<div class="break-label">${period.subject}</div>` : `
+                    <div class="subject-name">${period.subject || '-'}</div>
+                    ${period.room ? `<div class="room-name">${period.room}</div>` : ''}
                 `}
             </div>`;
         });
     });
-    
+
     html += '</div>';
-    html += '<button class="btn btn-primary" style="margin-top: 20px;" onclick="saveTimetable()">Save Timetable</button>';
-    
+    html += '<div class="timetable-actions">';
+    html += '<button class="btn btn-primary" onclick="saveTimetable()">💾 Save Timetable</button>';
+    html += '<button class="btn btn-secondary" onclick="exportTimetable()">📥 Export</button>';
+    html += '</div>';
+
     editor.innerHTML = html;
 }
 
@@ -744,7 +1108,7 @@ function renderTimetableEditor(timetable) {
 function editTimetableCell(dayIdx, periodIdx) {
     const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
-    
+
     const modalBody = document.getElementById('modalBody');
     modalBody.innerHTML = `
         <h2>Edit Period</h2>
@@ -765,18 +1129,18 @@ function editTimetableCell(dayIdx, periodIdx) {
             <button type="submit" class="btn btn-primary">Save</button>
         </form>
     `;
-    
+
     document.getElementById('periodForm').addEventListener('submit', (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
         period.subject = formData.get('subject');
         period.room = formData.get('room');
         period.isBreak = formData.has('isBreak');
-        
+
         closeModal();
         renderTimetableEditor(currentTimetable);
     });
-    
+
     openModal();
 }
 
@@ -787,7 +1151,7 @@ async function saveTimetable() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(currentTimetable)
         });
-        
+
         if (response.ok) {
             showNotification('Timetable saved successfully', 'success');
         } else {
@@ -796,6 +1160,23 @@ async function saveTimetable() {
     } catch (error) {
         showNotification('Error: ' + error.message, 'error');
     }
+}
+
+function exportTimetable() {
+    if (!currentTimetable) {
+        showNotification('No timetable to export', 'warning');
+        return;
+    }
+
+    const dataStr = JSON.stringify(currentTimetable, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `timetable_${currentTimetable.branch}_sem${currentTimetable.semester}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showNotification('Timetable exported successfully', 'success');
 }
 
 // Utility Functions
@@ -837,7 +1218,7 @@ function saveServerSettings() {
 // Delete functions
 async function deleteStudent(id) {
     if (!confirm('Are you sure you want to delete this student?')) return;
-    
+
     try {
         const response = await fetch(`${SERVER_URL}/api/students/${id}`, { method: 'DELETE' });
         if (response.ok) {
@@ -851,7 +1232,7 @@ async function deleteStudent(id) {
 
 async function deleteTeacher(id) {
     if (!confirm('Are you sure you want to delete this teacher?')) return;
-    
+
     try {
         const response = await fetch(`${SERVER_URL}/api/teachers/${id}`, { method: 'DELETE' });
         if (response.ok) {
@@ -864,8 +1245,9 @@ async function deleteTeacher(id) {
 }
 
 async function deleteClassroom(id) {
-    if (!confirm('Are you sure you want to delete this classroom?')) return;
-    
+    const classroom = classrooms.find(c => c._id === id);
+    if (!confirm(`Are you sure you want to delete classroom ${classroom?.roomNumber || 'this'}?`)) return;
+
     try {
         const response = await fetch(`${SERVER_URL}/api/classrooms/${id}`, { method: 'DELETE' });
         if (response.ok) {
@@ -881,7 +1263,7 @@ async function deleteClassroom(id) {
 async function editStudent(id) {
     const student = students.find(s => s._id === id);
     if (!student) return;
-    
+
     const modalBody = document.getElementById('modalBody');
     modalBody.innerHTML = `
         <h2>Edit Student</h2>
@@ -914,7 +1296,7 @@ async function editStudent(id) {
             <div class="form-group">
                 <label>Semester *</label>
                 <select name="semester" class="form-select" required>
-                    ${[1,2,3,4,5,6,7,8].map(s => `<option value="${s}" ${student.semester == s ? 'selected' : ''}>${s}</option>`).join('')}
+                    ${[1, 2, 3, 4, 5, 6, 7, 8].map(s => `<option value="${s}" ${student.semester == s ? 'selected' : ''}>${s}</option>`).join('')}
                 </select>
             </div>
             <div class="form-group">
@@ -928,24 +1310,24 @@ async function editStudent(id) {
             <button type="submit" class="btn btn-primary">Update Student</button>
         </form>
     `;
-    
+
     document.getElementById('editStudentForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
         const studentData = Object.fromEntries(formData);
-        
+
         // Remove password if empty
         if (!studentData.password) {
             delete studentData.password;
         }
-        
+
         try {
             const response = await fetch(`${SERVER_URL}/api/students/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(studentData)
             });
-            
+
             if (response.ok) {
                 showNotification('Student updated successfully', 'success');
                 closeModal();
@@ -957,14 +1339,14 @@ async function editStudent(id) {
             showNotification('Error: ' + error.message, 'error');
         }
     });
-    
+
     openModal();
 }
 
 async function editTeacher(id) {
     const teacher = teachers.find(t => t._id === id);
     if (!teacher) return;
-    
+
     const modalBody = document.getElementById('modalBody');
     modalBody.innerHTML = `
         <h2>Edit Teacher</h2>
@@ -995,6 +1377,14 @@ async function editTeacher(id) {
                 </select>
             </div>
             <div class="form-group">
+                <label>Subject *</label>
+                <input type="text" name="subject" class="form-input" value="${teacher.subject || ''}" required>
+            </div>
+            <div class="form-group">
+                <label>Semester</label>
+                <input type="text" name="semester" class="form-input" value="${teacher.semester || ''}">
+            </div>
+            <div class="form-group">
                 <label>Date of Birth *</label>
                 <input type="date" name="dob" class="form-input" value="${teacher.dob ? teacher.dob.split('T')[0] : ''}" required>
             </div>
@@ -1010,25 +1400,25 @@ async function editTeacher(id) {
             <button type="submit" class="btn btn-primary">Update Teacher</button>
         </form>
     `;
-    
+
     document.getElementById('editTeacherForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
         const teacherData = Object.fromEntries(formData);
         teacherData.canEditTimetable = formData.has('canEditTimetable');
-        
+
         // Remove password if empty
         if (!teacherData.password) {
             delete teacherData.password;
         }
-        
+
         try {
             const response = await fetch(`${SERVER_URL}/api/teachers/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(teacherData)
             });
-            
+
             if (response.ok) {
                 showNotification('Teacher updated successfully', 'success');
                 closeModal();
@@ -1040,14 +1430,17 @@ async function editTeacher(id) {
             showNotification('Error: ' + error.message, 'error');
         }
     });
-    
+
     openModal();
 }
 
 async function editClassroom(id) {
     const classroom = classrooms.find(c => c._id === id);
-    if (!classroom) return;
-    
+    if (!classroom) {
+        showNotification('Classroom not found', 'error');
+        return;
+    }
+
     const modalBody = document.getElementById('modalBody');
     modalBody.innerHTML = `
         <h2>Edit Classroom</h2>
@@ -1076,20 +1469,20 @@ async function editClassroom(id) {
             <button type="submit" class="btn btn-primary">Update Classroom</button>
         </form>
     `;
-    
+
     document.getElementById('editClassroomForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
         const classroomData = Object.fromEntries(formData);
         classroomData.isActive = formData.has('isActive');
-        
+
         try {
             const response = await fetch(`${SERVER_URL}/api/classrooms/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(classroomData)
             });
-            
+
             if (response.ok) {
                 showNotification('Classroom updated successfully', 'success');
                 closeModal();
@@ -1101,7 +1494,7 @@ async function editClassroom(id) {
             showNotification('Error: ' + error.message, 'error');
         }
     });
-    
+
     openModal();
 }
 
@@ -1115,7 +1508,7 @@ function exportStudentsToCSV() {
         headers.join(','),
         ...students.map(s => headers.map(h => s[h] || '').join(','))
     ].join('\n');
-    
+
     downloadCSV(csvContent, 'students_export.csv');
     showNotification('Students exported successfully', 'success');
 }
@@ -1126,7 +1519,7 @@ function exportTeachersToCSV() {
         headers.join(','),
         ...teachers.map(t => headers.map(h => t[h] || '').join(','))
     ].join('\n');
-    
+
     downloadCSV(csvContent, 'teachers_export.csv');
     showNotification('Teachers exported successfully', 'success');
 }
@@ -1137,7 +1530,7 @@ function exportClassroomsToCSV() {
         headers.join(','),
         ...classrooms.map(c => headers.map(h => c[h] || '').join(','))
     ].join('\n');
-    
+
     downloadCSV(csvContent, 'classrooms_export.csv');
     showNotification('Classrooms exported successfully', 'success');
 }
@@ -1160,7 +1553,7 @@ function showNotification(message, type = 'info') {
     // Clear existing notification
     const existing = document.getElementById('notification');
     if (existing) existing.remove();
-    
+
     // Create notification
     const notification = document.createElement('div');
     notification.id = 'notification';
@@ -1170,9 +1563,9 @@ function showNotification(message, type = 'info') {
         <span class="notification-message">${message}</span>
         <button class="notification-close" onclick="closeNotification()">✕</button>
     `;
-    
+
     document.body.appendChild(notification);
-    
+
     // Auto-hide after 5 seconds
     clearTimeout(notificationTimeout);
     notificationTimeout = setTimeout(() => {
@@ -1208,13 +1601,13 @@ document.addEventListener('keydown', (e) => {
             saveTimetable();
         }
     }
-    
+
     // Escape - Close modal
     if (e.key === 'Escape') {
         closeModal();
         closeNotification();
     }
-    
+
     // Ctrl+F or Cmd+F - Focus search
     if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
         e.preventDefault();
@@ -1226,7 +1619,7 @@ document.addEventListener('keydown', (e) => {
 document.getElementById('globalSearch').addEventListener('input', (e) => {
     const query = e.target.value.toLowerCase();
     if (!query) return;
-    
+
     // Search in current section
     const activeSection = document.querySelector('.section.active');
     if (activeSection.id === 'students-section') {
@@ -1250,7 +1643,7 @@ function addExportButtons() {
         exportBtn.onclick = exportStudentsToCSV;
         studentsActions.insertBefore(exportBtn, studentsActions.firstChild);
     }
-    
+
     // Teachers section
     const teachersActions = document.querySelector('#teachers-section .action-buttons');
     if (teachersActions && !document.getElementById('exportTeachersBtn')) {
@@ -1261,7 +1654,7 @@ function addExportButtons() {
         exportBtn.onclick = exportTeachersToCSV;
         teachersActions.insertBefore(exportBtn, teachersActions.firstChild);
     }
-    
+
     // Classrooms section
     const classroomsActions = document.querySelector('#classrooms-section .action-buttons');
     if (classroomsActions && !document.getElementById('exportClassroomsBtn')) {
@@ -1288,18 +1681,18 @@ function confirmAction(message, onConfirm) {
             <button class="btn btn-danger" id="confirmBtn">Confirm</button>
         </div>
     `;
-    
+
     document.getElementById('confirmBtn').onclick = () => {
         closeModal();
         onConfirm();
     };
-    
+
     openModal();
 }
 
 // Update delete functions to use confirmation dialog
 const originalDeleteStudent = deleteStudent;
-deleteStudent = function(id) {
+deleteStudent = function (id) {
     const student = students.find(s => s._id === id);
     confirmAction(
         `Are you sure you want to delete student "${student?.name}"? This action cannot be undone.`,
@@ -1308,7 +1701,7 @@ deleteStudent = function(id) {
 };
 
 const originalDeleteTeacher = deleteTeacher;
-deleteTeacher = function(id) {
+deleteTeacher = function (id) {
     const teacher = teachers.find(t => t._id === id);
     confirmAction(
         `Are you sure you want to delete teacher "${teacher?.name}"? This action cannot be undone.`,
@@ -1317,7 +1710,7 @@ deleteTeacher = function(id) {
 };
 
 const originalDeleteClassroom = deleteClassroom;
-deleteClassroom = function(id) {
+deleteClassroom = function (id) {
     const classroom = classrooms.find(c => c._id === id);
     confirmAction(
         `Are you sure you want to delete classroom "${classroom?.roomNumber}"? This action cannot be undone.`,
@@ -1331,11 +1724,11 @@ function printTimetable() {
         showNotification('No timetable loaded', 'warning');
         return;
     }
-    
+
     const printWindow = window.open('', '_blank');
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    
+
     let html = `
         <html>
         <head>
@@ -1376,7 +1769,7 @@ function printTimetable() {
         </body>
         </html>
     `;
-    
+
     printWindow.document.write(html);
     printWindow.document.close();
 }
@@ -1397,3 +1790,162 @@ function addPrintButton() {
 setTimeout(addPrintButton, 100);
 
 console.log('✅ All features loaded successfully!');
+
+
+// Student Attendance Report
+async function showStudentAttendance(studentId, studentName) {
+    const modal = document.getElementById('attendanceModal');
+    const modalBody = document.getElementById('attendanceModalBody');
+
+    modalBody.innerHTML = '<div class="loading">Loading attendance data...</div>';
+    modal.classList.add('active');
+
+    try {
+        // Fetch student details
+        const studentRes = await fetch(`${SERVER_URL}/api/student-management?enrollmentNo=${studentId}`);
+        const studentData = await studentRes.json();
+        const student = studentData.student;
+
+        // Fetch attendance records
+        const attendanceRes = await fetch(`${SERVER_URL}/api/attendance/records?studentId=${studentId}`);
+        const attendanceData = await attendanceRes.json();
+        const records = attendanceData.records || [];
+
+        // Calculate statistics
+        const totalDays = records.length;
+        const presentDays = records.filter(r => r.status === 'present');
+        const absentDays = records.filter(r => r.status === 'absent');
+        const attendanceRate = totalDays > 0 ? ((presentDays.length / totalDays) * 100).toFixed(2) : 0;
+
+        // Calculate lectures attended
+        const totalLectures = presentDays.reduce((sum, r) => sum + (r.lecturesAttended || 0), 0);
+        const avgLectures = presentDays.length > 0 ? (totalLectures / presentDays.length).toFixed(2) : 0;
+
+        // Get date range
+        const dates = records.map(r => new Date(r.date)).sort((a, b) => a - b);
+        const startDate = dates[0] ? dates[0].toLocaleDateString() : 'N/A';
+        const endDate = dates[dates.length - 1] ? dates[dates.length - 1].toLocaleDateString() : 'N/A';
+
+        // Render report
+        let html = `
+            <div class="attendance-report">
+                <div class="report-header">
+                    <h2>📊 Attendance Report</h2>
+                    <button class="btn btn-secondary" onclick="exportAttendanceReport('${studentId}')">📥 Export</button>
+                </div>
+                
+                <div class="student-info-card">
+                    <h3>${studentName}</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-label">Enrollment No:</span>
+                            <span class="info-value">${studentId}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Course:</span>
+                            <span class="info-value">${student?.course || 'N/A'}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Semester:</span>
+                            <span class="info-value">${student?.semester || 'N/A'}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Email:</span>
+                            <span class="info-value">${student?.email || 'N/A'}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="stats-row">
+                    <div class="stat-box stat-total">
+                        <div class="stat-number">${totalDays}</div>
+                        <div class="stat-label">Total Days</div>
+                    </div>
+                    <div class="stat-box stat-present">
+                        <div class="stat-number">${presentDays.length}</div>
+                        <div class="stat-label">Present</div>
+                    </div>
+                    <div class="stat-box stat-absent">
+                        <div class="stat-number">${absentDays.length}</div>
+                        <div class="stat-label">Absent</div>
+                    </div>
+                    <div class="stat-box stat-rate">
+                        <div class="stat-number">${attendanceRate}%</div>
+                        <div class="stat-label">Attendance Rate</div>
+                    </div>
+                </div>
+                
+                <div class="stats-row">
+                    <div class="stat-box">
+                        <div class="stat-number">${totalLectures}</div>
+                        <div class="stat-label">Total Lectures Attended</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-number">${avgLectures}/8</div>
+                        <div class="stat-label">Avg Lectures Per Day</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-number">${startDate}</div>
+                        <div class="stat-label">Start Date</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-number">${endDate}</div>
+                        <div class="stat-label">End Date</div>
+                    </div>
+                </div>
+                
+                <div class="attendance-table-container">
+                    <h3>Detailed Records</h3>
+                    <table class="attendance-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Day</th>
+                                <th>Status</th>
+                                <th>Check In</th>
+                                <th>Check Out</th>
+                                <th>Lectures</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${records.sort((a, b) => new Date(b.date) - new Date(a.date)).map(record => {
+            const date = new Date(record.date);
+            const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+            const dateStr = date.toLocaleDateString();
+            const checkIn = record.checkInTime ? new Date(record.checkInTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-';
+            const checkOut = record.checkOutTime ? new Date(record.checkOutTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-';
+            const lectures = record.lecturesAttended ? `${record.lecturesAttended}/8` : '-';
+            const statusClass = record.status === 'present' ? 'status-present' : 'status-absent';
+
+            return `
+                                    <tr>
+                                        <td>${dateStr}</td>
+                                        <td>${dayName}</td>
+                                        <td><span class="status-badge ${statusClass}">${record.status}</span></td>
+                                        <td>${checkIn}</td>
+                                        <td>${checkOut}</td>
+                                        <td>${lectures}</td>
+                                    </tr>
+                                `;
+        }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
+        modalBody.innerHTML = html;
+
+    } catch (error) {
+        console.error('Error loading attendance:', error);
+        modalBody.innerHTML = '<div class="error-state">Error loading attendance data</div>';
+    }
+}
+
+function closeAttendanceModal() {
+    document.getElementById('attendanceModal').classList.remove('active');
+}
+
+function exportAttendanceReport(studentId) {
+    showNotification('Export functionality coming soon!', 'info');
+}

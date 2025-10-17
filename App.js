@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ActivityIndicator,
-  Animated, TextInput, ScrollView, FlatList
+  Animated, TextInput, ScrollView, FlatList, AppState
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -15,6 +15,8 @@ const STUDENT_ID_KEY = '@student_id';
 const STUDENT_NAME_KEY = '@student_name';
 const SEMESTER_KEY = '@user_semester';
 const BRANCH_KEY = '@user_branch';
+const USER_DATA_KEY = '@user_data';
+const LOGIN_ID_KEY = '@login_id';
 
 const getDefaultConfig = () => ({
   roleSelection: {
@@ -71,7 +73,14 @@ export default function App() {
   const [editingCell, setEditingCell] = useState(null);
   const [editSubject, setEditSubject] = useState('');
   const [editRoom, setEditRoom] = useState('');
-  
+
+  // Student detail modal states
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [studentDetails, setStudentDetails] = useState(null);
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [attendanceStats, setAttendanceStats] = useState(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
   // Login states
   const [showLogin, setShowLogin] = useState(true);
   const [loginId, setLoginId] = useState('');
@@ -79,9 +88,11 @@ export default function App() {
   const [loginError, setLoginError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [userData, setUserData] = useState(null);
-  
+
   const intervalRef = useRef(null);
   const socketRef = useRef(null);
+  const appState = useRef(AppState.currentState);
+  const backgroundTimeRef = useRef(null);
 
   // Animations
   const glowAnim = useRef(new Animated.Value(0)).current;
@@ -113,10 +124,33 @@ export default function App() {
     loadConfig();
     setupSocket();
 
+    // Handle app state changes (background/foreground)
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        // App came to foreground
+        if (backgroundTimeRef.current && isRunning && selectedRole === 'student') {
+          const timeInBackground = Math.floor((Date.now() - backgroundTimeRef.current) / 1000);
+          setTimeLeft(prev => {
+            const newTime = Math.max(0, prev - timeInBackground);
+            updateTimerOnServer(newTime, newTime > 0, newTime === 0 ? 'present' : null);
+            return newTime;
+          });
+        }
+        backgroundTimeRef.current = null;
+      } else if (nextAppState.match(/inactive|background/)) {
+        // App went to background
+        if (isRunning && selectedRole === 'student') {
+          backgroundTimeRef.current = Date.now();
+        }
+      }
+      appState.current = nextAppState;
+    });
+
     return () => {
       if (socketRef.current) socketRef.current.disconnect();
+      subscription.remove();
     };
-  }, []);
+  }, [isRunning, selectedRole]);
 
   const setupSocket = () => {
     socketRef.current = io(SOCKET_URL);
@@ -138,18 +172,26 @@ export default function App() {
 
   const loadConfig = async () => {
     try {
-      const cachedRole = await AsyncStorage.getItem(ROLE_KEY);
-      const cachedStudentId = await AsyncStorage.getItem(STUDENT_ID_KEY);
-      const cachedStudentName = await AsyncStorage.getItem(STUDENT_NAME_KEY);
+      // Check for saved login data
+      const cachedUserData = await AsyncStorage.getItem(USER_DATA_KEY);
+      const cachedLoginId = await AsyncStorage.getItem(LOGIN_ID_KEY);
 
-      if (cachedRole) {
-        setSelectedRole(cachedRole);
-        if (cachedRole === 'student' && cachedStudentId && cachedStudentName) {
-          setStudentId(cachedStudentId);
-          setStudentName(cachedStudentName);
-          setShowNameInput(false);
-        } else if (cachedRole === 'student') {
-          setShowNameInput(true);
+      if (cachedUserData && cachedLoginId) {
+        const userData = JSON.parse(cachedUserData);
+        setUserData(userData);
+        setLoginId(cachedLoginId);
+        setSelectedRole(userData.role);
+        setShowLogin(false);
+
+        if (userData.role === 'student') {
+          setStudentName(userData.name);
+          setStudentId(userData._id);
+          setSemester(userData.semester);
+          setBranch(userData.course);
+        } else if (userData.role === 'teacher') {
+          setSemester(userData.semester || '1');
+          setBranch(userData.department);
+          fetchStudents();
         }
       }
 
@@ -159,9 +201,6 @@ export default function App() {
       }
 
       fetchConfig();
-      if (cachedRole === 'teacher') {
-        fetchStudents();
-      }
     } catch (error) {
       console.log('Error loading cache:', error);
     }
@@ -191,6 +230,48 @@ export default function App() {
     } catch (error) {
       console.log('Error fetching students:', error);
     }
+  };
+
+  const fetchStudentDetails = async (student) => {
+    setSelectedStudent(student);
+    setLoadingDetails(true);
+    
+    try {
+      // Fetch student management details
+      const detailsResponse = await fetch(`${SOCKET_URL}/api/student-management?enrollmentNo=${student.enrollmentNumber || student._id}`);
+      const detailsData = await detailsResponse.json();
+      
+      // Fetch attendance records (last 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const recordsResponse = await fetch(`${SOCKET_URL}/api/attendance/records?studentId=${student._id}&startDate=${thirtyDaysAgo.toISOString()}`);
+      const recordsData = await recordsResponse.json();
+      
+      // Fetch attendance statistics
+      const statsResponse = await fetch(`${SOCKET_URL}/api/attendance/stats?studentId=${student._id}`);
+      const statsData = await statsResponse.json();
+      
+      if (detailsData.success) {
+        setStudentDetails(detailsData.student);
+      }
+      if (recordsData.success) {
+        setAttendanceRecords(recordsData.records);
+      }
+      if (statsData.success) {
+        setAttendanceStats(statsData.stats);
+      }
+    } catch (error) {
+      console.log('Error fetching student details:', error);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  const closeStudentDetails = () => {
+    setSelectedStudent(null);
+    setStudentDetails(null);
+    setAttendanceRecords([]);
+    setAttendanceStats(null);
   };
 
   const fetchTimetable = async (sem, br) => {
@@ -313,7 +394,7 @@ export default function App() {
     }
   }, [isRunning]);
 
-  const updateTimerOnServer = (timer, running, status = null) => {
+  const updateTimerOnServer = async (timer, running, status = null) => {
     if (!studentId || !socketRef.current) return;
 
     let finalStatus = status;
@@ -330,6 +411,27 @@ export default function App() {
       isRunning: running,
       status: finalStatus
     });
+
+    // Save attendance record when timer completes or student marks present/absent
+    if (finalStatus === 'present' || finalStatus === 'absent') {
+      try {
+        await fetch(`${SOCKET_URL}/api/attendance/record`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            studentId,
+            studentName,
+            enrollmentNumber: userData?.enrollmentNo || 'N/A',
+            status: finalStatus,
+            timerValue: timer,
+            semester,
+            branch
+          })
+        });
+      } catch (error) {
+        console.log('Error saving attendance record:', error);
+      }
+    }
   };
 
   const handleStartPause = () => {
@@ -371,9 +473,9 @@ export default function App() {
       const response = await fetch(`${SOCKET_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          id: loginId.trim(), 
-          password: loginPassword.trim() 
+        body: JSON.stringify({
+          id: loginId.trim(),
+          password: loginPassword.trim()
         })
       });
 
@@ -383,7 +485,12 @@ export default function App() {
         setUserData(data.user);
         setSelectedRole(data.user.role);
         setShowLogin(false);
-        
+
+        // Save login data for persistence
+        await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(data.user));
+        await AsyncStorage.setItem(LOGIN_ID_KEY, loginId.trim());
+        await AsyncStorage.setItem(ROLE_KEY, data.user.role);
+
         if (data.user.role === 'student') {
           setStudentName(data.user.name);
           setStudentId(data.user._id);
@@ -394,9 +501,8 @@ export default function App() {
         } else if (data.user.role === 'teacher') {
           setSemester(data.user.semester || '1');
           setBranch(data.user.department);
+          fetchStudents();
         }
-        
-        await AsyncStorage.setItem(ROLE_KEY, data.user.role);
       } else {
         setLoginError(data.message || 'Invalid credentials');
       }
@@ -454,8 +560,8 @@ export default function App() {
               <Text style={styles.loginError}>{loginError}</Text>
             ) : null}
 
-            <TouchableOpacity 
-              onPress={handleLogin} 
+            <TouchableOpacity
+              onPress={handleLogin}
               activeOpacity={0.8}
               disabled={isLoggingIn}
               style={styles.loginButton}
@@ -751,28 +857,41 @@ export default function App() {
     setLoginPassword('');
     setStudentName('');
     setStudentId(null);
+    setIsRunning(false);
+    clearInterval(intervalRef.current);
+
+    // Clear all stored data
     await AsyncStorage.removeItem(ROLE_KEY);
     await AsyncStorage.removeItem(STUDENT_NAME_KEY);
     await AsyncStorage.removeItem(STUDENT_ID_KEY);
+    await AsyncStorage.removeItem(USER_DATA_KEY);
+    await AsyncStorage.removeItem(LOGIN_ID_KEY);
   };
 
   // Teacher Dashboard
   if (selectedRole === 'teacher') {
     const teacherConfig = config?.teacherScreen || getDefaultConfig().teacherScreen;
     const canEditTimetable = userData?.canEditTimetable || false;
-    
+
+    // Calculate statistics with safety checks
+    const totalStudents = students.length;
+    const presentStudents = students.filter(s => s && s.status === 'present').length;
+    const attendingStudents = students.filter(s => s && s.status === 'attending').length;
+    const absentStudents = students.filter(s => s && s.status === 'absent').length;
+    const attendancePercentage = totalStudents > 0 ? Math.round((presentStudents / totalStudents) * 100) : 0;
+
     return (
-      <Animated.View style={[styles.container, { backgroundColor: teacherConfig?.backgroundColor || '#0a1628', opacity: fadeAnim }]}>
+      <Animated.View style={[styles.container, { backgroundColor: teacherConfig?.backgroundColor || '#0a1628', opacity: fadeAnim, paddingTop: 50 }]}>
         <StatusBar style="light" />
-        
+
         {/* Teacher Info Header */}
         <View style={styles.teacherHeader}>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={[styles.glowText, {
-              fontSize: teacherConfig?.title?.fontSize || 32,
+              fontSize: 28,
               color: teacherConfig?.title?.color || '#00f5ff',
             }]}>
-              {teacherConfig?.title?.text || 'Live Attendance'}
+              {teacherConfig?.title?.text || 'Teacher Dashboard'}
             </Text>
             <Text style={{
               fontSize: 16,
@@ -782,7 +901,7 @@ export default function App() {
               👨‍🏫 {userData?.name || 'Teacher'}
             </Text>
             <Text style={{
-              fontSize: 14,
+              fontSize: 13,
               color: '#00d9ff80',
               marginTop: 2,
             }}>
@@ -794,33 +913,53 @@ export default function App() {
           </TouchableOpacity>
         </View>
 
-        <Text style={{
-          fontSize: teacherConfig?.subtitle?.fontSize || 16,
-          color: teacherConfig?.subtitle?.color || '#00d9ff',
-          marginBottom: 15,
-          textAlign: 'center',
-        }}>
-          {teacherConfig?.subtitle?.text || 'Real-time student tracking'}
-        </Text>
+        {/* Statistics Cards */}
+        <View style={styles.statsContainer}>
+          <View style={[styles.statCard, { borderColor: '#00f5ff' }]}>
+            <Text style={styles.statNumber}>{totalStudents}</Text>
+            <Text style={styles.statLabel}>Total</Text>
+          </View>
+          <View style={[styles.statCard, { borderColor: '#00ff88' }]}>
+            <Text style={[styles.statNumber, { color: '#00ff88' }]}>{presentStudents}</Text>
+            <Text style={styles.statLabel}>Present</Text>
+          </View>
+          <View style={[styles.statCard, { borderColor: '#ffaa00' }]}>
+            <Text style={[styles.statNumber, { color: '#ffaa00' }]}>{attendingStudents}</Text>
+            <Text style={styles.statLabel}>Active</Text>
+          </View>
+          <View style={[styles.statCard, { borderColor: '#ff4444' }]}>
+            <Text style={[styles.statNumber, { color: '#ff4444' }]}>{absentStudents}</Text>
+            <Text style={styles.statLabel}>Absent</Text>
+          </View>
+        </View>
+
+        {/* Attendance Percentage */}
+        {totalStudents > 0 && (
+          <View style={styles.percentageContainer}>
+            <Text style={styles.percentageText}>
+              📊 Attendance: {attendancePercentage}%
+            </Text>
+          </View>
+        )}
 
         {/* Timetable Button */}
-        <TouchableOpacity 
+        <TouchableOpacity
           onPress={() => {
             console.log('Timetable button pressed');
             fetchTimetable(semester, branch);
             setShowTimetable(true);
-          }} 
-          activeOpacity={0.8} 
+          }}
+          activeOpacity={0.8}
           style={{ marginBottom: 15, paddingHorizontal: 20 }}
         >
-          <View style={{
+          <Animated.View style={{
             backgroundColor: canEditTimetable ? '#00bfff' : '#00d9ff80',
             paddingVertical: 15,
             paddingHorizontal: 30,
             borderRadius: 15,
             alignItems: 'center',
             shadowColor: '#00bfff',
-            shadowOpacity: 0.5,
+            shadowOpacity: glowOpacity,
             shadowRadius: 15,
             elevation: 10,
           }}>
@@ -832,37 +971,216 @@ export default function App() {
                 (View Only - No Edit Permission)
               </Text>
             )}
-          </View>
+          </Animated.View>
         </TouchableOpacity>
+
+        {/* Student List Header */}
+        <View style={styles.listHeader}>
+          <Text style={styles.listHeaderText}>
+            📋 Live Student Attendance
+          </Text>
+          <Text style={styles.listHeaderSubtext}>
+            Real-time tracking • Auto-refresh
+          </Text>
+        </View>
 
         {/* Student List */}
         <ScrollView style={styles.studentList} contentContainerStyle={styles.studentListContent}>
-          {students.map((student) => (
-            <Animated.View
-              key={student._id}
-              style={[styles.studentCard, {
-                backgroundColor: teacherConfig?.cardBackgroundColor || '#0d1f3c',
-                borderColor: teacherConfig?.cardBorderColor || '#00d9ff',
-                shadowColor: teacherConfig?.statusColors?.[student.status] || '#00d9ff',
-                shadowOpacity: glowOpacity,
-                shadowRadius: 15,
-              }]}
-            >
-              <View style={styles.studentHeader}>
-                <Text style={styles.studentName}>{student.name}</Text>
-                <View style={[styles.statusBadge, {
-                  backgroundColor: teacherConfig?.statusColors?.[student.status] || '#00d9ff'
-                }]}>
-                  <Text style={styles.statusText}>{student.status.toUpperCase()}</Text>
-                </View>
-              </View>
-              <Text style={styles.timerText}>{formatTime(student.timerValue)}</Text>
-            </Animated.View>
-          ))}
+          {students.map((student) => {
+            if (!student || !student._id) return null;
+
+            const studentStatus = student.status || 'absent';
+            const statusIcon = studentStatus === 'present' ? '✅' :
+              studentStatus === 'attending' ? '⏱️' : '❌';
+            const statusColor = teacherConfig?.statusColors?.[studentStatus] || '#00d9ff';
+
+            return (
+              <TouchableOpacity
+                key={student._id}
+                onPress={() => fetchStudentDetails(student)}
+                activeOpacity={0.7}
+              >
+                <Animated.View
+                  style={[styles.studentCard, {
+                    backgroundColor: teacherConfig?.cardBackgroundColor || '#0d1f3c',
+                    borderColor: statusColor,
+                    borderWidth: 2,
+                    shadowColor: statusColor,
+                    shadowOpacity: glowOpacity,
+                    shadowRadius: 15,
+                  }]}
+                >
+                  <View style={styles.studentHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.studentName}>{statusIcon} {student.name || 'Unknown'}</Text>
+                      <Text style={styles.studentId}>ID: {student.enrollmentNumber || 'N/A'}</Text>
+                    </View>
+                    <View style={[styles.statusBadge, {
+                      backgroundColor: statusColor
+                    }]}>
+                      <Text style={styles.statusText}>{studentStatus.toUpperCase()}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.studentFooter}>
+                    <Text style={styles.timerText}>{formatTime(student.timerValue || 0)}</Text>
+                    {student.isRunning && (
+                      <Text style={styles.runningIndicator}>● LIVE</Text>
+                    )}
+                  </View>
+                  <Text style={styles.tapHint}>Tap for details →</Text>
+                </Animated.View>
+              </TouchableOpacity>
+            );
+          })}
           {students.length === 0 && (
-            <Text style={styles.emptyText}>No students attending yet</Text>
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyIcon}>📭</Text>
+              <Text style={styles.emptyText}>No students attending yet</Text>
+              <Text style={styles.emptySubtext}>Students will appear here when they start their session</Text>
+            </View>
           )}
         </ScrollView>
+
+        {/* Student Detail Modal */}
+        {selectedStudent && (
+          <View style={styles.modalOverlay}>
+            <Animated.View style={[styles.modalContent, {
+              transform: [{ scale: scaleAnim }]
+            }]}>
+              <ScrollView>
+                {/* Header */}
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>📊 Student Details</Text>
+                  <TouchableOpacity onPress={closeStudentDetails}>
+                    <Text style={styles.modalClose}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {loadingDetails ? (
+                  <View style={styles.loadingContainer}>
+                    <Text style={styles.loadingText}>Loading...</Text>
+                  </View>
+                ) : (
+                  <>
+                    {/* Student Info */}
+                    <View style={styles.detailSection}>
+                      <Text style={styles.sectionTitle}>👤 Personal Information</Text>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Name:</Text>
+                        <Text style={styles.infoValue}>{selectedStudent?.name || 'Unknown'}</Text>
+                      </View>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Enrollment:</Text>
+                        <Text style={styles.infoValue}>{studentDetails?.enrollmentNo || selectedStudent?.enrollmentNumber || 'N/A'}</Text>
+                      </View>
+                      {studentDetails && (
+                        <>
+                          {studentDetails.email && (
+                            <View style={styles.infoRow}>
+                              <Text style={styles.infoLabel}>Email:</Text>
+                              <Text style={styles.infoValue}>{studentDetails.email}</Text>
+                            </View>
+                          )}
+                          {studentDetails.course && (
+                            <View style={styles.infoRow}>
+                              <Text style={styles.infoLabel}>Course:</Text>
+                              <Text style={styles.infoValue}>{studentDetails.course}</Text>
+                            </View>
+                          )}
+                          {studentDetails.semester && (
+                            <View style={styles.infoRow}>
+                              <Text style={styles.infoLabel}>Semester:</Text>
+                              <Text style={styles.infoValue}>{studentDetails.semester}</Text>
+                            </View>
+                          )}
+                          {studentDetails.phone && (
+                            <View style={styles.infoRow}>
+                              <Text style={styles.infoLabel}>Phone:</Text>
+                              <Text style={styles.infoValue}>{studentDetails.phone}</Text>
+                            </View>
+                          )}
+                        </>
+                      )}
+                    </View>
+
+                    {/* Current Status */}
+                    <View style={styles.detailSection}>
+                      <Text style={styles.sectionTitle}>⏱️ Current Session</Text>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Status:</Text>
+                        <Text style={[styles.infoValue, { 
+                          color: (selectedStudent?.status === 'present') ? '#00ff88' : 
+                                 (selectedStudent?.status === 'attending') ? '#ffaa00' : '#ff4444'
+                        }]}>
+                          {(selectedStudent?.status || 'absent').toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Timer:</Text>
+                        <Text style={styles.infoValue}>{formatTime(selectedStudent?.timerValue || 0)}</Text>
+                      </View>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Active:</Text>
+                        <Text style={styles.infoValue}>{selectedStudent?.isRunning ? 'Yes ●' : 'No'}</Text>
+                      </View>
+                    </View>
+
+                    {/* Attendance Statistics */}
+                    {attendanceStats && attendanceStats.total !== undefined && (
+                      <View style={styles.detailSection}>
+                        <Text style={styles.sectionTitle}>📈 Attendance Statistics</Text>
+                        <View style={styles.statsGrid}>
+                          <View style={styles.statBox}>
+                            <Text style={styles.statNumber}>{attendanceStats.total || 0}</Text>
+                            <Text style={styles.statLabel}>Total Days</Text>
+                          </View>
+                          <View style={styles.statBox}>
+                            <Text style={[styles.statNumber, { color: '#00ff88' }]}>{attendanceStats.present || 0}</Text>
+                            <Text style={styles.statLabel}>Present</Text>
+                          </View>
+                          <View style={styles.statBox}>
+                            <Text style={[styles.statNumber, { color: '#ff4444' }]}>{attendanceStats.absent || 0}</Text>
+                            <Text style={styles.statLabel}>Absent</Text>
+                          </View>
+                          <View style={styles.statBox}>
+                            <Text style={[styles.statNumber, { color: '#00d9ff' }]}>{attendanceStats.percentage || 0}%</Text>
+                            <Text style={styles.statLabel}>Percentage</Text>
+                          </View>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Attendance History */}
+                    {attendanceRecords && attendanceRecords.length > 0 && (
+                      <View style={styles.detailSection}>
+                        <Text style={styles.sectionTitle}>📅 Recent Attendance (Last 30 Days)</Text>
+                        {attendanceRecords.slice(0, 10).map((record, index) => {
+                          if (!record || !record.date) return null;
+                          return (
+                            <View key={index} style={styles.recordRow}>
+                              <Text style={styles.recordDate}>
+                                {new Date(record.date).toLocaleDateString('en-US', { 
+                                  month: 'short', 
+                                  day: 'numeric',
+                                  year: 'numeric'
+                                })}
+                              </Text>
+                              <Text style={[styles.recordStatus, {
+                                color: record.status === 'present' ? '#00ff88' : '#ff4444'
+                              }]}>
+                                {record.status === 'present' ? '✅ Present' : '❌ Absent'}
+                              </Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </>
+                )}
+              </ScrollView>
+            </Animated.View>
+          </View>
+        )}
       </Animated.View>
     );
   }
@@ -873,14 +1191,14 @@ export default function App() {
   const resetBtn = screen?.buttons?.[1] || getDefaultConfig().studentScreen.buttons[1];
 
   return (
-    <Animated.View style={[styles.container, { backgroundColor: screen?.backgroundColor || '#0a1628', opacity: fadeAnim }]}>
+    <Animated.View style={[styles.container, { backgroundColor: screen?.backgroundColor || '#0a1628', opacity: fadeAnim, paddingTop: 50 }]}>
       <StatusBar style="light" />
-      
+
       {/* Logout Button for Student */}
-      <TouchableOpacity onPress={handleLogout} style={[styles.logoutButton, { position: 'absolute', top: 40, right: 20, zIndex: 10 }]}>
+      <TouchableOpacity onPress={handleLogout} style={[styles.logoutButton, { position: 'absolute', top: 50, right: 20, zIndex: 10 }]}>
         <Text style={styles.logoutButtonText}>🚪</Text>
       </TouchableOpacity>
-      
+
       <Text style={[styles.glowText, {
         fontSize: screen?.title?.fontSize || 32,
         color: screen?.title?.color || '#00f5ff',
@@ -1035,7 +1353,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     width: '100%',
     paddingHorizontal: 20,
-    marginBottom: 10,
+    marginBottom: 15,
   },
   logoutButton: {
     backgroundColor: '#ff4444',
@@ -1046,6 +1364,214 @@ const styles = StyleSheet.create({
   },
   logoutButtonText: {
     color: '#ffffff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    paddingHorizontal: 10,
+    marginBottom: 15,
+  },
+  statCard: {
+    backgroundColor: '#0d1f3c',
+    borderWidth: 2,
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    minWidth: 70,
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#00f5ff',
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#00d9ff',
+    marginTop: 4,
+  },
+  percentageContainer: {
+    backgroundColor: '#0d1f3c',
+    borderWidth: 2,
+    borderColor: '#00d9ff',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    marginHorizontal: 20,
+    marginBottom: 15,
+    alignItems: 'center',
+  },
+  percentageText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#00f5ff',
+  },
+  listHeader: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderBottomWidth: 2,
+    borderBottomColor: '#00d9ff',
+    marginBottom: 10,
+  },
+  listHeaderText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#00f5ff',
+  },
+  listHeaderSubtext: {
+    fontSize: 12,
+    color: '#00d9ff80',
+    marginTop: 3,
+  },
+  studentId: {
+    fontSize: 12,
+    color: '#00d9ff80',
+    marginTop: 3,
+  },
+  studentFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 5,
+  },
+  runningIndicator: {
+    fontSize: 12,
+    color: '#00ff88',
+    fontWeight: 'bold',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyIcon: {
+    fontSize: 60,
+    marginBottom: 15,
+  },
+  emptySubtext: {
+    color: '#00d9ff80',
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 40,
+  },
+  tapHint: {
+    color: '#00d9ff80',
+    fontSize: 11,
+    textAlign: 'right',
+    marginTop: 8,
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#0d1f3c',
+    borderRadius: 20,
+    width: '100%',
+    maxHeight: '90%',
+    borderWidth: 2,
+    borderColor: '#00d9ff',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 2,
+    borderBottomColor: '#00d9ff',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#00f5ff',
+  },
+  modalClose: {
+    fontSize: 28,
+    color: '#ff4444',
+    fontWeight: 'bold',
+  },
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#00d9ff',
+    fontSize: 16,
+  },
+  detailSection: {
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#00d9ff40',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#00f5ff',
+    marginBottom: 15,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  infoLabel: {
+    color: '#00d9ff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  infoValue: {
+    color: '#ffffff',
+    fontSize: 14,
+    flex: 1,
+    textAlign: 'right',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  statBox: {
+    width: '48%',
+    backgroundColor: '#0a1628',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#00d9ff',
+  },
+  statNumber: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#00f5ff',
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#00d9ff',
+    marginTop: 5,
+  },
+  recordRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#00d9ff20',
+  },
+  recordDate: {
+    color: '#00d9ff',
+    fontSize: 14,
+  },
+  recordStatus: {
     fontSize: 14,
     fontWeight: 'bold',
   },

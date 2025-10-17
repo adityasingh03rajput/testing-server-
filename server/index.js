@@ -58,12 +58,30 @@ const timetableSchema = new mongoose.Schema({
 
 const Timetable = mongoose.model('Timetable', timetableSchema);
 
+// Attendance Record Schema
+const attendanceRecordSchema = new mongoose.Schema({
+    studentId: { type: String, required: true },
+    studentName: { type: String, required: true },
+    enrollmentNumber: String,
+    date: { type: Date, required: true },
+    status: { type: String, enum: ['present', 'absent'], required: true },
+    timerValue: { type: Number, default: 0 },
+    checkInTime: Date,
+    checkOutTime: Date,
+    semester: String,
+    branch: String,
+    createdAt: { type: Date, default: Date.now }
+});
+
+const AttendanceRecord = mongoose.model('AttendanceRecord', attendanceRecordSchema);
+
 // In-memory storage as fallback
 let studentsMemory = [];
 let timetableMemory = {};
 let studentManagementMemory = [];
 let teachersMemory = [];
 let classroomsMemory = [];
+let attendanceRecordsMemory = [];
 
 // SDUI Configuration endpoint
 app.get('/api/config', (req, res) => {
@@ -307,6 +325,151 @@ io.on('connection', (socket) => {
     });
 });
 
+// Attendance Records API
+app.post('/api/attendance/record', async (req, res) => {
+    try {
+        const { studentId, studentName, enrollmentNumber, status, timerValue, semester, branch } = req.body;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (mongoose.connection.readyState === 1) {
+            // Check if record already exists for today
+            let record = await AttendanceRecord.findOne({
+                studentId,
+                date: today
+            });
+
+            if (record) {
+                // Update existing record
+                record.status = status;
+                record.timerValue = timerValue;
+                record.checkOutTime = new Date();
+                await record.save();
+            } else {
+                // Create new record
+                record = new AttendanceRecord({
+                    studentId,
+                    studentName,
+                    enrollmentNumber,
+                    date: today,
+                    status,
+                    timerValue,
+                    checkInTime: new Date(),
+                    semester,
+                    branch
+                });
+                await record.save();
+            }
+            res.json({ success: true, record });
+        } else {
+            // In-memory storage
+            let record = attendanceRecordsMemory.find(r =>
+                r.studentId === studentId && r.date.toDateString() === today.toDateString()
+            );
+
+            if (record) {
+                record.status = status;
+                record.timerValue = timerValue;
+                record.checkOutTime = new Date();
+            } else {
+                record = {
+                    _id: 'record_' + Date.now(),
+                    studentId,
+                    studentName,
+                    enrollmentNumber,
+                    date: today,
+                    status,
+                    timerValue,
+                    checkInTime: new Date(),
+                    semester,
+                    branch
+                };
+                attendanceRecordsMemory.push(record);
+            }
+            res.json({ success: true, record });
+        }
+    } catch (error) {
+        console.error('Error saving attendance record:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get attendance records with filters
+app.get('/api/attendance/records', async (req, res) => {
+    try {
+        const { studentId, startDate, endDate, semester, branch } = req.query;
+        let query = {};
+
+        if (studentId) query.studentId = studentId;
+        if (semester) query.semester = semester;
+        if (branch) query.branch = branch;
+        if (startDate || endDate) {
+            query.date = {};
+            if (startDate) query.date.$gte = new Date(startDate);
+            if (endDate) query.date.$lte = new Date(endDate);
+        }
+
+        if (mongoose.connection.readyState === 1) {
+            const records = await AttendanceRecord.find(query).sort({ date: -1 });
+            res.json({ success: true, records });
+        } else {
+            let records = attendanceRecordsMemory;
+            if (studentId) records = records.filter(r => r.studentId === studentId);
+            if (semester) records = records.filter(r => r.semester === semester);
+            if (branch) records = records.filter(r => r.branch === branch);
+            res.json({ success: true, records });
+        }
+    } catch (error) {
+        console.error('Error fetching attendance records:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get attendance statistics
+app.get('/api/attendance/stats', async (req, res) => {
+    try {
+        const { studentId, semester, branch, startDate, endDate } = req.query;
+        let query = {};
+
+        if (studentId) query.studentId = studentId;
+        if (semester) query.semester = semester;
+        if (branch) query.branch = branch;
+        if (startDate || endDate) {
+            query.date = {};
+            if (startDate) query.date.$gte = new Date(startDate);
+            if (endDate) query.date.$lte = new Date(endDate);
+        }
+
+        if (mongoose.connection.readyState === 1) {
+            const records = await AttendanceRecord.find(query);
+            const total = records.length;
+            const present = records.filter(r => r.status === 'present').length;
+            const absent = records.filter(r => r.status === 'absent').length;
+            const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
+
+            res.json({
+                success: true,
+                stats: { total, present, absent, percentage }
+            });
+        } else {
+            let records = attendanceRecordsMemory;
+            if (studentId) records = records.filter(r => r.studentId === studentId);
+            const total = records.length;
+            const present = records.filter(r => r.status === 'present').length;
+            const absent = records.filter(r => r.status === 'absent').length;
+            const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
+
+            res.json({
+                success: true,
+                stats: { total, present, absent, percentage }
+            });
+        }
+    } catch (error) {
+        console.error('Error fetching attendance stats:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
     console.log('========================================');
@@ -443,6 +606,7 @@ const studentManagementSchema = new mongoose.Schema({
     semester: { type: String, required: true },
     dob: { type: Date, required: true },
     phone: String,
+    photoUrl: String,
     createdAt: { type: Date, default: Date.now }
 });
 
@@ -458,6 +622,35 @@ app.get('/api/students', async (req, res) => {
         }
     } catch (error) {
         console.error('Error fetching students:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get single student by enrollment number
+app.get('/api/student-management', async (req, res) => {
+    try {
+        const { enrollmentNo } = req.query;
+        if (!enrollmentNo) {
+            return res.status(400).json({ success: false, error: 'Enrollment number required' });
+        }
+
+        if (mongoose.connection.readyState === 1) {
+            const student = await StudentManagement.findOne({ enrollmentNo });
+            if (student) {
+                res.json({ success: true, student });
+            } else {
+                res.json({ success: false, error: 'Student not found' });
+            }
+        } else {
+            const student = studentManagementMemory.find(s => s.enrollmentNo === enrollmentNo);
+            if (student) {
+                res.json({ success: true, student });
+            } else {
+                res.json({ success: false, error: 'Student not found' });
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching student:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -569,8 +762,10 @@ const teacherSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     department: { type: String, required: true },
+    subject: { type: String, required: true },
     dob: { type: Date, required: true },
     phone: String,
+    semester: String,
     canEditTimetable: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now }
 });
