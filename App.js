@@ -17,6 +17,29 @@ const SEMESTER_KEY = '@user_semester';
 const BRANCH_KEY = '@user_branch';
 const USER_DATA_KEY = '@user_data';
 const LOGIN_ID_KEY = '@login_id';
+const THEME_KEY = '@app_theme';
+
+// Theme colors
+const THEMES = {
+  dark: {
+    background: '#0a1628',
+    cardBackground: '#0d1f3c',
+    text: '#ffffff',
+    textSecondary: '#00d9ff',
+    primary: '#00f5ff',
+    border: '#00d9ff',
+    statusBar: 'light',
+  },
+  light: {
+    background: '#f5f5f5',
+    cardBackground: '#ffffff',
+    text: '#2d3748',
+    textSecondary: '#4a5568',
+    primary: '#fbbf24',
+    border: '#fbbf24',
+    statusBar: 'dark',
+  }
+};
 
 const getDefaultConfig = () => ({
   roleSelection: {
@@ -88,6 +111,10 @@ export default function App() {
   const [loginError, setLoginError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [userData, setUserData] = useState(null);
+
+  // Theme state
+  const [isDarkTheme, setIsDarkTheme] = useState(true);
+  const theme = isDarkTheme ? THEMES.dark : THEMES.light;
 
   const intervalRef = useRef(null);
   const socketRef = useRef(null);
@@ -172,6 +199,12 @@ export default function App() {
 
   const loadConfig = async () => {
     try {
+      // Load theme preference
+      const savedTheme = await AsyncStorage.getItem(THEME_KEY);
+      if (savedTheme !== null) {
+        setIsDarkTheme(savedTheme === 'dark');
+      }
+
       // Check for saved login data
       const cachedUserData = await AsyncStorage.getItem(USER_DATA_KEY);
       const cachedLoginId = await AsyncStorage.getItem(LOGIN_ID_KEY);
@@ -203,6 +236,16 @@ export default function App() {
       fetchConfig();
     } catch (error) {
       console.log('Error loading cache:', error);
+    }
+  };
+
+  const toggleTheme = async () => {
+    const newTheme = !isDarkTheme;
+    setIsDarkTheme(newTheme);
+    try {
+      await AsyncStorage.setItem(THEME_KEY, newTheme ? 'dark' : 'light');
+    } catch (error) {
+      console.log('Error saving theme:', error);
     }
   };
 
@@ -881,55 +924,60 @@ export default function App() {
     const attendancePercentage = totalStudents > 0 ? Math.round((presentStudents / totalStudents) * 100) : 0;
 
     return (
-      <Animated.View style={[styles.container, { backgroundColor: teacherConfig?.backgroundColor || '#0a1628', opacity: fadeAnim, paddingTop: 50 }]}>
-        <StatusBar style="light" />
+      <Animated.View style={[styles.container, { backgroundColor: theme.background, opacity: fadeAnim, paddingTop: 50 }]}>
+        <StatusBar style={theme.statusBar} />
 
         {/* Teacher Info Header */}
         <View style={styles.teacherHeader}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.glowText, {
               fontSize: 28,
-              color: teacherConfig?.title?.color || '#00f5ff',
+              color: theme.primary,
             }]}>
               {teacherConfig?.title?.text || 'Teacher Dashboard'}
             </Text>
             <Text style={{
               fontSize: 16,
-              color: '#00d9ff',
+              color: theme.textSecondary,
               marginTop: 5,
             }}>
               👨‍🏫 {userData?.name || 'Teacher'}
             </Text>
             <Text style={{
               fontSize: 13,
-              color: '#00d9ff80',
+              color: theme.textSecondary + '80',
               marginTop: 2,
             }}>
               {userData?.department || ''} Department
             </Text>
           </View>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-            <Text style={styles.logoutButtonText}>🚪 Logout</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity onPress={toggleTheme} style={styles.themeButton}>
+              <Text style={styles.themeButtonText}>{isDarkTheme ? '☀️' : '🌙'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+              <Text style={styles.logoutButtonText}>🚪 Logout</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Statistics Cards */}
         <View style={styles.statsContainer}>
-          <View style={[styles.statCard, { borderColor: '#00f5ff' }]}>
-            <Text style={styles.statNumber}>{totalStudents}</Text>
-            <Text style={styles.statLabel}>Total</Text>
+          <View style={[styles.statCard, { borderColor: isDarkTheme ? '#00f5ff' : '#fbbf24', backgroundColor: theme.cardBackground }]}>
+            <Text style={[styles.statNumber, { color: isDarkTheme ? '#00f5ff' : '#fbbf24' }]}>{totalStudents}</Text>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total</Text>
           </View>
-          <View style={[styles.statCard, { borderColor: '#00ff88' }]}>
+          <View style={[styles.statCard, { borderColor: '#00ff88', backgroundColor: theme.cardBackground }]}>
             <Text style={[styles.statNumber, { color: '#00ff88' }]}>{presentStudents}</Text>
-            <Text style={styles.statLabel}>Present</Text>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Present</Text>
           </View>
-          <View style={[styles.statCard, { borderColor: '#ffaa00' }]}>
+          <View style={[styles.statCard, { borderColor: '#ffaa00', backgroundColor: theme.cardBackground }]}>
             <Text style={[styles.statNumber, { color: '#ffaa00' }]}>{attendingStudents}</Text>
-            <Text style={styles.statLabel}>Active</Text>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Active</Text>
           </View>
-          <View style={[styles.statCard, { borderColor: '#ff4444' }]}>
+          <View style={[styles.statCard, { borderColor: '#ff4444', backgroundColor: theme.cardBackground }]}>
             <Text style={[styles.statNumber, { color: '#ff4444' }]}>{absentStudents}</Text>
-            <Text style={styles.statLabel}>Absent</Text>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Absent</Text>
           </View>
         </View>
 
@@ -1002,7 +1050,7 @@ export default function App() {
               >
                 <Animated.View
                   style={[styles.studentCard, {
-                    backgroundColor: teacherConfig?.cardBackgroundColor || '#0d1f3c',
+                    backgroundColor: theme.cardBackground,
                     borderColor: statusColor,
                     borderWidth: 2,
                     shadowColor: statusColor,
@@ -1012,8 +1060,8 @@ export default function App() {
                 >
                   <View style={styles.studentHeader}>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.studentName}>{statusIcon} {student.name || 'Unknown'}</Text>
-                      <Text style={styles.studentId}>ID: {student.enrollmentNumber || 'N/A'}</Text>
+                      <Text style={[styles.studentName, { color: theme.text }]}>{statusIcon} {student.name || 'Unknown'}</Text>
+                      <Text style={[styles.studentId, { color: theme.textSecondary }]}>ID: {student.enrollmentNumber || 'N/A'}</Text>
                     </View>
                     <View style={[styles.statusBadge, {
                       backgroundColor: statusColor
@@ -1022,12 +1070,12 @@ export default function App() {
                     </View>
                   </View>
                   <View style={styles.studentFooter}>
-                    <Text style={styles.timerText}>{formatTime(student.timerValue || 0)}</Text>
+                    <Text style={[styles.timerText, { color: theme.text }]}>{formatTime(student.timerValue || 0)}</Text>
                     {student.isRunning && (
                       <Text style={styles.runningIndicator}>● LIVE</Text>
                     )}
                   </View>
-                  <Text style={styles.tapHint}>Tap for details →</Text>
+                  <Text style={[styles.tapHint, { color: theme.textSecondary + '80' }]}>Tap for details →</Text>
                 </Animated.View>
               </TouchableOpacity>
             );
@@ -1035,8 +1083,8 @@ export default function App() {
           {students.length === 0 && (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyIcon}>📭</Text>
-              <Text style={styles.emptyText}>No students attending yet</Text>
-              <Text style={styles.emptySubtext}>Students will appear here when they start their session</Text>
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No students attending yet</Text>
+              <Text style={[styles.emptySubtext, { color: theme.textSecondary + '80' }]}>Students will appear here when they start their session</Text>
             </View>
           )}
         </ScrollView>
@@ -1354,6 +1402,16 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingHorizontal: 20,
     marginBottom: 15,
+  },
+  themeButton: {
+    backgroundColor: '#fbbf24',
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 10,
+    marginTop: 5,
+  },
+  themeButtonText: {
+    fontSize: 18,
   },
   logoutButton: {
     backgroundColor: '#ff4444',

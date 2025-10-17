@@ -210,13 +210,8 @@ async function loadStudents() {
 function renderStudents(studentsToRender) {
     const tbody = document.getElementById('studentsTableBody');
     tbody.innerHTML = studentsToRender.map(student => {
-        // Check localStorage for photo first
-        let photoUrl = student.photoUrl;
-        if (photoUrl && photoUrl.startsWith('student_photo_')) {
-            photoUrl = localStorage.getItem(photoUrl) || `https://ui-avatars.com/api/?name=${encodeURIComponent(student.name)}&background=00d9ff&color=fff&size=128`;
-        } else if (!photoUrl) {
-            photoUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(student.name)}&background=00d9ff&color=fff&size=128`;
-        }
+        // Get photo URL
+        let photoUrl = student.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(student.name)}&background=00d9ff&color=fff&size=128`;
 
         return `
         <tr>
@@ -426,12 +421,27 @@ async function handleAddStudent(e) {
     const formData = new FormData(e.target);
     const studentData = Object.fromEntries(formData);
 
-    // Store photo in localStorage if captured
+    // Upload photo to server if captured
     if (studentData.photoData) {
-        const photoKey = `student_photo_${studentData.enrollmentNo}`;
-        localStorage.setItem(photoKey, studentData.photoData);
-        studentData.photoUrl = photoKey; // Store reference
-        delete studentData.photoData; // Don't send base64 in API call
+        try {
+            const photoResponse = await fetch(`${SERVER_URL}/api/upload-photo`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    photoData: studentData.photoData,
+                    type: 'student',
+                    id: studentData.enrollmentNo
+                })
+            });
+
+            if (photoResponse.ok) {
+                const photoResult = await photoResponse.json();
+                studentData.photoUrl = `${SERVER_URL}${photoResult.photoUrl}`;
+            }
+        } catch (error) {
+            console.error('Error uploading photo:', error);
+        }
+        delete studentData.photoData;
     }
 
     try {
@@ -680,12 +690,27 @@ async function handleAddTeacher(e) {
     const teacherData = Object.fromEntries(formData);
     teacherData.canEditTimetable = formData.has('canEditTimetable');
 
-    // Store photo in localStorage if captured
+    // Upload photo to server if captured
     if (teacherData.photoData) {
-        const photoKey = `teacher_photo_${teacherData.employeeId}`;
-        localStorage.setItem(photoKey, teacherData.photoData);
-        teacherData.photoUrl = photoKey; // Store reference
-        delete teacherData.photoData; // Don't send base64 in API call
+        try {
+            const photoResponse = await fetch(`${SERVER_URL}/api/upload-photo`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    photoData: teacherData.photoData,
+                    type: 'teacher',
+                    id: teacherData.employeeId
+                })
+            });
+
+            if (photoResponse.ok) {
+                const photoResult = await photoResponse.json();
+                teacherData.photoUrl = `${SERVER_URL}${photoResult.photoUrl}`;
+            }
+        } catch (error) {
+            console.error('Error uploading photo:', error);
+        }
+        delete teacherData.photoData;
     }
 
     try {
@@ -1264,6 +1289,15 @@ async function editStudent(id) {
     const student = students.find(s => s._id === id);
     if (!student) return;
 
+    // Get current photo
+    let currentPhotoUrl = student.photoUrl;
+    if (currentPhotoUrl && currentPhotoUrl.startsWith('student_photo_')) {
+        currentPhotoUrl = localStorage.getItem(currentPhotoUrl);
+    }
+    if (!currentPhotoUrl) {
+        currentPhotoUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(student.name)}&background=00d9ff&color=fff&size=128`;
+    }
+
     const modalBody = document.getElementById('modalBody');
     modalBody.innerHTML = `
         <h2>Edit Student</h2>
@@ -1307,8 +1341,35 @@ async function editStudent(id) {
                 <label>Phone Number</label>
                 <input type="tel" name="phone" class="form-input" value="${student.phone || ''}">
             </div>
+            <div class="form-group">
+                <label>Profile Photo</label>
+                <div class="photo-capture">
+                    <div class="photo-preview" id="photoPreview">
+                        <img src="${currentPhotoUrl}" alt="Current Photo" class="captured-photo">
+                    </div>
+                    <div class="photo-buttons">
+                        <button type="button" class="btn btn-secondary" onclick="openCamera()">📸 Take Photo</button>
+                        <button type="button" class="btn btn-secondary" onclick="uploadPhoto()">📁 Upload</button>
+                        <button type="button" class="btn btn-danger" onclick="clearPhoto()" id="clearPhotoBtn">🗑️ Clear</button>
+                    </div>
+                    <input type="file" id="photoUpload" accept="image/*" style="display:none;" onchange="handlePhotoUpload(event)">
+                    <input type="hidden" name="photoData" id="photoData">
+                </div>
+            </div>
             <button type="submit" class="btn btn-primary">Update Student</button>
         </form>
+        
+        <!-- Camera Modal -->
+        <div id="cameraModal" class="camera-modal" style="display:none;">
+            <div class="camera-content">
+                <video id="cameraVideo" autoplay playsinline></video>
+                <canvas id="cameraCanvas" style="display:none;"></canvas>
+                <div class="camera-controls">
+                    <button type="button" class="btn btn-primary" onclick="capturePhoto()">📸 Capture</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeCamera()">❌ Cancel</button>
+                </div>
+            </div>
+        </div>
     `;
 
     document.getElementById('editStudentForm').addEventListener('submit', async (e) => {
@@ -1319,6 +1380,29 @@ async function editStudent(id) {
         // Remove password if empty
         if (!studentData.password) {
             delete studentData.password;
+        }
+
+        // Upload photo to server if changed
+        if (studentData.photoData) {
+            try {
+                const photoResponse = await fetch(`${SERVER_URL}/api/upload-photo`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        photoData: studentData.photoData,
+                        type: 'student',
+                        id: studentData.enrollmentNo
+                    })
+                });
+
+                if (photoResponse.ok) {
+                    const photoResult = await photoResponse.json();
+                    studentData.photoUrl = `${SERVER_URL}${photoResult.photoUrl}`;
+                }
+            } catch (error) {
+                console.error('Error uploading photo:', error);
+            }
+            delete studentData.photoData;
         }
 
         try {
@@ -1346,6 +1430,15 @@ async function editStudent(id) {
 async function editTeacher(id) {
     const teacher = teachers.find(t => t._id === id);
     if (!teacher) return;
+
+    // Get current photo
+    let currentPhotoUrl = teacher.photoUrl;
+    if (currentPhotoUrl && currentPhotoUrl.startsWith('teacher_photo_')) {
+        currentPhotoUrl = localStorage.getItem(currentPhotoUrl);
+    }
+    if (!currentPhotoUrl) {
+        currentPhotoUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(teacher.name)}&background=7c3aed&color=fff&size=128`;
+    }
 
     const modalBody = document.getElementById('modalBody');
     modalBody.innerHTML = `
@@ -1393,12 +1486,39 @@ async function editTeacher(id) {
                 <input type="tel" name="phone" class="form-input" value="${teacher.phone || ''}">
             </div>
             <div class="form-group">
+                <label>Profile Photo</label>
+                <div class="photo-capture">
+                    <div class="photo-preview" id="photoPreview">
+                        <img src="${currentPhotoUrl}" alt="Current Photo" class="captured-photo">
+                    </div>
+                    <div class="photo-buttons">
+                        <button type="button" class="btn btn-secondary" onclick="openCamera()">📸 Take Photo</button>
+                        <button type="button" class="btn btn-secondary" onclick="uploadPhoto()">📁 Upload</button>
+                        <button type="button" class="btn btn-danger" onclick="clearPhoto()" id="clearPhotoBtn">🗑️ Clear</button>
+                    </div>
+                    <input type="file" id="photoUpload" accept="image/*" style="display:none;" onchange="handlePhotoUpload(event)">
+                    <input type="hidden" name="photoData" id="photoData">
+                </div>
+            </div>
+            <div class="form-group">
                 <label>
                     <input type="checkbox" name="canEditTimetable" ${teacher.canEditTimetable ? 'checked' : ''}> Can Edit Timetable
                 </label>
             </div>
             <button type="submit" class="btn btn-primary">Update Teacher</button>
         </form>
+        
+        <!-- Camera Modal -->
+        <div id="cameraModal" class="camera-modal" style="display:none;">
+            <div class="camera-content">
+                <video id="cameraVideo" autoplay playsinline></video>
+                <canvas id="cameraCanvas" style="display:none;"></canvas>
+                <div class="camera-controls">
+                    <button type="button" class="btn btn-primary" onclick="capturePhoto()">📸 Capture</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeCamera()">❌ Cancel</button>
+                </div>
+            </div>
+        </div>
     `;
 
     document.getElementById('editTeacherForm').addEventListener('submit', async (e) => {
@@ -1410,6 +1530,29 @@ async function editTeacher(id) {
         // Remove password if empty
         if (!teacherData.password) {
             delete teacherData.password;
+        }
+
+        // Upload photo to server if changed
+        if (teacherData.photoData) {
+            try {
+                const photoResponse = await fetch(`${SERVER_URL}/api/upload-photo`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        photoData: teacherData.photoData,
+                        type: 'teacher',
+                        id: teacherData.employeeId
+                    })
+                });
+
+                if (photoResponse.ok) {
+                    const photoResult = await photoResponse.json();
+                    teacherData.photoUrl = `${SERVER_URL}${photoResult.photoUrl}`;
+                }
+            } catch (error) {
+                console.error('Error uploading photo:', error);
+            }
+            delete teacherData.photoData;
         }
 
         try {

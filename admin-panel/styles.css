@@ -19,6 +19,22 @@
     --danger: #ef4444;
 }
 
+/* Light Theme */
+[data-theme="light"] {
+    --primary: #fbbf24;
+    --primary-dark: #f59e0b;
+    --secondary: #10b981;
+    --bg-dark: #f3f4f6;
+    --bg-card: #ffffff;
+    --bg-hover: #e5e7eb;
+    --text-primary: #1f2937;
+    --text-secondary: #6b7280;
+    --border: #d1d5db;
+    --success: #10b981;
+    --warning: #fbbf24;
+    --danger: #ef4444;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     background: var(--bg-dark);

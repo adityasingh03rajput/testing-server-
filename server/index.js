@@ -3,6 +3,8 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const http = require('http');
 const { Server } = require('socket.io');
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -14,7 +16,17 @@ const io = new Server(server, {
 });
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir);
+}
+
+// Serve uploaded files
+app.use('/uploads', express.static(uploadsDir));
 
 // MongoDB Connection
 const MONGO_URI = 'mongodb://localhost:27017/attendance_app';
@@ -651,6 +663,34 @@ app.get('/api/student-management', async (req, res) => {
         }
     } catch (error) {
         console.error('Error fetching student:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Photo upload endpoint
+app.post('/api/upload-photo', async (req, res) => {
+    try {
+        const { photoData, type, id } = req.body;
+        
+        if (!photoData) {
+            return res.status(400).json({ success: false, error: 'No photo data provided' });
+        }
+
+        // Extract base64 data
+        const base64Data = photoData.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        
+        // Generate filename
+        const filename = `${type}_${id}_${Date.now()}.jpg`;
+        const filepath = path.join(uploadsDir, filename);
+        
+        // Save file
+        fs.writeFileSync(filepath, buffer);
+        
+        const photoUrl = `/uploads/${filename}`;
+        res.json({ success: true, photoUrl });
+    } catch (error) {
+        console.error('Error uploading photo:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
