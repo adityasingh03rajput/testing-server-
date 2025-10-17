@@ -1380,6 +1380,14 @@ export default function App() {
   const startPauseBtn = screen?.buttons?.[0] || getDefaultConfig().studentScreen.buttons[0];
   const resetBtn = screen?.buttons?.[1] || getDefaultConfig().studentScreen.buttons[1];
 
+  // Calculate current status
+  const currentStatus = timeLeft === 0 ? 'present' : isRunning ? 'attending' : 'absent';
+  const statusColor = currentStatus === 'present' ? (isDarkTheme ? '#00ff88' : '#059669') :
+    currentStatus === 'attending' ? (isDarkTheme ? '#ffaa00' : '#d97706') :
+    (isDarkTheme ? '#ff4444' : '#dc2626');
+  const statusText = currentStatus === 'present' ? '✅ Completed' :
+    currentStatus === 'attending' ? '⏱️ In Progress' : '❌ Not Started';
+
   return (
     <Animated.View style={[styles.container, { backgroundColor: theme.background, opacity: fadeAnim, paddingTop: 50 }]}>
       <StatusBar style={theme.statusBar} />
@@ -1399,83 +1407,184 @@ export default function App() {
       <Text style={[styles.glowText, {
         fontSize: screen?.title?.fontSize || 32,
         color: theme.primary,
-        marginBottom: 20,
+        marginBottom: 10,
       }]}>
         {screen?.title?.text || 'Countdown Timer'}
       </Text>
-      <Text style={[styles.studentNameDisplay, { color: theme.text }]}>👋 {studentName}</Text>
+      
+      {/* Student Info Card */}
+      <View style={{
+        backgroundColor: theme.cardBackground,
+        borderRadius: 15,
+        padding: 15,
+        marginBottom: 20,
+        borderWidth: 2,
+        borderColor: theme.border,
+        width: '100%',
+        maxWidth: 400,
+      }}>
+        <Text style={[styles.studentNameDisplay, { color: theme.text, fontSize: 18, marginBottom: 8 }]}>
+          👋 {studentName}
+        </Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View>
+            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
+              {userData?.enrollmentNo || 'Student'}
+            </Text>
+            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
+              {semester && branch ? `Sem ${semester} • ${branch}` : ''}
+            </Text>
+          </View>
+          <View style={{
+            backgroundColor: statusColor + '20',
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: statusColor,
+          }}>
+            <Text style={{ color: statusColor, fontSize: 12, fontWeight: 'bold' }}>
+              {statusText}
+            </Text>
+          </View>
+        </View>
+      </View>
 
+      {/* Timer Display */}
       <Animated.View style={{
-        backgroundColor: screen?.timer?.backgroundColor || '#0d1f3c',
+        backgroundColor: theme.cardBackground,
         borderRadius: screen?.timer?.borderRadius || 20,
         padding: 40,
-        marginBottom: 50,
+        marginBottom: 30,
         shadowColor: theme.primary,
         shadowOpacity: glowOpacity,
         shadowRadius: 30,
         elevation: 20,
-        borderWidth: 2,
-        borderColor: theme.border,
+        borderWidth: 3,
+        borderColor: isRunning ? statusColor : theme.border,
         transform: [{ scale: pulseAnim }],
+        width: '100%',
+        maxWidth: 400,
+        alignItems: 'center',
       }}>
         <Text style={{
           fontSize: screen?.timer?.fontSize || 72,
           fontWeight: 'bold',
-          color: screen?.timer?.textColor || theme.primary,
+          color: theme.primary,
+          letterSpacing: 4,
         }}>
           {formatTime(timeLeft)}
         </Text>
+        {isRunning && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+            <View style={{
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: statusColor,
+              marginRight: 6,
+            }} />
+            <Text style={{ color: statusColor, fontSize: 14, fontWeight: 'bold' }}>
+              LIVE
+            </Text>
+          </View>
+        )}
       </Animated.View>
 
+      {/* Control Buttons */}
       <View style={styles.buttonContainer}>
-        <TouchableOpacity onPress={handleStartPause} activeOpacity={0.8}>
+        <TouchableOpacity onPress={handleStartPause} activeOpacity={0.8} style={{ flex: 1 }}>
           <Animated.View style={[styles.button, {
-            backgroundColor: startPauseBtn?.backgroundColor || theme.primary,
+            backgroundColor: isRunning ? (isDarkTheme ? '#ff4444' : '#dc2626') : theme.primary,
             shadowColor: theme.primary,
             shadowOpacity: glowOpacity,
             shadowRadius: 15,
           }]}>
             <Text style={[styles.buttonText, {
-              color: isDarkTheme ? '#0a1628' : '#ffffff',
+              color: '#ffffff',
               fontSize: startPauseBtn?.fontSize || 18
             }]}>
-              {isRunning ? (startPauseBtn?.pauseText || 'PAUSE') : (startPauseBtn?.text || 'START')}
+              {isRunning ? '⏸️ PAUSE' : '▶️ START'}
             </Text>
           </Animated.View>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={handleReset} activeOpacity={0.8}>
+        <TouchableOpacity onPress={handleReset} activeOpacity={0.8} style={{ flex: 1 }}>
           <Animated.View style={[styles.button, {
-            backgroundColor: resetBtn?.backgroundColor || theme.border,
+            backgroundColor: isDarkTheme ? '#0d1f3c' : '#f3f4f6',
+            borderWidth: 2,
+            borderColor: theme.border,
             shadowColor: theme.primary,
-            shadowOpacity: glowOpacity,
-            shadowRadius: 15,
+            shadowOpacity: glowOpacity * 0.5,
+            shadowRadius: 10,
           }]}>
             <Text style={[styles.buttonText, {
               color: theme.text,
               fontSize: resetBtn?.fontSize || 18
             }]}>
-              {resetBtn?.text || 'RESET'}
+              🔄 RESET
             </Text>
           </Animated.View>
         </TouchableOpacity>
       </View>
 
+      {/* Timetable Button */}
       <TouchableOpacity onPress={() => {
         fetchTimetable(semester, branch);
         setShowTimetable(true);
-      }} activeOpacity={0.8} style={{ marginTop: 20 }}>
-        <Animated.View style={[styles.button, {
-          backgroundColor: '#00bfff',
-          shadowColor: '#00bfff',
-          shadowOpacity: glowOpacity,
-          shadowRadius: 15,
-        }]}>
-          <Text style={[styles.buttonText, { color: '#060c15ff', fontSize: 16 }]}>
-            VIEW TIMETABLE
+      }} activeOpacity={0.8} style={{ marginTop: 20, width: '100%', maxWidth: 400 }}>
+        <Animated.View style={{
+          backgroundColor: isDarkTheme ? '#0d1f3c' : '#ffffff',
+          borderWidth: 2,
+          borderColor: theme.border,
+          paddingVertical: 15,
+          paddingHorizontal: 30,
+          borderRadius: 15,
+          alignItems: 'center',
+          shadowColor: theme.primary,
+          shadowOpacity: glowOpacity * 0.3,
+          shadowRadius: 10,
+          elevation: 5,
+        }}>
+          <Text style={{ color: theme.primary, fontSize: 16, fontWeight: 'bold' }}>
+            📅 VIEW TIMETABLE
           </Text>
         </Animated.View>
       </TouchableOpacity>
+
+      {/* Quick Stats */}
+      <View style={{
+        marginTop: 30,
+        width: '100%',
+        maxWidth: 400,
+        backgroundColor: theme.cardBackground,
+        borderRadius: 15,
+        padding: 20,
+        borderWidth: 2,
+        borderColor: theme.border,
+      }}>
+        <Text style={{ color: theme.primary, fontSize: 16, fontWeight: 'bold', marginBottom: 15 }}>
+          📊 Session Info
+        </Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+          <Text style={{ color: theme.textSecondary, fontSize: 14 }}>Total Duration:</Text>
+          <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
+            {formatTime(config?.studentScreen?.timer?.duration || 120)}
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+          <Text style={{ color: theme.textSecondary, fontSize: 14 }}>Time Remaining:</Text>
+          <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
+            {formatTime(timeLeft)}
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Text style={{ color: theme.textSecondary, fontSize: 14 }}>Progress:</Text>
+          <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
+            {Math.round(((config?.studentScreen?.timer?.duration || 120) - timeLeft) / (config?.studentScreen?.timer?.duration || 120) * 100)}%
+          </Text>
+        </View>
+      </View>
     </Animated.View>
   );
 }
