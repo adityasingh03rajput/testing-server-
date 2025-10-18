@@ -10,3 +10,12 @@ npm-debug.*
 *.orig.*
 web-build/
 node_modules
+
+# Uploaded files (user photos)
+server/uploads/
+uploads/
+
+# Build outputs
+android/app/build/
+android/.gradle/
+ios/build/
