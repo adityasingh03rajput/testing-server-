@@ -436,14 +436,23 @@ async function handleAddStudent(e) {
                 })
             });
 
-            if (photoResponse.ok) {
-                const photoResult = await photoResponse.json();
+            const photoResult = await photoResponse.json();
+            
+            if (photoResponse.ok && photoResult.success) {
                 // Server now returns full URL, no need to prepend SERVER_URL
                 studentData.photoUrl = photoResult.photoUrl;
-                console.log('📸 Photo uploaded, URL:', studentData.photoUrl);
+                console.log('✅ Photo uploaded with face detected:', studentData.photoUrl);
+            } else {
+                // Face not detected or other error
+                const errorMsg = photoResult.error || 'Photo upload failed';
+                console.error('❌ Photo upload failed:', errorMsg);
+                alert('Photo Upload Failed\n\n' + errorMsg + '\n\nPlease use a clear, well-lit photo showing your face.');
+                return; // Don't save student if photo validation failed
             }
         } catch (error) {
             console.error('Error uploading photo:', error);
+            alert('❌ Error uploading photo: ' + error.message);
+            return; // Don't save student if photo upload failed
         }
         delete studentData.photoData;
     }
@@ -707,13 +716,21 @@ async function handleAddTeacher(e) {
                 })
             });
 
-            if (photoResponse.ok) {
-                const photoResult = await photoResponse.json();
-                // Server now returns full URL, no need to prepend SERVER_URL
+            const photoResult = await photoResponse.json();
+            
+            if (photoResponse.ok && photoResult.success) {
                 teacherData.photoUrl = photoResult.photoUrl;
+                console.log('✅ Photo uploaded with face detected');
+            } else {
+                const errorMsg = photoResult.error || 'Photo upload failed';
+                console.error('❌ Photo upload failed:', errorMsg);
+                alert('Photo Upload Failed\n\n' + errorMsg + '\n\nPlease use a clear, well-lit photo showing your face.');
+                return;
             }
         } catch (error) {
             console.error('Error uploading photo:', error);
+            alert('❌ Error uploading photo: ' + error.message);
+            return;
         }
         delete teacherData.photoData;
     }
@@ -1400,11 +1417,16 @@ async function editStudent(id) {
                     })
                 });
 
-                if (photoResponse.ok) {
-                    const photoResult = await photoResponse.json();
-                    // Server now returns full URL, no need to prepend SERVER_URL
+                const photoResult = await photoResponse.json();
+                
+                if (photoResponse.ok && photoResult.success) {
                     studentData.photoUrl = photoResult.photoUrl;
-                    console.log('📸 Photo updated, URL:', studentData.photoUrl);
+                    console.log('✅ Photo updated with face detected');
+                } else {
+                    const errorMsg = photoResult.error || 'Photo upload failed';
+                    console.error('❌ Photo upload failed:', errorMsg);
+                    alert('Photo Upload Failed\n\n' + errorMsg + '\n\nPlease use a clear, well-lit photo showing your face.');
+                    return;
                 }
             } catch (error) {
                 console.error('Error uploading photo:', error);
@@ -1552,13 +1574,21 @@ async function editTeacher(id) {
                     })
                 });
 
-                if (photoResponse.ok) {
-                    const photoResult = await photoResponse.json();
-                    // Server now returns full URL, no need to prepend SERVER_URL
+                const photoResult = await photoResponse.json();
+                
+                if (photoResponse.ok && photoResult.success) {
                     teacherData.photoUrl = photoResult.photoUrl;
+                    console.log('✅ Photo updated with face detected');
+                } else {
+                    const errorMsg = photoResult.error || 'Photo upload failed';
+                    console.error('❌ Photo upload failed:', errorMsg);
+                    alert('Photo Upload Failed\n\n' + errorMsg + '\n\nPlease use a clear, well-lit photo showing your face.');
+                    return;
                 }
             } catch (error) {
                 console.error('Error uploading photo:', error);
+                alert('❌ Error uploading photo: ' + error.message);
+                return;
             }
             delete teacherData.photoData;
         }

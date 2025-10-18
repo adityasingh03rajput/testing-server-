@@ -482,9 +482,19 @@ app.get('/api/attendance/stats', async (req, res) => {
     }
 });
 
-const bcrypt = require('bcrypt');
+const faceApiService = require('./face-api-service');
 
-// Face Verification API - Using bcrypt hash comparison
+// Load face-api.js models on startup
+faceApiService.loadModels().then(loaded => {
+    if (loaded) {
+        console.log('✅ Face-API.js ready for face recognition');
+    } else {
+        console.log('❌ Face-API.js models not loaded - face verification will not work!');
+        console.log('💡 Run: node server/download-models.js');
+    }
+});
+
+// Face Verification API - Using face-api.js only
 app.post('/api/verify-face', async (req, res) => {
     try {
         const { userId, capturedImage } = req.body;
@@ -586,26 +596,47 @@ app.post('/api/verify-face', async (req, res) => {
 
         const startTime = Date.now();
 
-        // Use bcrypt to compare images (hash-based comparison)
-        console.log('🔐 Verifying face with bcrypt...');
-        const referenceHash = await bcrypt.hash(referenceImageBase64.substring(0, 5000), 10);
-        const capturedSample = capturedImage.substring(0, 5000);
-        const isMatch = await bcrypt.compare(capturedSample, referenceHash);
-        const verificationTime = Date.now() - startTime;
-        const match = isMatch;
-        const confidence = match ? 85 : 20;
+        // Check if models are loaded
+        if (!faceApiService.areModelsLoaded()) {
+            console.log('❌ Face-API.js models not loaded');
+            return res.status(503).json({
+                success: false,
+                match: false,
+                confidence: 0,
+                message: 'Face recognition service not available. Please contact administrator.'
+            });
+        }
 
-        console.log(`📊 Face verification result:`);
+        // Use face-api.js for verification
+        console.log('🤖 Using face-api.js for verification...');
+        
+        const result = await faceApiService.compareFaces(capturedImage, referenceImageBase64);
+        const verificationTime = Date.now() - startTime;
+
+        if (!result.success) {
+            console.log('❌ Face verification failed:', result.message);
+            return res.json({
+                success: false,
+                match: false,
+                confidence: 0,
+                message: result.message
+            });
+        }
+
+        console.log(`📊 Face-API.js result:`);
         console.log(`   Verification time: ${verificationTime}ms`);
-        console.log(`   Match: ${match ? 'YES' : 'NO'}`);
-        console.log(`   Confidence: ${confidence}%`);
+        console.log(`   Match: ${result.match ? 'YES' : 'NO'}`);
+        console.log(`   Confidence: ${result.confidence}%`);
+        console.log(`   Distance: ${result.distance}`);
         console.log(`   User: ${user.name}`);
 
         res.json({
             success: true,
-            match: match,
-            confidence: confidence,
-            message: match ? 'Face verified successfully' : 'Face does not match'
+            match: result.match,
+            confidence: result.confidence,
+            distance: result.distance,
+            message: result.message,
+            method: 'face-api.js'
         });
     } catch (error) {
         console.error('❌ Face verification error:', error);
@@ -820,11 +851,63 @@ app.post('/api/upload-photo', async (req, res) => {
 
         // Extract base64 data
         const base64Data = photoData.replace(/^data:image\/\w+;base64,/, '');
+
+        // Validate face detection before saving
+        console.log('🔍 Validating face in uploaded photo...');
+        
+        if (faceApiService.areModelsLoaded()) {
+            try {
+                const canvas = require('canvas');
+                const buffer = Buffer.from(base64Data, 'base64');
+                const img = await canvas.loadImage(buffer);
+                
+                console.log(`   Photo size: ${img.width}x${img.height}px`);
+                
+                // Try to detect face with aggressive settings
+                const faceapi = require('face-api.js');
+                const detectionOptions = [
+                    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.2 }),
+                    new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.15 }),
+                    new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.1 })
+                ];
+
+                let faceDetected = false;
+                for (let i = 0; i < detectionOptions.length; i++) {
+                    try {
+                        const detection = await faceapi.detectSingleFace(img, detectionOptions[i]);
+                        if (detection) {
+                            faceDetected = true;
+                            console.log(`   ✅ Face detected! Score: ${detection.score.toFixed(3)}`);
+                            break;
+                        }
+                    } catch (detectionError) {
+                        console.log(`   Attempt ${i + 1} failed:`, detectionError.message);
+                    }
+                }
+
+                if (!faceDetected) {
+                    console.log('   ❌ No face detected in uploaded photo');
+                    return res.status(400).json({ 
+                        success: false, 
+                        error: 'No face detected',
+                        message: 'No face detected. Please use a clear, well-lit photo showing your face.'
+                    });
+                }
+            } catch (validationError) {
+                console.error('   ❌ Face validation error:', validationError.message);
+                // Continue without validation if there's an error
+                console.log('   ⚠️  Skipping face validation due to error');
+            }
+        } else {
+            console.log('⚠️  Face detection models not loaded, skipping validation');
+        }
+
         const buffer = Buffer.from(base64Data, 'base64');
 
-        // Generate filename with sanitized id
-        const sanitizedId = id.replace(/[^a-zA-Z0-9]/g, '_');
-        const filename = `${type}_${sanitizedId}_${Date.now()}.jpg`;
+        // Generate filename with sanitized id (limit length)
+        const sanitizedId = String(id).replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
+        const timestamp = Date.now();
+        const filename = `${type}_${sanitizedId}_${timestamp}.jpg`;
         const filepath = path.join(uploadsDir, filename);
 
         // Save file to disk
@@ -833,7 +916,7 @@ app.post('/api/upload-photo', async (req, res) => {
 
         // Use full URL with IP address so mobile app can access it
         const photoUrl = `http://192.168.107.31:3000/uploads/${filename}`;
-        res.json({ success: true, photoUrl, filename });
+        res.json({ success: true, photoUrl, filename, message: 'Photo uploaded successfully with face detected!' });
     } catch (error) {
         console.error('❌ Error uploading photo:', error);
         res.status(500).json({ success: false, error: error.message });
