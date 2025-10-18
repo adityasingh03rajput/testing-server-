@@ -680,17 +680,33 @@ app.post('/api/upload-photo', async (req, res) => {
         const base64Data = photoData.replace(/^data:image\/\w+;base64,/, '');
         const buffer = Buffer.from(base64Data, 'base64');
         
-        // Generate filename
-        const filename = `${type}_${id}_${Date.now()}.jpg`;
+        // Generate filename with sanitized id
+        const sanitizedId = id.replace(/[^a-zA-Z0-9]/g, '_');
+        const filename = `${type}_${sanitizedId}_${Date.now()}.jpg`;
         const filepath = path.join(uploadsDir, filename);
         
-        // Save file
+        // Save file to disk
         fs.writeFileSync(filepath, buffer);
+        console.log(`✅ Photo saved: ${filename}`);
         
         const photoUrl = `/uploads/${filename}`;
-        res.json({ success: true, photoUrl });
+        res.json({ success: true, photoUrl, filename });
     } catch (error) {
-        console.error('Error uploading photo:', error);
+        console.error('❌ Error uploading photo:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get photo by filename (for testing)
+app.get('/api/photo/:filename', (req, res) => {
+    try {
+        const filepath = path.join(uploadsDir, req.params.filename);
+        if (fs.existsSync(filepath)) {
+            res.sendFile(filepath);
+        } else {
+            res.status(404).json({ success: false, error: 'Photo not found' });
+        }
+    } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
