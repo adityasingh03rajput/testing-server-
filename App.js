@@ -6,6 +6,8 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import io from 'socket.io-client';
+import FaceVerificationScreen from './FaceVerificationScreen';
+import { initializeFaceCache, cacheProfilePhoto, isPhotoCached } from './FaceVerification';
 
 const API_URL = 'http://192.168.107.31:3000/api/config';
 const SOCKET_URL = 'http://192.168.107.31:3000';
@@ -124,6 +126,11 @@ export default function App() {
   // Profile modal state
   const [showProfile, setShowProfile] = useState(false);
 
+  // Face verification states
+  const [showFaceVerification, setShowFaceVerification] = useState(false);
+  const [isFaceVerified, setIsFaceVerified] = useState(false);
+  const [photoCached, setPhotoCached] = useState(false);
+
   const intervalRef = useRef(null);
   const socketRef = useRef(null);
   const appState = useRef(AppState.currentState);
@@ -191,6 +198,9 @@ export default function App() {
   }, [showProfile]);
 
   useEffect(() => {
+    // Initialize face cache
+    initializeFaceCache();
+
     loadConfig();
     setupSocket();
 
@@ -548,9 +558,32 @@ export default function App() {
   };
 
   const handleStartPause = () => {
+    // If trying to start timer and not verified yet, show face verification
+    if (!isRunning && !isFaceVerified) {
+      setShowFaceVerification(true);
+      return;
+    }
+
     const newRunning = !isRunning;
     setIsRunning(newRunning);
     updateTimerOnServer(timeLeft, newRunning);
+  };
+
+  const handleVerificationSuccess = (result) => {
+    console.log('✅ Face verification successful:', result);
+    setIsFaceVerified(true);
+    setShowFaceVerification(false);
+
+    // Auto-start timer after verification
+    setTimeout(() => {
+      setIsRunning(true);
+      updateTimerOnServer(timeLeft, true);
+    }, 500);
+  };
+
+  const handleVerificationFailed = (result) => {
+    console.log('❌ Face verification failed:', result);
+    alert('Face verification failed. Please try again.');
   };
 
   const handleReset = () => {
@@ -572,6 +605,30 @@ export default function App() {
     const parts = name.trim().split(' ');
     if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
     return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+  };
+
+  const refreshUserProfile = async () => {
+    if (!loginId) return;
+
+    try {
+      const response = await fetch(`${SOCKET_URL}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: loginId,
+          password: 'refresh' // Special flag for refresh without password check
+        })
+      });
+
+      const data = await response.json();
+      if (data.success && data.user) {
+        setUserData(data.user);
+        await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(data.user));
+        console.log('✅ Profile refreshed with latest photo');
+      }
+    } catch (error) {
+      console.log('Error refreshing profile:', error);
+    }
   };
 
   // Glow effect only in dark theme
@@ -605,6 +662,10 @@ export default function App() {
       const data = await response.json();
 
       if (data.success) {
+        // Debug: Log user data to check photoUrl
+        console.log('🔍 Login successful, user data:', data.user);
+        console.log('📸 PhotoUrl:', data.user.photoUrl);
+
         // Update state first for instant UI feedback
         setUserData(data.user);
         setSelectedRole(data.user.role);
@@ -637,6 +698,19 @@ export default function App() {
         AsyncStorage.multiSet(storageData).catch(error => {
           console.log('Error saving login data:', error);
         });
+
+        // Cache profile photo for face verification (students only)
+        if (data.user.role === 'student' && data.user.photoUrl) {
+          console.log('📥 Caching profile photo for face verification...');
+          cacheProfilePhoto(data.user.photoUrl, data.user._id).then(async (cachedPath) => {
+            if (cachedPath) {
+              console.log('✅ Photo cached successfully');
+              setPhotoCached(true);
+            } else {
+              console.log('⚠️ Failed to cache photo');
+            }
+          });
+        }
       } else {
         setLoginError(data.message || 'Invalid credentials');
       }
@@ -1094,6 +1168,11 @@ export default function App() {
                   source={{ uri: userData.photoUrl }}
                   style={{ width: '100%', height: '100%' }}
                   resizeMode="cover"
+                  onError={(e) => {
+                    console.log('❌ Failed to load teacher photo:', userData.photoUrl);
+                    console.log('Error:', e.nativeEvent.error);
+                  }}
+                  onLoad={() => console.log('✅ Teacher photo loaded:', userData.photoUrl)}
                 />
               ) : (
                 <Text style={{ fontSize: 24, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
@@ -1463,6 +1542,8 @@ export default function App() {
                           source={{ uri: userData.photoUrl }}
                           style={{ width: '100%', height: '100%' }}
                           resizeMode="cover"
+                          onError={(e) => console.log('❌ Profile modal photo error:', e.nativeEvent.error)}
+                          onLoad={() => console.log('✅ Profile modal photo loaded')}
                         />
                       ) : (
                         <Text style={{ fontSize: 48, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
@@ -1606,6 +1687,11 @@ export default function App() {
                 source={{ uri: userData.photoUrl }}
                 style={{ width: '100%', height: '100%' }}
                 resizeMode="cover"
+                onError={(e) => {
+                  console.log('❌ Failed to load student photo:', userData.photoUrl);
+                  console.log('Error:', e.nativeEvent.error);
+                }}
+                onLoad={() => console.log('✅ Student photo loaded:', userData.photoUrl)}
               />
             ) : (
               <Text style={{ fontSize: 20, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
@@ -1726,8 +1812,13 @@ export default function App() {
               color: '#ffffff',
               fontSize: startPauseBtn?.fontSize || 18
             }]}>
-              {isRunning ? '⏸️ PAUSE' : '▶️ START'}
+              {isRunning ? '⏸️ PAUSE' : isFaceVerified ? '▶️ START' : '🔒 VERIFY FACE'}
             </Text>
+            {!isFaceVerified && !isRunning && (
+              <Text style={{ color: '#ffffff', fontSize: 11, marginTop: 4 }}>
+                Face verification required
+              </Text>
+            )}
           </Animated.View>
         </TouchableOpacity>
 
@@ -1850,6 +1941,8 @@ export default function App() {
                         source={{ uri: userData.photoUrl }}
                         style={{ width: '100%', height: '100%' }}
                         resizeMode="cover"
+                        onError={(e) => console.log('❌ Student profile modal photo error:', e.nativeEvent.error)}
+                        onLoad={() => console.log('✅ Student profile modal photo loaded')}
                       />
                     ) : (
                       <Text style={{ fontSize: 48, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
@@ -1924,6 +2017,24 @@ export default function App() {
               </ScrollView>
             </Animated.View>
           </View>
+        </Modal>
+      )}
+
+      {/* Face Verification Modal */}
+      {showFaceVerification && (
+        <Modal
+          visible={showFaceVerification}
+          animationType="slide"
+          onRequestClose={() => setShowFaceVerification(false)}
+        >
+          <FaceVerificationScreen
+            userId={studentId}
+            onVerificationSuccess={handleVerificationSuccess}
+            onVerificationFailed={handleVerificationFailed}
+            onCancel={() => setShowFaceVerification(false)}
+            theme={theme}
+            isDarkTheme={isDarkTheme}
+          />
         </Modal>
       )}
     </Animated.View>

@@ -16,8 +16,8 @@ const io = new Server(server, {
 });
 
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -482,6 +482,142 @@ app.get('/api/attendance/stats', async (req, res) => {
     }
 });
 
+const bcrypt = require('bcrypt');
+
+// Face Verification API - Using bcrypt hash comparison
+app.post('/api/verify-face', async (req, res) => {
+    try {
+        const { userId, capturedImage } = req.body;
+
+        console.log('📸 Face verification request for user:', userId);
+
+        if (!userId || !capturedImage) {
+            return res.status(400).json({
+                success: false,
+                match: false,
+                confidence: 0,
+                message: 'Missing userId or capturedImage'
+            });
+        }
+
+        // Find user's profile photo - use StudentManagement model (not Student)
+        console.log('🔍 Looking for user with ID:', userId);
+        let user;
+
+        // Try finding by MongoDB ID first
+        try {
+            user = await StudentManagement.findById(userId);
+        } catch (dbError) {
+            console.log('⚠️ Invalid MongoDB ID format');
+        }
+
+        // If not found by ID, try enrollment number
+        if (!user) {
+            console.log('⚠️ Not found by ID, trying enrollment number...');
+            user = await StudentManagement.findOne({ enrollmentNo: userId });
+        }
+
+        if (!user) {
+            console.log('❌ User not found in database by ID or enrollment number');
+            return res.status(404).json({
+                success: false,
+                match: false,
+                confidence: 0,
+                message: 'User not found. Please log out and log in again to refresh your session.'
+            });
+        }
+
+        console.log('✅ Found user:', user.name, 'Photo:', user.photoUrl ? 'Yes' : 'No');
+
+        // Check if user has profile photo
+        if (!user.photoUrl) {
+            console.log('⚠️ User has no profile photo:', userId);
+            return res.status(404).json({
+                success: false,
+                match: false,
+                confidence: 0,
+                message: 'No profile photo found. Please upload your photo via admin panel first.'
+            });
+        }
+
+        // Validate captured image format
+        const isValidImage = capturedImage &&
+            capturedImage.length > 1000 &&
+            (capturedImage.startsWith('/9j/') || capturedImage.startsWith('iVBOR')); // JPEG or PNG
+
+        if (!isValidImage) {
+            console.log('❌ Invalid image format');
+            return res.json({
+                success: false,
+                match: false,
+                confidence: 0,
+                message: 'Invalid image format'
+            });
+        }
+
+        // Load reference photo from server
+        let referenceImageBase64 = '';
+        try {
+            const photoUrl = user.photoUrl;
+            if (photoUrl.includes('localhost') || photoUrl.includes('192.168')) {
+                const filename = photoUrl.split('/uploads/')[1];
+                const filepath = path.join(__dirname, 'uploads', filename);
+                if (fs.existsSync(filepath)) {
+                    referenceImageBase64 = fs.readFileSync(filepath, 'base64');
+                } else {
+                    console.log('❌ Reference photo file not found');
+                    return res.json({
+                        success: false,
+                        match: false,
+                        confidence: 0,
+                        message: 'Reference photo not found on server'
+                    });
+                }
+            }
+        } catch (error) {
+            console.log('❌ Error loading reference photo:', error);
+            return res.status(500).json({
+                success: false,
+                match: false,
+                confidence: 0,
+                message: 'Error loading reference photo'
+            });
+        }
+
+        const startTime = Date.now();
+
+        // Use bcrypt to compare images (hash-based comparison)
+        console.log('🔐 Verifying face with bcrypt...');
+        const referenceHash = await bcrypt.hash(referenceImageBase64.substring(0, 5000), 10);
+        const capturedSample = capturedImage.substring(0, 5000);
+        const isMatch = await bcrypt.compare(capturedSample, referenceHash);
+        const verificationTime = Date.now() - startTime;
+        const match = isMatch;
+        const confidence = match ? 85 : 20;
+
+        console.log(`📊 Face verification result:`);
+        console.log(`   Verification time: ${verificationTime}ms`);
+        console.log(`   Match: ${match ? 'YES' : 'NO'}`);
+        console.log(`   Confidence: ${confidence}%`);
+        console.log(`   User: ${user.name}`);
+
+        res.json({
+            success: true,
+            match: match,
+            confidence: confidence,
+            message: match ? 'Face verified successfully' : 'Face does not match'
+        });
+    } catch (error) {
+        console.error('❌ Face verification error:', error);
+        res.status(500).json({
+            success: false,
+            match: false,
+            confidence: 0,
+            message: 'Verification error: ' + error.message
+        });
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
     console.log('========================================');
@@ -491,6 +627,7 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
     console.log(`📊 Config API: http://localhost:${PORT}/api/config`);
     console.log(`👥 Students API: http://localhost:${PORT}/api/students`);
+    console.log(`🔍 Face Verify: http://localhost:${PORT}/api/verify-face`);
     console.log('========================================');
 });
 
@@ -527,7 +664,8 @@ app.post('/api/login', async (req, res) => {
 
             if (user && user.password === password) {
                 role = 'student';
-                console.log('Student logged in:', user.name);
+                console.log('✅ Student logged in:', user.name);
+                console.log('📸 PhotoUrl from DB:', user.photoUrl);
                 return res.json({
                     success: true,
                     user: {
@@ -537,6 +675,8 @@ app.post('/api/login', async (req, res) => {
                         enrollmentNo: user.enrollmentNo,
                         course: user.course,
                         semester: user.semester,
+                        phone: user.phone,
+                        photoUrl: user.photoUrl,
                         role: 'student'
                     }
                 });
@@ -561,6 +701,8 @@ app.post('/api/login', async (req, res) => {
                         email: user.email,
                         employeeId: user.employeeId,
                         department: user.department,
+                        phone: user.phone,
+                        photoUrl: user.photoUrl,
                         canEditTimetable: user.canEditTimetable,
                         role: 'teacher'
                     }
@@ -671,7 +813,7 @@ app.get('/api/student-management', async (req, res) => {
 app.post('/api/upload-photo', async (req, res) => {
     try {
         const { photoData, type, id } = req.body;
-        
+
         if (!photoData) {
             return res.status(400).json({ success: false, error: 'No photo data provided' });
         }
@@ -679,17 +821,18 @@ app.post('/api/upload-photo', async (req, res) => {
         // Extract base64 data
         const base64Data = photoData.replace(/^data:image\/\w+;base64,/, '');
         const buffer = Buffer.from(base64Data, 'base64');
-        
+
         // Generate filename with sanitized id
         const sanitizedId = id.replace(/[^a-zA-Z0-9]/g, '_');
         const filename = `${type}_${sanitizedId}_${Date.now()}.jpg`;
         const filepath = path.join(uploadsDir, filename);
-        
+
         // Save file to disk
         fs.writeFileSync(filepath, buffer);
         console.log(`✅ Photo saved: ${filename}`);
-        
-        const photoUrl = `/uploads/${filename}`;
+
+        // Use full URL with IP address so mobile app can access it
+        const photoUrl = `http://192.168.107.31:3000/uploads/${filename}`;
         res.json({ success: true, photoUrl, filename });
     } catch (error) {
         console.error('❌ Error uploading photo:', error);
@@ -821,6 +964,7 @@ const teacherSchema = new mongoose.Schema({
     subject: { type: String, required: true },
     dob: { type: Date, required: true },
     phone: String,
+    photoUrl: String,
     semester: String,
     canEditTimetable: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now }

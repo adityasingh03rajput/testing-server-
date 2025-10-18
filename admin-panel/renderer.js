@@ -1,6 +1,8 @@
 
 // Configuration
-let SERVER_URL = 'http://localhost:3000';
+// IMPORTANT: Use your server's IP address so mobile app can access photos
+// Change this to your actual server IP (check with ipconfig or ifconfig)
+let SERVER_URL = 'http://192.168.107.31:3000';
 
 // State
 let students = [];
@@ -436,7 +438,9 @@ async function handleAddStudent(e) {
 
             if (photoResponse.ok) {
                 const photoResult = await photoResponse.json();
-                studentData.photoUrl = `${SERVER_URL}${photoResult.photoUrl}`;
+                // Server now returns full URL, no need to prepend SERVER_URL
+                studentData.photoUrl = photoResult.photoUrl;
+                console.log('📸 Photo uploaded, URL:', studentData.photoUrl);
             }
         } catch (error) {
             console.error('Error uploading photo:', error);
@@ -705,7 +709,8 @@ async function handleAddTeacher(e) {
 
             if (photoResponse.ok) {
                 const photoResult = await photoResponse.json();
-                teacherData.photoUrl = `${SERVER_URL}${photoResult.photoUrl}`;
+                // Server now returns full URL, no need to prepend SERVER_URL
+                teacherData.photoUrl = photoResult.photoUrl;
             }
         } catch (error) {
             console.error('Error uploading photo:', error);
@@ -1397,7 +1402,9 @@ async function editStudent(id) {
 
                 if (photoResponse.ok) {
                     const photoResult = await photoResponse.json();
-                    studentData.photoUrl = `${SERVER_URL}${photoResult.photoUrl}`;
+                    // Server now returns full URL, no need to prepend SERVER_URL
+                    studentData.photoUrl = photoResult.photoUrl;
+                    console.log('📸 Photo updated, URL:', studentData.photoUrl);
                 }
             } catch (error) {
                 console.error('Error uploading photo:', error);
@@ -1547,7 +1554,8 @@ async function editTeacher(id) {
 
                 if (photoResponse.ok) {
                     const photoResult = await photoResponse.json();
-                    teacherData.photoUrl = `${SERVER_URL}${photoResult.photoUrl}`;
+                    // Server now returns full URL, no need to prepend SERVER_URL
+                    teacherData.photoUrl = photoResult.photoUrl;
                 }
             } catch (error) {
                 console.error('Error uploading photo:', error);
