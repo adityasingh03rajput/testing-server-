@@ -20,6 +20,98 @@ document.addEventListener('DOMContentLoaded', () => {
 function initializeApp() {
     loadSettings();
     loadDashboardData();
+    // Initialize cursor tracking after a short delay to ensure DOM is ready
+    setTimeout(() => {
+        initCursorTracking();
+    }, 500);
+}
+
+// Global Cursor Light Effect
+function initCursorTracking() {
+    console.log('🎨 Initializing Global Cursor Light...');
+
+    // Remove existing spotlight if any
+    const existingSpotlight = document.querySelector('.global-spotlight');
+    if (existingSpotlight) {
+        existingSpotlight.remove();
+    }
+
+    // Create global spotlight
+    const spotlight = document.createElement('div');
+    spotlight.className = 'global-spotlight';
+    document.body.appendChild(spotlight);
+    console.log('✅ Global spotlight created');
+
+    // Track mouse movement everywhere
+    document.addEventListener('mousemove', (e) => {
+        // Always show spotlight and follow cursor
+        spotlight.style.left = `${e.clientX}px`;
+        spotlight.style.top = `${e.clientY}px`;
+        spotlight.style.opacity = '1';
+
+        // Update bento cards if they exist
+        const bentoCards = document.querySelectorAll('.bento-card');
+        if (bentoCards.length > 0) {
+            const SPOTLIGHT_RADIUS = 300;
+            const PROXIMITY = SPOTLIGHT_RADIUS * 0.5;
+            const FADE_DISTANCE = SPOTLIGHT_RADIUS * 0.75;
+
+            bentoCards.forEach(card => {
+                const cardRect = card.getBoundingClientRect();
+
+                // Calculate relative position for card glow
+                const relativeX = ((e.clientX - cardRect.left) / cardRect.width) * 100;
+                const relativeY = ((e.clientY - cardRect.top) / cardRect.height) * 100;
+
+                card.style.setProperty('--glow-x', `${relativeX}%`);
+                card.style.setProperty('--glow-y', `${relativeY}%`);
+
+                // Calculate distance from cursor to card center
+                const centerX = cardRect.left + cardRect.width / 2;
+                const centerY = cardRect.top + cardRect.height / 2;
+                const distance = Math.hypot(e.clientX - centerX, e.clientY - centerY) -
+                    Math.max(cardRect.width, cardRect.height) / 2;
+                const effectiveDistance = Math.max(0, distance);
+
+                // Calculate glow intensity
+                let glowIntensity = 0;
+                if (effectiveDistance <= PROXIMITY) {
+                    glowIntensity = 1;
+                } else if (effectiveDistance <= FADE_DISTANCE) {
+                    glowIntensity = (FADE_DISTANCE - effectiveDistance) / (FADE_DISTANCE - PROXIMITY);
+                }
+
+                card.style.setProperty('--glow-intensity', glowIntensity.toString());
+            });
+        }
+
+        // Subtle glow on navigation items only
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(element => {
+            const rect = element.getBoundingClientRect();
+            const distance = Math.hypot(
+                e.clientX - (rect.left + rect.width / 2),
+                e.clientY - (rect.top + rect.height / 2)
+            );
+
+            if (distance < 150) {
+                const intensity = 1 - (distance / 150);
+                element.style.boxShadow = `0 0 ${15 * intensity}px rgba(0, 217, 255, ${0.2 * intensity})`;
+            } else {
+                element.style.boxShadow = '';
+            }
+        });
+    });
+
+    // Handle mouse leave document
+    document.addEventListener('mouseleave', () => {
+        spotlight.style.opacity = '0';
+    });
+
+    // Handle mouse enter document
+    document.addEventListener('mouseenter', () => {
+        spotlight.style.opacity = '1';
+    });
 }
 
 function setupEventListeners() {
@@ -78,7 +170,10 @@ function switchSection(sectionName) {
         case 'students': loadStudents(); break;
         case 'teachers': loadTeachers(); break;
         case 'classrooms': loadClassrooms(); break;
-        case 'dashboard': loadDashboardData(); break;
+        case 'dashboard':
+            loadDashboardData();
+            setTimeout(() => initCursorTracking(), 300);
+            break;
     }
 }
 
@@ -133,16 +228,30 @@ async function loadDashboardData() {
         document.getElementById('totalTimetables').textContent = '12'; // 4 courses × 3 semesters
         document.getElementById('totalAttendance').textContent = records.length;
 
-        // Course distribution
+        // Course distribution with progress bars
         const courseCounts = students.reduce((acc, s) => {
             acc[s.course] = (acc[s.course] || 0) + 1;
             return acc;
         }, {});
 
-        document.getElementById('cseCount').textContent = courseCounts.CSE || 0;
-        document.getElementById('eceCount').textContent = courseCounts.ECE || 0;
-        document.getElementById('meCount').textContent = courseCounts.ME || 0;
-        document.getElementById('civilCount').textContent = courseCounts.Civil || 0;
+        const totalStudents = students.length;
+        const courses = ['CSE', 'ECE', 'ME', 'Civil'];
+
+        courses.forEach(course => {
+            const count = courseCounts[course] || 0;
+            const percentage = totalStudents > 0 ? (count / totalStudents * 100).toFixed(1) : 0;
+
+            const countId = course === 'Civil' ? 'civilCount' : `${course.toLowerCase()}Count`;
+            const progressId = course === 'Civil' ? 'civilProgress' : `${course.toLowerCase()}Progress`;
+
+            document.getElementById(countId).textContent = count;
+            const progressBar = document.getElementById(progressId);
+            if (progressBar) {
+                setTimeout(() => {
+                    progressBar.style.width = `${percentage}%`;
+                }, 100);
+            }
+        });
 
         // Semester distribution
         const semesterCounts = students.reduce((acc, s) => {
@@ -437,7 +546,7 @@ async function handleAddStudent(e) {
             });
 
             const photoResult = await photoResponse.json();
-            
+
             if (photoResponse.ok && photoResult.success) {
                 // Server now returns full URL, no need to prepend SERVER_URL
                 studentData.photoUrl = photoResult.photoUrl;
@@ -717,7 +826,7 @@ async function handleAddTeacher(e) {
             });
 
             const photoResult = await photoResponse.json();
-            
+
             if (photoResponse.ok && photoResult.success) {
                 teacherData.photoUrl = photoResult.photoUrl;
                 console.log('✅ Photo uploaded with face detected');
@@ -1045,6 +1154,13 @@ async function handleBulkClassroomImport(e) {
 
 
 // Timetable Management
+// Advanced Timetable Editor State
+let selectedCells = [];
+let clipboardData = null;
+let undoStack = [];
+let redoStack = [];
+let timetableHistory = [];
+
 async function loadTimetable() {
     const semester = document.getElementById('timetableSemester').value;
     const course = document.getElementById('timetableCourse').value;
@@ -1060,7 +1176,8 @@ async function loadTimetable() {
 
         if (data.success) {
             currentTimetable = data.timetable;
-            renderTimetableEditor(currentTimetable);
+            saveToHistory();
+            renderAdvancedTimetableEditor(currentTimetable);
         } else {
             showNotification('No timetable found. Create a new one.', 'info');
         }
@@ -1090,105 +1207,317 @@ function createNewTimetable() {
         { number: 8, startTime: '15:30', endTime: '16:10' }
     ];
 
-    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const timetable = {};
     days.forEach(day => {
         timetable[day] = periods.map(p => ({
             period: p.number,
             subject: p.number === 4 ? 'Lunch Break' : p.number === 6 ? 'Break' : '',
             room: '',
-            isBreak: p.number === 4 || p.number === 6
+            isBreak: p.number === 4 || p.number === 6,
+            teacher: '',
+            color: ''
         }));
     });
 
     currentTimetable = { semester, branch: course, periods, timetable };
-    renderTimetableEditor(currentTimetable);
+    saveToHistory();
+    renderAdvancedTimetableEditor(currentTimetable);
 }
 
-function renderTimetableEditor(timetable) {
-    const editor = document.getElementById('timetableEditor');
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+// History Management
+function saveToHistory() {
+    if (currentTimetable) {
+        undoStack.push(JSON.parse(JSON.stringify(currentTimetable)));
+        redoStack = [];
+        if (undoStack.length > 50) undoStack.shift();
+    }
+}
 
-    let html = '<div class="timetable-info">';
-    html += `<p><strong>Course:</strong> ${timetable.branch} | <strong>Semester:</strong> ${timetable.semester}</p>`;
-    html += `<p><strong>Schedule:</strong> Monday to Friday | <strong>Periods:</strong> 8 (including breaks)</p>`;
+function undo() {
+    if (undoStack.length > 1) {
+        redoStack.push(undoStack.pop());
+        currentTimetable = JSON.parse(JSON.stringify(undoStack[undoStack.length - 1]));
+        renderAdvancedTimetableEditor(currentTimetable);
+        showNotification('Undo successful', 'success');
+    }
+}
+
+function redo() {
+    if (redoStack.length > 0) {
+        const state = redoStack.pop();
+        undoStack.push(state);
+        currentTimetable = JSON.parse(JSON.stringify(state));
+        renderAdvancedTimetableEditor(currentTimetable);
+        showNotification('Redo successful', 'success');
+    }
+}
+
+function renderAdvancedTimetableEditor(timetable) {
+    const editor = document.getElementById('timetableEditor');
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+    let html = '';
+
+    // Advanced Toolbar
+    html += '<div class="advanced-toolbar">';
+    html += '<div class="toolbar-section">';
+    html += '<h3>📝 Edit Tools</h3>';
+    html += '<button class="tool-btn" onclick="undo()" title="Undo (Ctrl+Z)">↶ Undo</button>';
+    html += '<button class="tool-btn" onclick="redo()" title="Redo (Ctrl+Y)">↷ Redo</button>';
+    html += '<button class="tool-btn" onclick="clearSelection()">✖ Clear Selection</button>';
     html += '</div>';
 
-    html += '<div class="timetable-grid">';
+    html += '<div class="toolbar-section">';
+    html += '<h3>📋 Copy/Paste</h3>';
+    html += '<button class="tool-btn" onclick="copySelected()">📄 Copy</button>';
+    html += '<button class="tool-btn" onclick="pasteToSelected()">📋 Paste</button>';
+    html += '<button class="tool-btn" onclick="cutSelected()">✂️ Cut</button>';
+    html += '</div>';
+
+    html += '<div class="toolbar-section">';
+    html += '<h3>🔄 Bulk Actions</h3>';
+    html += '<button class="tool-btn" onclick="showCopyDayDialog()">📅 Copy Day</button>';
+    html += '<button class="tool-btn" onclick="showFillDialog()">🎨 Fill Cells</button>';
+    html += '<button class="tool-btn" onclick="clearDay()">🗑️ Clear Day</button>';
+    html += '</div>';
+
+    html += '<div class="toolbar-section">';
+    html += '<h3>📚 Subject Tools</h3>';
+    html += '<button class="tool-btn" onclick="showSubjectManager()">📖 Manage Subjects</button>';
+    html += '<button class="tool-btn" onclick="showTeacherAssign()">👨‍🏫 Assign Teachers</button>';
+    html += '<button class="tool-btn" onclick="showColorPicker()">🎨 Color Code</button>';
+    html += '</div>';
+
+    html += '<div class="toolbar-section">';
+    html += '<h3>🔍 View Options</h3>';
+    html += '<button class="tool-btn" onclick="toggleTeacherView()">� Show Teacihers</button>';
+    html += '<button class="tool-btn" onclick="toggleRoomView()">🏢 Show Rooms</button>';
+    html += '<button class="tool-btn" onclick="toggleCompactView()">📏 Compact View</button>';
+    html += '</div>';
+
+    html += '<div class="toolbar-section">';
+    html += '<h3>📤 Export/Import</h3>';
+    html += '<button class="tool-btn" onclick="exportToPDF()">📄 Export PDF</button>';
+    html += '<button class="tool-btn" onclick="exportToExcel()">📊 Export Excel</button>';
+    html += '<button class="tool-btn" onclick="showImportDialog()">📥 Import</button>';
+    html += '</div>';
+
+    html += '<div class="toolbar-section">';
+    html += '<h3>⚙️ Advanced</h3>';
+    html += '<button class="tool-btn" onclick="showTemplateDialog()">💾 Save Template</button>';
+    html += '<button class="tool-btn" onclick="duplicateTimetable()">📑 Duplicate</button>';
+    html += '<button class="tool-btn" onclick="showConflictCheck()">⚠️ Check Conflicts</button>';
+    html += '</div>';
+    html += '</div>';
+
+    // Timetable Info
+    html += '<div class="timetable-info-advanced">';
+    html += `<div class="info-item"><strong>Course:</strong> ${timetable.branch}</div>`;
+    html += `<div class="info-item"><strong>Semester:</strong> ${timetable.semester}</div>`;
+    html += `<div class="info-item"><strong>Days:</strong> 6 (Mon-Sat)</div>`;
+    html += `<div class="info-item"><strong>Periods:</strong> 8 per day</div>`;
+    html += `<div class="info-item"><strong>Selected:</strong> <span id="selectedCount">0</span> cells</div>`;
+    html += '</div>';
+
+    // Timetable Grid
+    html += '<div class="timetable-grid-advanced">';
 
     // Header row
-    html += '<div class="timetable-cell header">Day/Period</div>';
+    html += '<div class="tt-cell tt-header tt-corner">Day/Period</div>';
     timetable.periods.forEach(period => {
         const isBreak = period.number === 4 || period.number === 6;
-        html += `<div class="timetable-cell header ${isBreak ? 'break-header' : ''}">
-            ${isBreak ? (period.number === 4 ? '🍽️' : '☕') : `P${period.number}`}<br>
-            <small>${period.startTime}-${period.endTime}</small>
+        html += `<div class="tt-cell tt-header ${isBreak ? 'tt-break-header' : ''}">
+            <div class="period-number">${isBreak ? (period.number === 4 ? '🍽️' : '☕') : `P${period.number}`}</div>
+            <div class="period-time">${period.startTime}-${period.endTime}</div>
         </div>`;
     });
 
     // Data rows
     days.forEach((day, dayIdx) => {
-        html += `<div class="timetable-cell header">${day}</div>`;
+        html += `<div class="tt-cell tt-header tt-day-header">${day}</div>`;
         const daySchedule = timetable.timetable[dayKeys[dayIdx]] || [];
         daySchedule.forEach((period, periodIdx) => {
             const isBreak = period.isBreak || period.subject.includes('Break');
-            html += `<div class="timetable-cell ${isBreak ? 'break-cell' : 'editable'}" ${!isBreak ? `onclick="editTimetableCell(${dayIdx}, ${periodIdx})"` : ''}>
+            const cellId = `cell-${dayIdx}-${periodIdx}`;
+            const bgColor = period.color || '';
+
+            html += `<div class="tt-cell ${isBreak ? 'tt-break-cell' : 'tt-editable'}" 
+                id="${cellId}"
+                data-day="${dayIdx}" 
+                data-period="${periodIdx}"
+                style="${bgColor ? `background-color: ${bgColor}` : ''}"
+                ${!isBreak ? `onclick="handleCellClick(event, ${dayIdx}, ${periodIdx})"` : ''}
+                ${!isBreak ? `ondblclick="editAdvancedCell(${dayIdx}, ${periodIdx})"` : ''}
+                ${!isBreak ? `oncontextmenu="showCellContextMenu(event, ${dayIdx}, ${periodIdx}); return false;"` : ''}>
                 ${isBreak ? `<div class="break-label">${period.subject}</div>` : `
-                    <div class="subject-name">${period.subject || '-'}</div>
-                    ${period.room ? `<div class="room-name">${period.room}</div>` : ''}
+                    <div class="cell-content">
+                        <div class="subject-name">${period.subject || '-'}</div>
+                        ${period.teacher ? `<div class="teacher-name">👨‍🏫 ${period.teacher}</div>` : ''}
+                        ${period.room ? `<div class="room-name">🏢 ${period.room}</div>` : ''}
+                    </div>
                 `}
             </div>`;
         });
     });
 
     html += '</div>';
-    html += '<div class="timetable-actions">';
+
+    // Quick Actions Bar
+    html += '<div class="quick-actions-bar">';
     html += '<button class="btn btn-primary" onclick="saveTimetable()">💾 Save Timetable</button>';
-    html += '<button class="btn btn-secondary" onclick="exportTimetable()">📥 Export</button>';
+    html += '<button class="btn btn-success" onclick="autoFillTimetable()">🤖 Auto Fill</button>';
+    html += '<button class="btn btn-warning" onclick="validateTimetable()">✓ Validate</button>';
+    html += '<button class="btn btn-secondary" onclick="printTimetable()">🖨️ Print</button>';
+    html += '<button class="btn btn-info" onclick="shareTimetable()">🔗 Share</button>';
     html += '</div>';
 
     editor.innerHTML = html;
+
+    // Initialize keyboard shortcuts
+    initKeyboardShortcuts();
+}
+
+// Keep old function for backward compatibility
+function renderTimetableEditor(timetable) {
+    renderAdvancedTimetableEditor(timetable);
 }
 
 
-function editTimetableCell(dayIdx, periodIdx) {
+// Cell Selection and Interaction
+function handleCellClick(event, dayIdx, periodIdx) {
+    const cellId = `cell-${dayIdx}-${periodIdx}`;
+    const cell = document.getElementById(cellId);
+
+    if (event.ctrlKey || event.metaKey) {
+        // Multi-select with Ctrl
+        toggleCellSelection(cellId, dayIdx, periodIdx);
+    } else if (event.shiftKey && selectedCells.length > 0) {
+        // Range select with Shift
+        selectRange(selectedCells[0], { dayIdx, periodIdx });
+    } else {
+        // Single select
+        clearSelection();
+        toggleCellSelection(cellId, dayIdx, periodIdx);
+    }
+}
+
+function toggleCellSelection(cellId, dayIdx, periodIdx) {
+    const cell = document.getElementById(cellId);
+    const index = selectedCells.findIndex(c => c.cellId === cellId);
+
+    if (index >= 0) {
+        selectedCells.splice(index, 1);
+        cell.classList.remove('selected');
+    } else {
+        selectedCells.push({ cellId, dayIdx, periodIdx });
+        cell.classList.add('selected');
+    }
+
+    document.getElementById('selectedCount').textContent = selectedCells.length;
+}
+
+function clearSelection() {
+    selectedCells.forEach(({ cellId }) => {
+        const cell = document.getElementById(cellId);
+        if (cell) cell.classList.remove('selected');
+    });
+    selectedCells = [];
+    document.getElementById('selectedCount').textContent = '0';
+}
+
+function selectRange(start, end) {
+    clearSelection();
+    const minDay = Math.min(start.dayIdx, end.dayIdx);
+    const maxDay = Math.max(start.dayIdx, end.dayIdx);
+    const minPeriod = Math.min(start.periodIdx, end.periodIdx);
+    const maxPeriod = Math.max(start.periodIdx, end.periodIdx);
+
+    for (let d = minDay; d <= maxDay; d++) {
+        for (let p = minPeriod; p <= maxPeriod; p++) {
+            const cellId = `cell-${d}-${p}`;
+            toggleCellSelection(cellId, d, p);
+        }
+    }
+}
+
+function editAdvancedCell(dayIdx, periodIdx) {
     const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
 
+    // Generate teacher options
+    const teacherOptions = teachers.map(t =>
+        `<option value="${t.name}" ${period.teacher === t.name ? 'selected' : ''}>${t.name} (${t.employeeId})</option>`
+    ).join('');
+
     const modalBody = document.getElementById('modalBody');
     modalBody.innerHTML = `
-        <h2>Edit Period</h2>
+        <h2>✏️ Edit Period</h2>
         <form id="periodForm">
             <div class="form-group">
-                <label>Subject</label>
-                <input type="text" name="subject" class="form-input" value="${period.subject || ''}">
+                <label>📚 Subject</label>
+                <input type="text" name="subject" class="form-input" value="${period.subject || ''}" list="subjectList">
+                <datalist id="subjectList">
+                    <option value="Mathematics">
+                    <option value="Physics">
+                    <option value="Chemistry">
+                    <option value="Programming">
+                    <option value="Data Structures">
+                    <option value="DBMS">
+                    <option value="Operating Systems">
+                    <option value="Computer Networks">
+                </datalist>
             </div>
             <div class="form-group">
-                <label>Room</label>
+                <label>👨‍🏫 Teacher</label>
+                <select name="teacher" class="form-select">
+                    <option value="">-- Select Teacher --</option>
+                    ${teacherOptions}
+                </select>
+                <small style="color: var(--text-secondary); font-size: 12px;">Only registered teachers can be assigned</small>
+            </div>
+            <div class="form-group">
+                <label>🏢 Room</label>
                 <input type="text" name="room" class="form-input" value="${period.room || ''}">
             </div>
             <div class="form-group">
+                <label>🎨 Color</label>
+                <input type="color" name="color" class="form-input" value="${period.color || '#ffffff'}">
+            </div>
+            <div class="form-group">
                 <label>
-                    <input type="checkbox" name="isBreak" ${period.isBreak ? 'checked' : ''}> Is Break
+                    <input type="checkbox" name="isBreak" ${period.isBreak ? 'checked' : ''}> Is Break Period
                 </label>
             </div>
-            <button type="submit" class="btn btn-primary">Save</button>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">💾 Save</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
         </form>
     `;
 
     document.getElementById('periodForm').addEventListener('submit', (e) => {
         e.preventDefault();
+        saveToHistory();
         const formData = new FormData(e.target);
         period.subject = formData.get('subject');
+        period.teacher = formData.get('teacher');
         period.room = formData.get('room');
+        period.color = formData.get('color');
         period.isBreak = formData.has('isBreak');
 
         closeModal();
-        renderTimetableEditor(currentTimetable);
+        renderAdvancedTimetableEditor(currentTimetable);
+        showNotification('Period updated successfully', 'success');
     });
 
     openModal();
+}
+
+// Keep old function for compatibility
+function editTimetableCell(dayIdx, periodIdx) {
+    editAdvancedCell(dayIdx, periodIdx);
 }
 
 async function saveTimetable() {
@@ -1207,6 +1536,239 @@ async function saveTimetable() {
     } catch (error) {
         showNotification('Error: ' + error.message, 'error');
     }
+}
+
+// Copy/Paste Functions
+function copySelected() {
+    if (selectedCells.length === 0) {
+        showNotification('No cells selected', 'warning');
+        return;
+    }
+
+    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    clipboardData = selectedCells.map(({ dayIdx, periodIdx }) => {
+        const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
+        return JSON.parse(JSON.stringify(period));
+    });
+
+    showNotification(`Copied ${selectedCells.length} cell(s)`, 'success');
+}
+
+function cutSelected() {
+    copySelected();
+    if (clipboardData) {
+        saveToHistory();
+        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        selectedCells.forEach(({ dayIdx, periodIdx }) => {
+            const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
+            if (!period.isBreak) {
+                period.subject = '';
+                period.teacher = '';
+                period.room = '';
+                period.color = '';
+            }
+        });
+        renderAdvancedTimetableEditor(currentTimetable);
+        showNotification('Cut successful', 'success');
+    }
+}
+
+function pasteToSelected() {
+    if (!clipboardData || clipboardData.length === 0) {
+        showNotification('Nothing to paste', 'warning');
+        return;
+    }
+
+    if (selectedCells.length === 0) {
+        showNotification('No cells selected', 'warning');
+        return;
+    }
+
+    saveToHistory();
+    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+    selectedCells.forEach(({ dayIdx, periodIdx }, index) => {
+        const sourceData = clipboardData[index % clipboardData.length];
+        const targetPeriod = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
+
+        if (!targetPeriod.isBreak) {
+            targetPeriod.subject = sourceData.subject;
+            targetPeriod.teacher = sourceData.teacher;
+            targetPeriod.room = sourceData.room;
+            targetPeriod.color = sourceData.color;
+        }
+    });
+
+    renderAdvancedTimetableEditor(currentTimetable);
+    showNotification('Paste successful', 'success');
+}
+
+// Bulk Actions
+function showCopyDayDialog() {
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>📅 Copy Day</h2>
+        <form id="copyDayForm">
+            <div class="form-group">
+                <label>From Day:</label>
+                <select name="fromDay" class="form-select">
+                    <option value="0">Monday</option>
+                    <option value="1">Tuesday</option>
+                    <option value="2">Wednesday</option>
+                    <option value="3">Thursday</option>
+                    <option value="4">Friday</option>
+                    <option value="5">Saturday</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>To Day(s):</label>
+                <div class="checkbox-group">
+                    <label><input type="checkbox" name="toDay" value="0"> Monday</label>
+                    <label><input type="checkbox" name="toDay" value="1"> Tuesday</label>
+                    <label><input type="checkbox" name="toDay" value="2"> Wednesday</label>
+                    <label><input type="checkbox" name="toDay" value="3"> Thursday</label>
+                    <label><input type="checkbox" name="toDay" value="4"> Friday</label>
+                    <label><input type="checkbox" name="toDay" value="5"> Saturday</label>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Copy</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById('copyDayForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const fromDay = parseInt(formData.get('fromDay'));
+        const toDays = formData.getAll('toDay').map(d => parseInt(d));
+
+        if (toDays.length === 0) {
+            showNotification('Select at least one target day', 'warning');
+            return;
+        }
+
+        saveToHistory();
+        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const sourceDay = currentTimetable.timetable[dayKeys[fromDay]];
+
+        toDays.forEach(toDay => {
+            if (toDay !== fromDay) {
+                currentTimetable.timetable[dayKeys[toDay]] = JSON.parse(JSON.stringify(sourceDay));
+            }
+        });
+
+        closeModal();
+        renderAdvancedTimetableEditor(currentTimetable);
+        showNotification(`Copied to ${toDays.length} day(s)`, 'success');
+    });
+
+    openModal();
+}
+
+function showFillDialog() {
+    if (selectedCells.length === 0) {
+        showNotification('Select cells first', 'warning');
+        return;
+    }
+
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>🎨 Fill Selected Cells</h2>
+        <form id="fillForm">
+            <div class="form-group">
+                <label>Subject:</label>
+                <input type="text" name="subject" class="form-input">
+            </div>
+            <div class="form-group">
+                <label>Teacher:</label>
+                <input type="text" name="teacher" class="form-input">
+            </div>
+            <div class="form-group">
+                <label>Room:</label>
+                <input type="text" name="room" class="form-input">
+            </div>
+            <div class="form-group">
+                <label>Color:</label>
+                <input type="color" name="color" class="form-input">
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Fill</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById('fillForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        saveToHistory();
+        const formData = new FormData(e.target);
+        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+        selectedCells.forEach(({ dayIdx, periodIdx }) => {
+            const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
+            if (!period.isBreak) {
+                if (formData.get('subject')) period.subject = formData.get('subject');
+                if (formData.get('teacher')) period.teacher = formData.get('teacher');
+                if (formData.get('room')) period.room = formData.get('room');
+                if (formData.get('color')) period.color = formData.get('color');
+            }
+        });
+
+        closeModal();
+        renderAdvancedTimetableEditor(currentTimetable);
+        showNotification('Cells filled successfully', 'success');
+    });
+
+    openModal();
+}
+
+function clearDay() {
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>🗑️ Clear Day</h2>
+        <p>Select day to clear:</p>
+        <form id="clearDayForm">
+            <div class="form-group">
+                <select name="day" class="form-select">
+                    <option value="0">Monday</option>
+                    <option value="1">Tuesday</option>
+                    <option value="2">Wednesday</option>
+                    <option value="3">Thursday</option>
+                    <option value="4">Friday</option>
+                    <option value="5">Saturday</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-danger">Clear</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById('clearDayForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        saveToHistory();
+        const formData = new FormData(e.target);
+        const dayIdx = parseInt(formData.get('day'));
+        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+        currentTimetable.timetable[dayKeys[dayIdx]].forEach(period => {
+            if (!period.isBreak) {
+                period.subject = '';
+                period.teacher = '';
+                period.room = '';
+                period.color = '';
+            }
+        });
+
+        closeModal();
+        renderAdvancedTimetableEditor(currentTimetable);
+        showNotification('Day cleared', 'success');
+    });
+
+    openModal();
 }
 
 function exportTimetable() {
@@ -1418,7 +1980,7 @@ async function editStudent(id) {
                 });
 
                 const photoResult = await photoResponse.json();
-                
+
                 if (photoResponse.ok && photoResult.success) {
                     studentData.photoUrl = photoResult.photoUrl;
                     console.log('✅ Photo updated with face detected');
@@ -1575,7 +2137,7 @@ async function editTeacher(id) {
                 });
 
                 const photoResult = await photoResponse.json();
-                
+
                 if (photoResponse.ok && photoResult.success) {
                     teacherData.photoUrl = photoResult.photoUrl;
                     console.log('✅ Photo updated with face detected');
@@ -1992,15 +2554,19 @@ async function showStudentAttendance(studentId, studentName) {
         const attendanceData = await attendanceRes.json();
         const records = attendanceData.records || [];
 
-        // Calculate statistics
-        const totalDays = records.length;
+        // Separate by status
         const presentDays = records.filter(r => r.status === 'present');
         const absentDays = records.filter(r => r.status === 'absent');
-        const attendanceRate = totalDays > 0 ? ((presentDays.length / totalDays) * 100).toFixed(2) : 0;
+        const leaveDays = records.filter(r => r.status === 'leave');
 
-        // Calculate lectures attended
-        const totalLectures = presentDays.reduce((sum, r) => sum + (r.lecturesAttended || 0), 0);
-        const avgLectures = presentDays.length > 0 ? (totalLectures / presentDays.length).toFixed(2) : 0;
+        // Calculate attendance rate (excluding leave days)
+        const classDays = presentDays.length + absentDays.length;
+        const attendanceRate = classDays > 0 ? ((presentDays.length / classDays) * 100).toFixed(1) : 0;
+
+        // Calculate total minutes
+        const totalMinutesAttended = records.reduce((sum, r) => sum + (r.totalAttended || 0), 0);
+        const totalClassMinutes = records.reduce((sum, r) => sum + (r.totalClassTime || 0), 0);
+        const minutePercentage = totalClassMinutes > 0 ? ((totalMinutesAttended / totalClassMinutes) * 100).toFixed(1) : 0;
 
         // Get date range
         const dates = records.map(r => new Date(r.date)).sort((a, b) => a - b);
@@ -2011,7 +2577,7 @@ async function showStudentAttendance(studentId, studentName) {
         let html = `
             <div class="attendance-report">
                 <div class="report-header">
-                    <h2>📊 Attendance Report</h2>
+                    <h2>📊 Detailed Attendance Report</h2>
                     <button class="btn btn-secondary" onclick="exportAttendanceReport('${studentId}')">📥 Export</button>
                 </div>
                 
@@ -2039,7 +2605,7 @@ async function showStudentAttendance(studentId, studentName) {
                 
                 <div class="stats-row">
                     <div class="stat-box stat-total">
-                        <div class="stat-number">${totalDays}</div>
+                        <div class="stat-number">${records.length}</div>
                         <div class="stat-label">Total Days</div>
                     </div>
                     <div class="stat-box stat-present">
@@ -2050,20 +2616,22 @@ async function showStudentAttendance(studentId, studentName) {
                         <div class="stat-number">${absentDays.length}</div>
                         <div class="stat-label">Absent</div>
                     </div>
-                    <div class="stat-box stat-rate">
-                        <div class="stat-number">${attendanceRate}%</div>
-                        <div class="stat-label">Attendance Rate</div>
+                    <div class="stat-box stat-leave">
+                        <div class="stat-number">${leaveDays.length}</div>
+                        <div class="stat-label">Leave</div>
                     </div>
                 </div>
                 
                 <div class="stats-row">
-                    <div class="stat-box">
-                        <div class="stat-number">${totalLectures}</div>
-                        <div class="stat-label">Total Lectures Attended</div>
+                    <div class="stat-box stat-rate">
+                        <div class="stat-number">${attendanceRate}%</div>
+                        <div class="stat-label">Attendance Rate</div>
+                        <div class="stat-sublabel">${presentDays.length}/${classDays} class days</div>
                     </div>
                     <div class="stat-box">
-                        <div class="stat-number">${avgLectures}/8</div>
-                        <div class="stat-label">Avg Lectures Per Day</div>
+                        <div class="stat-number">${Math.floor(totalMinutesAttended / 60)}h ${totalMinutesAttended % 60}m</div>
+                        <div class="stat-label">Total Time Attended</div>
+                        <div class="stat-sublabel">${minutePercentage}% of class time</div>
                     </div>
                     <div class="stat-box">
                         <div class="stat-number">${startDate}</div>
@@ -2076,16 +2644,17 @@ async function showStudentAttendance(studentId, studentName) {
                 </div>
                 
                 <div class="attendance-table-container">
-                    <h3>Detailed Records</h3>
+                    <h3>📅 Detailed Daily Records</h3>
                     <table class="attendance-table">
                         <thead>
                             <tr>
                                 <th>Date</th>
                                 <th>Day</th>
                                 <th>Status</th>
-                                <th>Check In</th>
-                                <th>Check Out</th>
-                                <th>Lectures</th>
+                                <th>Attended</th>
+                                <th>Total</th>
+                                <th>%</th>
+                                <th>Details</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -2093,20 +2662,66 @@ async function showStudentAttendance(studentId, studentName) {
             const date = new Date(record.date);
             const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
             const dateStr = date.toLocaleDateString();
-            const checkIn = record.checkInTime ? new Date(record.checkInTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-';
-            const checkOut = record.checkOutTime ? new Date(record.checkOutTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-';
-            const lectures = record.lecturesAttended ? `${record.lecturesAttended}/8` : '-';
-            const statusClass = record.status === 'present' ? 'status-present' : 'status-absent';
+
+            let statusClass = 'status-absent';
+            let statusText = record.status;
+            if (record.status === 'present') statusClass = 'status-present';
+            if (record.status === 'leave') statusClass = 'status-leave';
+
+            const attended = record.totalAttended || 0;
+            const total = record.totalClassTime || 0;
+            const percentage = record.dayPercentage || 0;
+
+            const lectureCount = record.lectures ? record.lectures.length : 0;
+            const presentLectures = record.lectures ? record.lectures.filter(l => l.present).length : 0;
 
             return `
-                                    <tr>
+                                    <tr onclick="showDayDetails('${record._id || record.studentId + '_' + dateStr}')" style="cursor: pointer;" title="Click for lecture-wise details">
                                         <td>${dateStr}</td>
                                         <td>${dayName}</td>
-                                        <td><span class="status-badge ${statusClass}">${record.status}</span></td>
-                                        <td>${checkIn}</td>
-                                        <td>${checkOut}</td>
-                                        <td>${lectures}</td>
+                                        <td><span class="status-badge ${statusClass}">${statusText.toUpperCase()}</span></td>
+                                        <td>${attended} min</td>
+                                        <td>${total} min</td>
+                                        <td><strong>${percentage}%</strong></td>
+                                        <td>${record.status === 'leave' ? '🏖️ No Classes' : `${presentLectures}/${lectureCount} lectures`}</td>
                                     </tr>
+                                    ${record.lectures && record.lectures.length > 0 ? `
+                                    <tr class="lecture-details-row" id="details_${record._id || record.studentId + '_' + dateStr}" style="display: none;">
+                                        <td colspan="7">
+                                            <div class="lecture-breakdown">
+                                                <h4>📚 Lecture-wise Breakdown:</h4>
+                                                <table class="lecture-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>#</th>
+                                                            <th>Subject</th>
+                                                            <th>Time</th>
+                                                            <th>Room</th>
+                                                            <th>Attended</th>
+                                                            <th>Total</th>
+                                                            <th>%</th>
+                                                            <th>Status</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        ${record.lectures.map((lec, idx) => `
+                                                        <tr>
+                                                            <td>${idx + 1}</td>
+                                                            <td><strong>${lec.subject}</strong></td>
+                                                            <td>${lec.startTime}-${lec.endTime}</td>
+                                                            <td>${lec.room}</td>
+                                                            <td>${lec.attended} min</td>
+                                                            <td>${lec.total} min</td>
+                                                            <td><strong>${lec.percentage}%</strong></td>
+                                                            <td><span class="status-badge ${lec.present ? 'status-present' : 'status-absent'}">${lec.present ? '✓ Present' : '✗ Absent'}</span></td>
+                                                        </tr>
+                                                        `).join('')}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    ` : ''}
                                 `;
         }).join('')}
                         </tbody>
@@ -2127,6 +2742,571 @@ function closeAttendanceModal() {
     document.getElementById('attendanceModal').classList.remove('active');
 }
 
+function showDayDetails(recordId) {
+    const detailsRow = document.getElementById(`details_${recordId}`);
+    if (detailsRow) {
+        if (detailsRow.style.display === 'none') {
+            detailsRow.style.display = 'table-row';
+        } else {
+            detailsRow.style.display = 'none';
+        }
+    }
+}
+
 function exportAttendanceReport(studentId) {
     showNotification('Export functionality coming soon!', 'info');
+}
+
+
+// Advanced Timetable Features
+
+// Keyboard Shortcuts
+function initKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey || e.metaKey) {
+            switch (e.key.toLowerCase()) {
+                case 'z':
+                    e.preventDefault();
+                    undo();
+                    break;
+                case 'y':
+                    e.preventDefault();
+                    redo();
+                    break;
+                case 'c':
+                    if (selectedCells.length > 0) {
+                        e.preventDefault();
+                        copySelected();
+                    }
+                    break;
+                case 'v':
+                    if (selectedCells.length > 0 && clipboardData) {
+                        e.preventDefault();
+                        pasteToSelected();
+                    }
+                    break;
+                case 'x':
+                    if (selectedCells.length > 0) {
+                        e.preventDefault();
+                        cutSelected();
+                    }
+                    break;
+                case 's':
+                    e.preventDefault();
+                    saveTimetable();
+                    break;
+            }
+        }
+
+        if (e.key === 'Delete' && selectedCells.length > 0) {
+            e.preventDefault();
+            deleteSelectedCells();
+        }
+
+        if (e.key === 'Escape') {
+            clearSelection();
+        }
+    });
+}
+
+function deleteSelectedCells() {
+    saveToHistory();
+    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+    selectedCells.forEach(({ dayIdx, periodIdx }) => {
+        const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
+        if (!period.isBreak) {
+            period.subject = '';
+            period.teacher = '';
+            period.room = '';
+            period.color = '';
+        }
+    });
+
+    renderAdvancedTimetableEditor(currentTimetable);
+    showNotification('Deleted selected cells', 'success');
+}
+
+// Subject Manager
+function showSubjectManager() {
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>📖 Subject Manager</h2>
+        <p>Manage common subjects for quick access</p>
+        <div class="subject-list">
+            <div class="subject-item">Mathematics <button onclick="applySubjectToSelected('Mathematics')">Apply</button></div>
+            <div class="subject-item">Physics <button onclick="applySubjectToSelected('Physics')">Apply</button></div>
+            <div class="subject-item">Chemistry <button onclick="applySubjectToSelected('Chemistry')">Apply</button></div>
+            <div class="subject-item">Programming <button onclick="applySubjectToSelected('Programming')">Apply</button></div>
+            <div class="subject-item">Data Structures <button onclick="applySubjectToSelected('Data Structures')">Apply</button></div>
+            <div class="subject-item">DBMS <button onclick="applySubjectToSelected('DBMS')">Apply</button></div>
+            <div class="subject-item">Operating Systems <button onclick="applySubjectToSelected('Operating Systems')">Apply</button></div>
+            <div class="subject-item">Computer Networks <button onclick="applySubjectToSelected('Computer Networks')">Apply</button></div>
+        </div>
+        <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+    `;
+    openModal();
+}
+
+function applySubjectToSelected(subject) {
+    if (selectedCells.length === 0) {
+        showNotification('Select cells first', 'warning');
+        return;
+    }
+
+    saveToHistory();
+    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+    selectedCells.forEach(({ dayIdx, periodIdx }) => {
+        const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
+        if (!period.isBreak) {
+            period.subject = subject;
+        }
+    });
+
+    closeModal();
+    renderAdvancedTimetableEditor(currentTimetable);
+    showNotification(`Applied "${subject}" to ${selectedCells.length} cell(s)`, 'success');
+}
+
+// Teacher Assignment
+function showTeacherAssign() {
+    if (selectedCells.length === 0) {
+        showNotification('Select cells first', 'warning');
+        return;
+    }
+
+    // Generate teacher options
+    const teacherOptions = teachers.map(t =>
+        `<option value="${t.name}">${t.name} (${t.employeeId}) - ${t.department}</option>`
+    ).join('');
+
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>👨‍🏫 Assign Teacher</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 20px;">
+            Assigning to ${selectedCells.length} selected cell(s)
+        </p>
+        <form id="teacherForm">
+            <div class="form-group">
+                <label>Select Teacher:</label>
+                <select name="teacher" class="form-select" required>
+                    <option value="">-- Select Teacher --</option>
+                    ${teacherOptions}
+                </select>
+                <small style="color: var(--text-secondary); font-size: 12px; display: block; margin-top: 8px;">
+                    Only registered teachers from the database can be assigned
+                </small>
+            </div>
+            ${teachers.length === 0 ? `
+                <div style="padding: 12px; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px; margin-bottom: 16px;">
+                    <strong>⚠️ No teachers found!</strong><br>
+                    Please add teachers in the Teachers section first.
+                </div>
+            ` : ''}
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary" ${teachers.length === 0 ? 'disabled' : ''}>Assign to Selected</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById('teacherForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+
+        saveToHistory();
+        const formData = new FormData(e.target);
+        const teacher = formData.get('teacher');
+
+        if (!teacher) {
+            showNotification('Please select a teacher', 'warning');
+            return;
+        }
+
+        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+        selectedCells.forEach(({ dayIdx, periodIdx }) => {
+            const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
+            if (!period.isBreak) {
+                period.teacher = teacher;
+            }
+        });
+
+        closeModal();
+        renderAdvancedTimetableEditor(currentTimetable);
+        showNotification(`Assigned "${teacher}" to ${selectedCells.length} cell(s)`, 'success');
+    });
+
+    openModal();
+}
+
+// Color Picker
+function showColorPicker() {
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>🎨 Color Code Subjects</h2>
+        <p>Select a color for selected cells:</p>
+        <div class="color-palette">
+            <div class="color-option" style="background: #ffebee" onclick="applyColorToSelected('#ffebee')"></div>
+            <div class="color-option" style="background: #e3f2fd" onclick="applyColorToSelected('#e3f2fd')"></div>
+            <div class="color-option" style="background: #e8f5e9" onclick="applyColorToSelected('#e8f5e9')"></div>
+            <div class="color-option" style="background: #fff3e0" onclick="applyColorToSelected('#fff3e0')"></div>
+            <div class="color-option" style="background: #f3e5f5" onclick="applyColorToSelected('#f3e5f5')"></div>
+            <div class="color-option" style="background: #e0f2f1" onclick="applyColorToSelected('#e0f2f1')"></div>
+            <div class="color-option" style="background: #fce4ec" onclick="applyColorToSelected('#fce4ec')"></div>
+            <div class="color-option" style="background: #fff9c4" onclick="applyColorToSelected('#fff9c4')"></div>
+        </div>
+        <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+    `;
+    openModal();
+}
+
+function applyColorToSelected(color) {
+    if (selectedCells.length === 0) {
+        showNotification('Select cells first', 'warning');
+        return;
+    }
+
+    saveToHistory();
+    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+    selectedCells.forEach(({ dayIdx, periodIdx }) => {
+        const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
+        if (!period.isBreak) {
+            period.color = color;
+        }
+    });
+
+    closeModal();
+    renderAdvancedTimetableEditor(currentTimetable);
+    showNotification('Color applied', 'success');
+}
+
+// View Toggles
+let showTeachers = true;
+let showRooms = true;
+let compactView = false;
+
+function toggleTeacherView() {
+    showTeachers = !showTeachers;
+    renderAdvancedTimetableEditor(currentTimetable);
+    showNotification(`Teachers ${showTeachers ? 'shown' : 'hidden'}`, 'info');
+}
+
+function toggleRoomView() {
+    showRooms = !showRooms;
+    renderAdvancedTimetableEditor(currentTimetable);
+    showNotification(`Rooms ${showRooms ? 'shown' : 'hidden'}`, 'info');
+}
+
+function toggleCompactView() {
+    compactView = !compactView;
+    document.querySelector('.timetable-grid-advanced').classList.toggle('compact-mode');
+    showNotification(`Compact mode ${compactView ? 'enabled' : 'disabled'}`, 'info');
+}
+
+// Export Functions
+function exportToPDF() {
+    showNotification('PDF export feature coming soon!', 'info');
+    // TODO: Implement PDF export using jsPDF
+}
+
+function exportToExcel() {
+    showNotification('Excel export feature coming soon!', 'info');
+    // TODO: Implement Excel export
+}
+
+function showImportDialog() {
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>📥 Import Timetable</h2>
+        <p>Upload a JSON file to import timetable</p>
+        <input type="file" id="importFile" accept=".json">
+        <div class="form-actions">
+            <button class="btn btn-primary" onclick="importTimetableFile()">Import</button>
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        </div>
+    `;
+    openModal();
+}
+
+function importTimetableFile() {
+    const fileInput = document.getElementById('importFile');
+    const file = fileInput.files[0];
+
+    if (!file) {
+        showNotification('Select a file first', 'warning');
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const imported = JSON.parse(e.target.result);
+            saveToHistory();
+            currentTimetable = imported;
+            closeModal();
+            renderAdvancedTimetableEditor(currentTimetable);
+            showNotification('Timetable imported successfully', 'success');
+        } catch (error) {
+            showNotification('Invalid file format', 'error');
+        }
+    };
+    reader.readAsText(file);
+}
+
+// Template Functions
+function showTemplateDialog() {
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>💾 Save as Template</h2>
+        <form id="templateForm">
+            <div class="form-group">
+                <label>Template Name:</label>
+                <input type="text" name="templateName" class="form-input" placeholder="e.g., CSE Standard Template">
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Save Template</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById('templateForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const templateName = formData.get('templateName');
+
+        // Save to localStorage
+        const templates = JSON.parse(localStorage.getItem('timetableTemplates') || '[]');
+        templates.push({
+            name: templateName,
+            data: currentTimetable,
+            created: new Date().toISOString()
+        });
+        localStorage.setItem('timetableTemplates', JSON.stringify(templates));
+
+        closeModal();
+        showNotification('Template saved successfully', 'success');
+    });
+
+    openModal();
+}
+
+function duplicateTimetable() {
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>📑 Duplicate Timetable</h2>
+        <form id="duplicateForm">
+            <div class="form-group">
+                <label>Target Semester:</label>
+                <select name="semester" class="form-select">
+                    <option value="1">Semester 1</option>
+                    <option value="2">Semester 2</option>
+                    <option value="3">Semester 3</option>
+                    <option value="4">Semester 4</option>
+                    <option value="5">Semester 5</option>
+                    <option value="6">Semester 6</option>
+                    <option value="7">Semester 7</option>
+                    <option value="8">Semester 8</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Target Course:</label>
+                <select name="course" class="form-select">
+                    <option value="CSE">Computer Science</option>
+                    <option value="ECE">Electronics</option>
+                    <option value="ME">Mechanical</option>
+                    <option value="CE">Civil</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Duplicate</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById('duplicateForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const newTimetable = JSON.parse(JSON.stringify(currentTimetable));
+        newTimetable.semester = formData.get('semester');
+        newTimetable.branch = formData.get('course');
+
+        try {
+            const response = await fetch(`${SERVER_URL}/api/timetable`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newTimetable)
+            });
+
+            if (response.ok) {
+                closeModal();
+                showNotification('Timetable duplicated successfully', 'success');
+            } else {
+                showNotification('Failed to duplicate timetable', 'error');
+            }
+        } catch (error) {
+            showNotification('Error: ' + error.message, 'error');
+        }
+    });
+
+    openModal();
+}
+
+// Conflict Check
+function showConflictCheck() {
+    const conflicts = [];
+    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    // Check for teacher conflicts (same teacher, same time, different days)
+    const teacherSchedule = {};
+
+    dayKeys.forEach((dayKey, dayIdx) => {
+        currentTimetable.timetable[dayKey].forEach((period, periodIdx) => {
+            if (period.teacher && !period.isBreak) {
+                const key = `${period.teacher}-${periodIdx}`;
+                if (!teacherSchedule[key]) {
+                    teacherSchedule[key] = [];
+                }
+                teacherSchedule[key].push({ day: days[dayIdx], period: periodIdx + 1, subject: period.subject });
+            }
+        });
+    });
+
+    // Find conflicts
+    Object.keys(teacherSchedule).forEach(key => {
+        if (teacherSchedule[key].length > 1) {
+            const [teacher, period] = key.split('-');
+            conflicts.push({
+                type: 'Teacher Conflict',
+                teacher: teacher,
+                details: teacherSchedule[key]
+            });
+        }
+    });
+
+    const modalBody = document.getElementById('modalBody');
+    if (conflicts.length === 0) {
+        modalBody.innerHTML = `
+            <h2>✓ No Conflicts Found</h2>
+            <p>Your timetable looks good!</p>
+            <button class="btn btn-primary" onclick="closeModal()">Close</button>
+        `;
+    } else {
+        let html = `<h2>⚠️ Conflicts Found</h2>`;
+        html += `<p>Found ${conflicts.length} conflict(s):</p>`;
+        html += '<div class="conflict-list">';
+        conflicts.forEach(conflict => {
+            html += `<div class="conflict-item">`;
+            html += `<strong>${conflict.type}:</strong> ${conflict.teacher}<br>`;
+            conflict.details.forEach(d => {
+                html += `${d.day} Period ${d.period} - ${d.subject}<br>`;
+            });
+            html += `</div>`;
+        });
+        html += '</div>';
+        html += '<button class="btn btn-primary" onclick="closeModal()">Close</button>';
+        modalBody.innerHTML = html;
+    }
+
+    openModal();
+}
+
+// Auto Fill
+function autoFillTimetable() {
+    showNotification('Auto-fill feature coming soon!', 'info');
+    // TODO: Implement AI-based auto-fill
+}
+
+// Validate
+function validateTimetable() {
+    let issues = [];
+    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+    dayKeys.forEach(dayKey => {
+        currentTimetable.timetable[dayKey].forEach((period, idx) => {
+            if (!period.isBreak && !period.subject) {
+                issues.push(`Empty cell found in ${dayKey} period ${idx + 1}`);
+            }
+        });
+    });
+
+    if (issues.length === 0) {
+        showNotification('✓ Timetable is valid!', 'success');
+    } else {
+        showNotification(`Found ${issues.length} issue(s)`, 'warning');
+    }
+}
+
+// Print
+function printTimetable() {
+    window.print();
+}
+
+// Share
+function shareTimetable() {
+    const url = `${window.location.origin}/timetable/${currentTimetable.branch}/${currentTimetable.semester}`;
+    navigator.clipboard.writeText(url);
+    showNotification('Link copied to clipboard!', 'success');
+}
+
+// Context Menu
+function showCellContextMenu(event, dayIdx, periodIdx) {
+    event.preventDefault();
+
+    // Remove existing context menu
+    const existing = document.querySelector('.context-menu');
+    if (existing) existing.remove();
+
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+    menu.style.left = event.pageX + 'px';
+    menu.style.top = event.pageY + 'px';
+    menu.innerHTML = `
+        <div class="context-menu-item" onclick="editAdvancedCell(${dayIdx}, ${periodIdx}); closeContextMenu()">✏️ Edit</div>
+        <div class="context-menu-item" onclick="copySingleCell(${dayIdx}, ${periodIdx}); closeContextMenu()">📄 Copy</div>
+        <div class="context-menu-item" onclick="pasteSingleCell(${dayIdx}, ${periodIdx}); closeContextMenu()">📋 Paste</div>
+        <div class="context-menu-item" onclick="clearSingleCell(${dayIdx}, ${periodIdx}); closeContextMenu()">🗑️ Clear</div>
+    `;
+
+    document.body.appendChild(menu);
+
+    // Close on click outside
+    setTimeout(() => {
+        document.addEventListener('click', closeContextMenu);
+    }, 100);
+}
+
+function closeContextMenu() {
+    const menu = document.querySelector('.context-menu');
+    if (menu) menu.remove();
+    document.removeEventListener('click', closeContextMenu);
+}
+
+function copySingleCell(dayIdx, periodIdx) {
+    selectedCells = [{ cellId: `cell-${dayIdx}-${periodIdx}`, dayIdx, periodIdx }];
+    copySelected();
+}
+
+function pasteSingleCell(dayIdx, periodIdx) {
+    selectedCells = [{ cellId: `cell-${dayIdx}-${periodIdx}`, dayIdx, periodIdx }];
+    pasteToSelected();
+}
+
+function clearSingleCell(dayIdx, periodIdx) {
+    saveToHistory();
+    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
+
+    if (!period.isBreak) {
+        period.subject = '';
+        period.teacher = '';
+        period.room = '';
+        period.color = '';
+    }
+
+    renderAdvancedTimetableEditor(currentTimetable);
 }

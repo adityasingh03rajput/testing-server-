@@ -12,12 +12,33 @@ const io = new Server(server, {
     cors: {
         origin: "*",
         methods: ["GET", "POST"]
-    }
+    },
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    connectTimeout: 45000,
+    transports: ['websocket', 'polling']
 });
 
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
+
+// Set timeout for all requests
+server.timeout = 120000; // 2 minutes
+server.keepAliveTimeout = 65000; // 65 seconds
+server.headersTimeout = 66000; // 66 seconds
+
+// Log slow requests
+app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        if (duration > 1000) {
+            console.log(`⚠️  Slow request: ${req.method} ${req.path} took ${duration}ms`);
+        }
+    });
+    next();
+});
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -30,10 +51,23 @@ app.use('/uploads', express.static(uploadsDir));
 
 // MongoDB Connection
 const MONGO_URI = 'mongodb://localhost:27017/attendance_app';
-mongoose.connect(MONGO_URI).then(() => {
+mongoose.connect(MONGO_URI, {
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+}).then(() => {
     console.log('✅ Connected to MongoDB');
 }).catch(err => {
     console.log('⚠️  MongoDB not connected, using in-memory storage');
+    console.log('Error:', err.message);
+});
+
+// Handle MongoDB connection errors
+mongoose.connection.on('error', (err) => {
+    console.error('❌ MongoDB error:', err.message);
+});
+
+mongoose.connection.on('disconnected', () => {
+    console.log('⚠️  MongoDB disconnected');
 });
 
 // Student Schema
@@ -76,10 +110,30 @@ const attendanceRecordSchema = new mongoose.Schema({
     studentName: { type: String, required: true },
     enrollmentNumber: String,
     date: { type: Date, required: true },
-    status: { type: String, enum: ['present', 'absent'], required: true },
+    status: { type: String, enum: ['present', 'absent', 'leave'], required: true },
+    
+    // Detailed lecture-wise attendance
+    lectures: [{
+        subject: String,
+        room: String,
+        startTime: String,
+        endTime: String,
+        attended: Number,      // minutes attended
+        total: Number,         // total lecture minutes
+        percentage: Number,    // attendance percentage
+        present: Boolean       // true if >= 75%
+    }],
+    
+    // Daily totals (excluding breaks)
+    totalAttended: { type: Number, default: 0 },      // total minutes attended
+    totalClassTime: { type: Number, default: 0 },     // total class minutes
+    dayPercentage: { type: Number, default: 0 },      // daily attendance %
+    
+    // Legacy fields (for backward compatibility)
     timerValue: { type: Number, default: 0 },
     checkInTime: Date,
     checkOutTime: Date,
+    
     semester: String,
     branch: String,
     createdAt: { type: Date, default: Date.now }
@@ -255,6 +309,66 @@ app.post('/api/timetable', async (req, res) => {
     }
 });
 
+// Teacher Schedule API
+app.get('/api/teacher-schedule/:teacherId/:day', async (req, res) => {
+    try {
+        const { teacherId, day } = req.params;
+        
+        if (mongoose.connection.readyState === 1) {
+            // First, get the teacher's name from their ID
+            let teacherName = teacherId;
+            const teacher = await Teacher.findOne({ 
+                $or: [
+                    { employeeId: teacherId },
+                    { name: teacherId }
+                ]
+            });
+            
+            if (teacher) {
+                teacherName = teacher.name;
+            }
+            
+            // Fetch all timetables
+            const timetables = await Timetable.find({});
+            const schedule = [];
+            
+            timetables.forEach(tt => {
+                const daySchedule = tt.timetable[day.toLowerCase()] || [];
+                daySchedule.forEach((period, idx) => {
+                    // Match by teacher name (case-insensitive)
+                    if (period.teacher && 
+                        (period.teacher.toLowerCase() === teacherName.toLowerCase() || 
+                         period.teacher.toLowerCase().includes(teacherName.toLowerCase()))) {
+                        schedule.push({
+                            subject: period.subject,
+                            room: period.room,
+                            startTime: tt.periods[idx]?.startTime || '',
+                            endTime: tt.periods[idx]?.endTime || '',
+                            period: idx + 1,
+                            course: tt.branch,
+                            semester: tt.semester,
+                            day: day
+                        });
+                    }
+                });
+            });
+            
+            // Sort by start time
+            schedule.sort((a, b) => {
+                const timeA = a.startTime.split(':').map(Number);
+                const timeB = b.startTime.split(':').map(Number);
+                return (timeA[0] * 60 + timeA[1]) - (timeB[0] * 60 + timeB[1]);
+            });
+            
+            res.json({ success: true, schedule });
+        } else {
+            res.json({ success: true, schedule: [] });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Helper function to create default timetable
 function createDefaultTimetable(semester, branch) {
     const periods = [];
@@ -291,9 +405,9 @@ io.on('connection', (socket) => {
 
     // Student updates timer
     socket.on('timer_update', async (data) => {
-        const { studentId, timerValue, isRunning, status, studentName } = data;
-
         try {
+            const { studentId, timerValue, isRunning, status, studentName } = data;
+
             // Check if it's an offline ID (starts with "offline_")
             const isOfflineId = studentId && studentId.toString().startsWith('offline_');
 
@@ -328,19 +442,28 @@ io.on('connection', (socket) => {
             // Broadcast to all teachers
             io.emit('student_update', { studentId, timerValue, isRunning, status });
         } catch (error) {
-            console.error('Error updating timer:', error);
+            console.error('❌ Error updating timer:', error);
+            socket.emit('error', { message: 'Failed to update timer' });
         }
     });
 
     socket.on('disconnect', () => {
         console.log('📴 Client disconnected:', socket.id);
     });
+
+    socket.on('error', (error) => {
+        console.error('❌ Socket error:', error);
+    });
 });
 
 // Attendance Records API
 app.post('/api/attendance/record', async (req, res) => {
     try {
-        const { studentId, studentName, enrollmentNumber, status, timerValue, semester, branch } = req.body;
+        const { 
+            studentId, studentName, enrollmentNumber, status, timerValue, semester, branch,
+            lectures, totalAttended, totalClassTime, dayPercentage 
+        } = req.body;
+        
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
@@ -352,10 +475,17 @@ app.post('/api/attendance/record', async (req, res) => {
             });
 
             if (record) {
-                // Update existing record
+                // Update existing record with detailed data
                 record.status = status;
                 record.timerValue = timerValue;
                 record.checkOutTime = new Date();
+                
+                // Update detailed attendance if provided
+                if (lectures) record.lectures = lectures;
+                if (totalAttended !== undefined) record.totalAttended = totalAttended;
+                if (totalClassTime !== undefined) record.totalClassTime = totalClassTime;
+                if (dayPercentage !== undefined) record.dayPercentage = dayPercentage;
+                
                 await record.save();
             } else {
                 // Create new record
@@ -368,7 +498,11 @@ app.post('/api/attendance/record', async (req, res) => {
                     timerValue,
                     checkInTime: new Date(),
                     semester,
-                    branch
+                    branch,
+                    lectures: lectures || [],
+                    totalAttended: totalAttended || 0,
+                    totalClassTime: totalClassTime || 0,
+                    dayPercentage: dayPercentage || 0
                 });
                 await record.save();
             }
@@ -383,6 +517,10 @@ app.post('/api/attendance/record', async (req, res) => {
                 record.status = status;
                 record.timerValue = timerValue;
                 record.checkOutTime = new Date();
+                if (lectures) record.lectures = lectures;
+                if (totalAttended !== undefined) record.totalAttended = totalAttended;
+                if (totalClassTime !== undefined) record.totalClassTime = totalClassTime;
+                if (dayPercentage !== undefined) record.dayPercentage = dayPercentage;
             } else {
                 record = {
                     _id: 'record_' + Date.now(),
@@ -394,7 +532,11 @@ app.post('/api/attendance/record', async (req, res) => {
                     timerValue,
                     checkInTime: new Date(),
                     semester,
-                    branch
+                    branch,
+                    lectures: lectures || [],
+                    totalAttended: totalAttended || 0,
+                    totalClassTime: totalClassTime || 0,
+                    dayPercentage: dayPercentage || 0
                 };
                 attendanceRecordsMemory.push(record);
             }

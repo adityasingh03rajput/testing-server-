@@ -1,368 +1,349 @@
-# 🎓 College Attendance System
+# College Attendance System
 
-A comprehensive attendance management system with fingerprint authentication, real-time tracking, and admin panel.
+A comprehensive attendance management system with face recognition, real-time tracking, and admin panel.
 
-## 🚀 Quick Start
+## Features
 
-### 1. Install Dependencies
+- 📱 **Mobile App** (React Native/Expo)
+  - Student & Teacher login
+  - Face verification for attendance
+  - Real-time attendance tracking
+  - Timetable view
+  - Attendance history & statistics
+  - Digital lanyard card
+  - Push notifications
+
+- 🖥️ **Admin Panel** (Electron)
+  - Student management
+  - Teacher management
+  - Classroom management
+  - Timetable creation & editing
+  - Attendance reports
+  - Photo upload with face detection
+  - Bulk import (CSV)
+
+- 🔧 **Backend Server** (Node.js/Express)
+  - RESTful API
+  - WebSocket for real-time updates
+  - MongoDB database
+  - Face recognition (face-api.js)
+  - Photo storage & management
+
+## Prerequisites
+
+- Node.js (v16 or higher)
+- MongoDB (v4.4 or higher)
+- Android Studio (for Android builds)
+- Python & UV (for face recognition models)
+
+## Installation
+
+### 1. Clone Repository
+```bash
+git clone <repository-url>
+cd attendance-system
+```
+
+### 2. Install Server Dependencies
 ```bash
 cd server
 npm install
 ```
 
-### 2. Start MongoDB
-Make sure MongoDB is running on `localhost:27017`
-
-### 3. Seed Database
+### 3. Download Face Recognition Models
 ```bash
-node server/seed-data.js
+node download-models.js
 ```
 
-### 4. Start Server
+### 4. Install Mobile App Dependencies
 ```bash
-node server/index.js
-```
-
-### 5. Open Admin Panel
-Open `admin-panel/index.html` in your browser
-
----
-
-## 📊 System Overview
-
-### Data Included
-- **33 Students** across 4 courses (CSE, ECE, ME, Civil)
-- **10 Teachers** from all departments
-- **12 Timetables** (3 semesters × 4 courses)
-- **51 Classrooms** with WiFi BSSID
-- **4,323 Attendance Records** (6 months of data)
-
-### College Timings
-```
-Period 1:  09:40 - 10:40
-Period 2:  10:40 - 11:40
-Period 3:  11:40 - 12:10
-Lunch:     12:10 - 13:10  🍽️
-Period 5:  13:10 - 14:10
-Break:     14:10 - 14:20  ☕
-Period 7:  14:20 - 15:30
-Period 8:  15:30 - 16:10
-```
-
----
-
-## 🔐 Test Credentials
-
-### Students (Password: aditya)
-- `0246CS241001` - Aditya Singh (CSE Sem 1)
-- `0246CS231001` - Sneha Patel (CSE Sem 3)
-- `0246CS221001` - Ravi Shankar (CSE Sem 5)
-- `0246EC241001` - Ananya Gupta (ECE Sem 1)
-- `0246ME241001` - Arjun Nair (ME Sem 1)
-- `0246CE241001` - Rohit Verma (Civil Sem 1)
-
-### Teachers (Password: aditya)
-- `TEACH001` - Dr. Rajesh Kumar (CSE)
-- `TEACH003` - Dr. Sunil Patil (CSE)
-- `TEACH005` - Dr. Amit Patel (ECE)
-
----
-
-## 🎯 Features
-
-### Admin Panel
-- **Dashboard**: Real-time statistics and analytics
-- **Students**: Manage students with profile photos
-- **Teachers**: Manage teachers and permissions
-- **Timetables**: Create and edit timetables (8 periods/day)
-- **Classrooms**: 51 rooms with BSSID and capacity
-- **Attendance Reports**: Click student names for detailed reports
-- **Bulk Import**: CSV upload for classrooms
-
-### Mobile App (React Native)
-- Fingerprint authentication
-- Real-time attendance tracking
-- WiFi-based location verification
-- Student dashboard
-- Attendance history
-
----
-
-## 📁 Project Structure
-
-```
-fingerprint/
-├── server/                 # Backend server
-│   ├── index.js           # Main server file
-│   ├── seed-data.js       # Database seeding
-│   ├── clear-data.js      # Clear database
-│   └── test-new-data.js   # Test data verification
-├── admin-panel/           # Admin web interface
-│   ├── index.html         # Main HTML
-│   ├── renderer.js        # JavaScript logic
-│   └── styles.css         # Styling
-├── android/               # React Native Android
-├── App.js                 # React Native main app
-├── package.json           # RN dependencies
-└── README.md             # This file
-```
-
----
-
-## 🔧 Management Commands
-
-### Database
-```bash
-# Seed database with sample data
-node server/seed-data.js
-
-# Clear all data
-node server/clear-data.js
-
-# Test/verify data
-node server/test-new-data.js
-```
-
-### Server
-```bash
-# Start server
-node server/index.js
-
-# Kill server (Windows)
-taskkill /F /IM node.exe
-```
-
-### React Native App
-```bash
-# Install dependencies
+cd ..
 npm install
-
-# Start Metro bundler
-npm start
-
-# Run on Android
-npm run android
 ```
 
----
+### 5. Install Admin Panel Dependencies
+```bash
+cd admin-panel
+npm install
+```
 
-## 📱 API Endpoints
+## Configuration
 
-### Students
-- `GET /api/students` - List all students
-- `GET /api/student-management?enrollmentNo=XXX` - Get student details
-- `POST /api/students` - Add student
-- `PUT /api/students/:id` - Update student
-- `DELETE /api/students/:id` - Delete student
+### Server Configuration
+1. Copy `.env.example` to `.env` in the `server` directory
+2. Update MongoDB URI and other settings as needed
 
-### Teachers
-- `GET /api/teachers` - List all teachers
-- `POST /api/teachers` - Add teacher
-- `PUT /api/teachers/:id` - Update teacher
-- `DELETE /api/teachers/:id` - Delete teacher
+### Mobile App Configuration
+1. Update `API_URL` and `SOCKET_URL` in `App.js` with your server IP
+2. Update the same URLs in other screen files
 
-### Timetables
-- `GET /api/timetable/:semester/:branch` - Get timetable
-- `POST /api/timetable` - Save timetable
+### Admin Panel Configuration
+1. Update `SERVER_URL` in `admin-panel/renderer.js` with your server IP
 
-### Attendance
-- `GET /api/attendance/records` - Get attendance records
-- `GET /api/attendance/stats` - Get statistics
-- `POST /api/attendance/record` - Record attendance
+## Running the Application
+
+### Start MongoDB
+```bash
+# Windows
+net start MongoDB
+
+# Linux/Mac
+sudo systemctl start mongod
+```
+
+### Start Server
+```bash
+# Option 1: Using batch file (Windows)
+server_start.bat
+
+# Option 2: Manual
+cd server
+node index.js
+```
+
+### Start Mobile App
+```bash
+# Option 1: Using batch file (Windows)
+START_APP.bat
+
+# Option 2: Manual
+npm start
+# Then press 'a' for Android or 'i' for iOS
+```
+
+### Start Admin Panel
+```bash
+# Option 1: Using batch file (Windows)
+cd admin-panel
+start-admin.bat
+
+# Option 2: Manual
+cd admin-panel
+npm start
+```
+
+## Building Android APK
+
+### Debug Build
+```bash
+BUILD_DEBUG_APK.bat
+```
+
+### Release Build
+```bash
+BUILD_APK_NOW.bat
+```
+
+### Quick Build & Install
+```bash
+BUILD_AND_INSTALL.bat
+```
+
+## Seeding Data
+
+### Seed Students & Teachers
+```bash
+cd server
+node seed-data.js
+```
+
+### Seed Attendance Records
+```bash
+node seed-attendance.js
+# or
+node seed-detailed-attendance.js
+# or
+node seed-complete-attendance-history.js
+```
+
+### Assign Teachers to Timetable
+```bash
+node assign-teachers-to-timetable.js
+```
+
+## Utility Scripts
+
+### Check Server Health
+```bash
+CHECK_SERVER_HEALTH.bat
+```
+
+### Restart Server
+```bash
+RESTART_SERVER.bat
+```
+
+### Fix Connection Issues
+```bash
+FIX_CONNECTION_NOW.bat
+```
+
+### Kill & Restart All
+```bash
+kill-and-restart.bat
+```
+
+## API Endpoints
 
 ### Authentication
 - `POST /api/login` - Student/Teacher login
 
----
-
-## 🎨 Admin Panel Features
-
-### Dashboard
-- Total students, teachers, timetables
-- Course-wise student distribution
-- Semester-wise student distribution
-- Attendance overview with rates
-
-### Student Management
-- View all students with profile photos
-- Click name for detailed attendance report
-- Add/Edit/Delete students
-- Filter by course and semester
-- Search functionality
-
-### Classroom Management
-- 51 rooms with complete details
-- Room number, building, capacity
-- WiFi BSSID for each room
-- Bulk import via CSV
-- Download CSV template
-
-### Timetable Editor
-- Visual timetable grid
-- 8 periods per day
-- Monday to Friday schedule
-- Break indicators
-- Export to JSON
-
----
-
-## 💾 Database Schema
-
 ### Students
-```javascript
-{
-  enrollmentNo: String,
-  name: String,
-  email: String,
-  password: String,
-  course: String,
-  semester: String,
-  dob: Date,
-  phone: String,
-  photoUrl: String
-}
-```
+- `GET /api/students` - Get all students
+- `POST /api/students` - Add student
+- `PUT /api/students/:id` - Update student
+- `DELETE /api/students/:id` - Delete student
+- `POST /api/students/bulk` - Bulk import students
+- `GET /api/student-management` - Get student by enrollment number
 
-### Attendance Records
-```javascript
-{
-  studentId: String,
-  studentName: String,
-  date: Date,
-  status: 'present' | 'absent',
-  checkInTime: Date,
-  checkOutTime: Date,
-  lecturesAttended: Number,
-  totalLectures: Number,
-  semester: String,
-  branch: String
-}
-```
+### Teachers
+- `GET /api/teachers` - Get all teachers
+- `POST /api/teachers` - Add teacher
+- `PUT /api/teachers/:id` - Update teacher
+- `DELETE /api/teachers/:id` - Delete teacher
+- `POST /api/teachers/bulk` - Bulk import teachers
+- `PUT /api/teachers/:id/timetable-access` - Toggle timetable access
 
-### Timetables
-```javascript
-{
-  semester: String,
-  branch: String,
-  periods: [{ number, startTime, endTime }],
-  timetable: {
-    monday: [{ period, subject, room, isBreak }],
-    tuesday: [...],
-    // ... other days
-  }
-}
-```
+### Timetable
+- `GET /api/timetable/:semester/:branch` - Get timetable
+- `POST /api/timetable` - Create/Update timetable
+- `GET /api/teacher-schedule/:teacherId/:day` - Get teacher schedule
 
----
+### Attendance
+- `POST /api/attendance/record` - Save attendance record
+- `GET /api/attendance/records` - Get attendance records (with filters)
+- `GET /api/attendance/stats` - Get attendance statistics
 
-## 🔍 Troubleshooting
+### Face Verification
+- `POST /api/verify-face` - Verify face for attendance
 
-### MongoDB Not Connected
-```bash
-# Check MongoDB status
-mongod --version
+### Classrooms
+- `GET /api/classrooms` - Get all classrooms
+- `POST /api/classrooms` - Add classroom
+- `PUT /api/classrooms/:id` - Update classroom
+- `DELETE /api/classrooms/:id` - Delete classroom
 
-# Start MongoDB (Windows)
-net start MongoDB
-```
+### Uploads
+- `POST /api/upload-photo` - Upload photo with face detection
+- `GET /api/photo/:filename` - Get photo by filename
 
-### Port Already in Use
-```bash
-# Find process on port 3000
-netstat -ano | findstr :3000
+### Health
+- `GET /api/health` - Server health check
+- `GET /api/config` - Get SDUI configuration
 
-# Kill process
-taskkill /PID <PID> /F
-```
+## WebSocket Events
+
+### Client → Server
+- `timer_update` - Update student timer status
+
+### Server → Client
+- `student_update` - Student status changed
+- `student_registered` - New student registered
+- `timetable_updated` - Timetable updated
+
+## Database Schema
+
+### Student
+- enrollmentNo (unique)
+- name
+- email
+- password (hashed)
+- course
+- semester
+- dob
+- phone
+- photoUrl
+
+### Teacher
+- employeeId (unique)
+- name
+- email
+- password (hashed)
+- department
+- subject
+- dob
+- phone
+- photoUrl
+- canEditTimetable
+
+### Timetable
+- semester
+- branch
+- periods (array)
+- timetable (object with days)
+
+### AttendanceRecord
+- studentId
+- studentName
+- enrollmentNumber
+- date
+- status (present/absent/leave)
+- lectures (array)
+- totalAttended
+- totalClassTime
+- dayPercentage
+
+### Classroom
+- roomNumber (unique)
+- building
+- capacity
+- wifiBSSID
+- status
+
+## Troubleshooting
+
+### MongoDB Connection Failed
+- Ensure MongoDB is running
+- Check MongoDB URI in `.env`
+- Verify MongoDB port (default: 27017)
+
+### Face Recognition Not Working
+- Run `node server/download-models.js` to download models
+- Check if `server/models` directory exists
+- Verify face-api.js dependencies are installed
+
+### Mobile App Can't Connect
+- Update IP addresses in `App.js` and other screen files
+- Ensure server is running
+- Check firewall settings
+- Verify devices are on same network
 
 ### Admin Panel Not Loading Data
-1. Check server is running on port 3000
-2. Check browser console for errors
-3. Verify MongoDB is connected
-4. Reseed database if needed
+- Update `SERVER_URL` in `admin-panel/renderer.js`
+- Check server connection status indicator
+- Verify API endpoints are responding
 
----
+## Tech Stack
 
-## 📈 Statistics
+### Frontend (Mobile)
+- React Native
+- Expo
+- Socket.io-client
+- AsyncStorage
+- Expo Camera
+- Expo Notifications
 
-### System Capacity
-- **Total Rooms**: 51
-- **Total Capacity**: 2,740 seats
-- **60-seat rooms**: 35
-- **40-seat rooms**: 16
-
-### Data Volume
-- **Students**: 33
-- **Teachers**: 10
-- **Timetables**: 12
-- **Attendance Records**: 4,323
-- **Date Range**: April 18 - Oct 18, 2025 (6 months)
-- **Overall Attendance**: 79.02%
-
----
-
-## 🎓 Courses & Semesters
-
-### Available Courses
-- **CSE** - Computer Science Engineering
-- **ECE** - Electronics & Communication
-- **ME** - Mechanical Engineering
-- **Civil** - Civil Engineering
-
-### Semesters
-- Semester 1, 3, and 5 for each course
-- Unique subjects per semester
-- Complete timetables for all
-
----
-
-## 🛠️ Technology Stack
+### Frontend (Admin)
+- Electron
+- Vanilla JavaScript
+- HTML/CSS
 
 ### Backend
 - Node.js
-- Express.js
-- MongoDB with Mongoose
-- Socket.io for real-time updates
+- Express
+- MongoDB/Mongoose
+- Socket.io
+- face-api.js
+- TensorFlow.js
 
-### Frontend (Admin Panel)
-- HTML5
-- CSS3
-- Vanilla JavaScript
-- No frameworks (lightweight)
+## License
 
-### Mobile App
-- React Native
-- React Navigation
-- Fingerprint authentication
-- WiFi detection
+MIT
 
----
+## Contributors
 
-## 📝 Notes
+[Your Name/Team]
 
-- All passwords are set to "aditya" for testing
-- Attendance data is randomly generated (70-90% rate)
-- Weekends excluded from attendance
-- BSSID format: `XX:XX:XX:XX:XX:XX`
-- Profile photos use UI Avatars API as fallback
+## Support
 
----
-
-## 🎉 Ready to Use!
-
-Your attendance system is fully set up with:
-- ✅ Database populated with realistic data
-- ✅ Server running on port 3000
-- ✅ Admin panel with all features
-- ✅ 6 months of attendance history
-- ✅ Profile photos for students
-- ✅ Bulk import functionality
-- ✅ 51 classrooms with BSSID
-
-**Start using the system now!** 🚀
-
----
-
-**Version**: 2.3.0  
-**Last Updated**: October 18, 2025  
-**Status**: ✅ Production Ready
+For issues and questions, please open an issue on GitHub.

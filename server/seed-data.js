@@ -141,27 +141,27 @@ function generateAttendanceRecords(students) {
     const startDate = new Date('2025-04-18');
     const today = new Date();
     today.setHours(23, 59, 59, 999);
-    
+
     for (let date = new Date(startDate); date <= today; date.setDate(date.getDate() + 1)) {
         const dayOfWeek = date.getDay();
         if (dayOfWeek === 0 || dayOfWeek === 6) continue;
-        
+
         students.forEach(student => {
             const attendanceRate = 0.7 + Math.random() * 0.2;
             const isPresent = Math.random() < attendanceRate;
-            
+
             if (isPresent) {
                 const lecturesAttended = 4 + Math.floor(Math.random() * 5);
                 const checkInHour = 9;
                 const checkInMinute = 30 + Math.floor(Math.random() * 30);
                 const checkInTime = new Date(date);
                 checkInTime.setHours(checkInHour, checkInMinute, 0, 0);
-                
+
                 const checkOutHour = 15 + Math.floor(Math.random() * 2);
                 const checkOutMinute = Math.floor(Math.random() * 60);
                 const checkOutTime = new Date(date);
                 checkOutTime.setHours(checkOutHour, checkOutMinute, 0, 0);
-                
+
                 records.push({
                     studentId: student.enrollmentNo,
                     studentName: student.name,
@@ -208,19 +208,23 @@ const standardPeriods = [
     { number: 8, startTime: '15:30', endTime: '16:10' },
 ];
 
+
+
 // Helper function to create a standard day schedule
 function createDaySchedule(subjects) {
     return [
-        { period: 1, subject: subjects[0], room: subjects[0].includes('Break') ? '' : `${subjects[0].substring(0,2)}-101`, isBreak: subjects[0].includes('Break') },
-        { period: 2, subject: subjects[1], room: subjects[1].includes('Break') ? '' : `${subjects[1].substring(0,2)}-102`, isBreak: subjects[1].includes('Break') },
-        { period: 3, subject: subjects[2], room: subjects[2].includes('Break') ? '' : `${subjects[2].substring(0,2)}-103`, isBreak: subjects[2].includes('Break') },
+        { period: 1, subject: subjects[0], room: subjects[0].includes('Break') ? '' : `${subjects[0].substring(0, 2)}-101`, isBreak: subjects[0].includes('Break') },
+        { period: 2, subject: subjects[1], room: subjects[1].includes('Break') ? '' : `${subjects[1].substring(0, 2)}-102`, isBreak: subjects[1].includes('Break') },
+        { period: 3, subject: subjects[2], room: subjects[2].includes('Break') ? '' : `${subjects[2].substring(0, 2)}-103`, isBreak: subjects[2].includes('Break') },
         { period: 4, subject: 'Lunch Break', room: '', isBreak: true },
-        { period: 5, subject: subjects[3], room: subjects[3].includes('Break') ? '' : `${subjects[3].substring(0,2)}-104`, isBreak: subjects[3].includes('Break') },
+        { period: 5, subject: subjects[3], room: subjects[3].includes('Break') ? '' : `${subjects[3].substring(0, 2)}-104`, isBreak: subjects[3].includes('Break') },
         { period: 6, subject: 'Break', room: '', isBreak: true },
-        { period: 7, subject: subjects[4], room: subjects[4].includes('Break') || subjects[4].includes('Lab') ? subjects[4].includes('Lab') ? 'Lab-1' : '' : `${subjects[4].substring(0,2)}-105`, isBreak: subjects[4].includes('Break') },
-        { period: 8, subject: subjects[5], room: subjects[5].includes('Lab') || subjects[5].includes('Workshop') || subjects[5].includes('Project') ? 'Lab-2' : `${subjects[5].substring(0,2)}-106`, isBreak: false },
+        { period: 7, subject: subjects[4], room: subjects[4].includes('Break') || subjects[4].includes('Lab') ? subjects[4].includes('Lab') ? 'Lab-1' : '' : `${subjects[4].substring(0, 2)}-105`, isBreak: subjects[4].includes('Break') },
+        { period: 8, subject: subjects[5], room: subjects[5].includes('Lab') || subjects[5].includes('Workshop') || subjects[5].includes('Project') ? 'Lab-2' : `${subjects[5].substring(0, 2)}-106`, isBreak: false },
     ];
 }
+
+
 
 const timetables = [
     // CSE Semester 1
@@ -234,6 +238,7 @@ const timetables = [
             wednesday: createDaySchedule(['Chemistry', 'Programming in C', 'Mathematics-I', 'Physics', 'English', 'Lab']),
             thursday: createDaySchedule(['Programming in C', 'Chemistry', 'Physics', 'Mathematics-I', 'Engineering Drawing', 'Workshop']),
             friday: createDaySchedule(['English', 'Mathematics-I', 'Programming in C', 'Physics', 'Chemistry', 'Lab']),
+            saturday: createDaySchedule(['Programming Lab', 'Mathematics Practice', 'Physics Workshop', 'Chemistry Lab', 'English Project', 'Workshop'])
         }
     },
     // CSE Semester 3
@@ -247,6 +252,7 @@ const timetables = [
             wednesday: createDaySchedule(['Operating Systems', 'Computer Networks', 'Data Structures', 'DBMS', 'Software Engineering', 'Lab']),
             thursday: createDaySchedule(['Computer Networks', 'Operating Systems', 'Software Engineering', 'Data Structures', 'DBMS', 'Project Work']),
             friday: createDaySchedule(['Software Engineering', 'Data Structures', 'DBMS', 'Computer Networks', 'Operating Systems', 'Project Work']),
+            saturday: createDaySchedule(['Data Structures Lab', 'Database Workshop', 'OS Project', 'Network Lab', 'Software Project', 'Code Review'])
         }
     },
     // CSE Semester 5
@@ -260,6 +266,7 @@ const timetables = [
             wednesday: createDaySchedule(['Web Technologies', 'Computer Graphics', 'Machine Learning', 'Compiler Design', 'Artificial Intelligence', 'Project Work']),
             thursday: createDaySchedule(['Computer Graphics', 'Web Technologies', 'Artificial Intelligence', 'Machine Learning', 'Compiler Design', 'Project Work']),
             friday: createDaySchedule(['Artificial Intelligence', 'Machine Learning', 'Compiler Design', 'Web Technologies', 'Computer Graphics', 'Project Work']),
+            saturday: createDaySchedule(['ML Lab', 'AI Project', 'Compiler Workshop', 'Web Development Lab', 'Graphics Project', 'Capstone Work'])
         }
     },
     // ECE Semester 1
@@ -273,6 +280,7 @@ const timetables = [
             wednesday: createDaySchedule(['Chemistry', 'Basic Electronics', 'Mathematics-I', 'Physics', 'English', 'Lab']),
             thursday: createDaySchedule(['Basic Electronics', 'Chemistry', 'Physics', 'Mathematics-I', 'Engineering Drawing', 'Workshop']),
             friday: createDaySchedule(['English', 'Mathematics-I', 'Basic Electronics', 'Physics', 'Chemistry', 'Lab']),
+            saturday: createDaySchedule(['Electronics Workshop', 'Circuit Lab', 'Physics Project', 'Mathematics Tutorial', 'Drawing Practice', 'Lab Work'])
         }
     },
     // ECE Semester 3
@@ -286,6 +294,7 @@ const timetables = [
             wednesday: createDaySchedule(['Analog Circuits', 'Microprocessors', 'Digital Electronics', 'Signals & Systems', 'Communication Systems', 'Lab']),
             thursday: createDaySchedule(['Microprocessors', 'Analog Circuits', 'Communication Systems', 'Digital Electronics', 'Signals & Systems', 'Project Work']),
             friday: createDaySchedule(['Communication Systems', 'Digital Electronics', 'Signals & Systems', 'Microprocessors', 'Analog Circuits', 'Project Work']),
+            saturday: createDaySchedule(['Digital Lab', 'Signal Processing Workshop', 'Circuit Project', 'Microprocessor Lab', 'Communication Lab', 'Project Work'])
         }
     },
     // ECE Semester 5
@@ -388,24 +397,24 @@ async function seedData() {
         await Teacher.deleteMany({});
         await AttendanceRecord.deleteMany({});
         await Timetable.deleteMany({});
-        
+
         console.log('👥 Adding students...');
         await StudentManagement.insertMany(students);
         console.log(`✅ Added ${students.length} students`);
-        
+
         console.log('👨‍🏫 Adding teachers...');
         await Teacher.insertMany(teachers);
         console.log(`✅ Added ${teachers.length} teachers`);
-        
+
         console.log('📊 Generating attendance records from April 18, 2025 to today...');
         const attendanceRecords = generateAttendanceRecords(students);
         await AttendanceRecord.insertMany(attendanceRecords);
         console.log(`✅ Added ${attendanceRecords.length} attendance records`);
-        
+
         console.log('📅 Adding timetables...');
         await Timetable.insertMany(timetables);
         console.log(`✅ Added ${timetables.length} timetables`);
-        
+
         console.log('\n========================================');
         console.log('✅ DATA SEEDING COMPLETED!');
         console.log('========================================\n');
@@ -435,7 +444,7 @@ async function seedData() {
         console.log('  Period 7: 14:20 - 15:30');
         console.log('  Period 8: 15:30 - 16:10');
         console.log('\n========================================\n');
-        
+
         process.exit(0);
     } catch (error) {
         console.error('❌ Error seeding data:', error);

@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Image, Ani
 import { Camera, CameraView } from 'expo-camera';
 import * as FileSystem from 'expo-file-system';
 import { initializeFaceAPI } from './OfflineFaceVerification';
+import { CheckIcon, XIcon, SunIcon, UserIcon } from './Icons';
 
 export default function FaceVerificationScreen({
   userId,
@@ -252,13 +253,12 @@ export default function FaceVerificationScreen({
         <View style={styles.statusIconContainer}>
           {isVerifying ? (
             <ActivityIndicator size="small" color={theme.primary} />
+          ) : verificationMessage.includes('Ready') || verificationMessage.includes('Verified') ? (
+            <CheckIcon size={24} color="#10b981" />
+          ) : verificationMessage.includes('Failed') || verificationMessage.includes('error') ? (
+            <XIcon size={24} color="#ef4444" />
           ) : (
-            <Text style={styles.statusIcon}>
-              {verificationMessage.includes('Ready') ? '✓' : 
-               verificationMessage.includes('Verified') ? '✓' : 
-               verificationMessage.includes('Failed') || verificationMessage.includes('error') ? '✗' : 
-               '●'}
-            </Text>
+            <View style={styles.statusDot} />
           )}
         </View>
         <Text style={[styles.statusText, { color: theme.text }]}>
@@ -283,7 +283,7 @@ export default function FaceVerificationScreen({
             <ActivityIndicator color="#fff" size="small" />
           ) : (
             <>
-              <Text style={styles.verifyButtonIcon}>✓</Text>
+              <CheckIcon size={20} color="#fff" />
               <Text style={styles.verifyButtonText}>
                 {isInitializing ? 'Initializing...' : 'Verify Face'}
               </Text>
@@ -302,19 +302,19 @@ export default function FaceVerificationScreen({
       {/* Tips */}
       <View style={styles.tipsContainer}>
         <View style={styles.tipRow}>
-          <Text style={styles.tipIcon}>💡</Text>
+          <UserIcon size={20} color={theme.textSecondary} />
           <Text style={[styles.tipText, { color: theme.textSecondary }]}>
             Look directly at the camera
           </Text>
         </View>
         <View style={styles.tipRow}>
-          <Text style={styles.tipIcon}>☀️</Text>
+          <SunIcon size={20} color={theme.textSecondary} />
           <Text style={[styles.tipText, { color: theme.textSecondary }]}>
             Ensure good lighting
           </Text>
         </View>
         <View style={styles.tipRow}>
-          <Text style={styles.tipIcon}>👓</Text>
+          <UserIcon size={20} color={theme.textSecondary} />
           <Text style={[styles.tipText, { color: theme.textSecondary }]}>
             Remove glasses if possible
           </Text>
@@ -542,10 +542,13 @@ const styles = StyleSheet.create({
   tipRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
   },
-  tipIcon: {
-    fontSize: 20,
-    marginRight: 12,
+  statusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#fbbf24',
   },
   tipText: {
     fontSize: 15,

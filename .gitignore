@@ -1,5 +1,11 @@
+# Dependencies
 node_modules/
+admin-panel/node_modules/
+server/node_modules/
+
+# Expo
 .expo/
+.expo-shared/
 dist/
 npm-debug.*
 *.jks
@@ -9,7 +15,6 @@ npm-debug.*
 *.mobileprovision
 *.orig.*
 web-build/
-node_modules
 
 # Uploaded files (user photos)
 server/uploads/
@@ -19,3 +24,33 @@ uploads/
 android/app/build/
 android/.gradle/
 ios/build/
+*.apk
+*.aab
+
+# Environment variables
+.env
+.env.local
+.env.production
+server/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Admin panel build
+admin-panel/dist/
+admin-panel/out/
