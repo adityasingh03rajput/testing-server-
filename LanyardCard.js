@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,20 +10,25 @@ import {
   Modal,
   ScrollView
 } from 'react-native';
+import { Accelerometer } from 'expo-sensors';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-export default function LanyardCard({ 
-  visible, 
-  onClose, 
-  userData, 
+export default function LanyardCard({
+  visible,
+  onClose,
+  userData,
   theme,
-  onOpenFullProfile 
+  onOpenFullProfile
 }) {
   const slideAnim = useRef(new Animated.Value(-300)).current;
-  const swingAnim = useRef(new Animated.Value(0)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const swingX = useRef(new Animated.Value(0)).current;
+  const swingY = useRef(new Animated.Value(0)).current;
+  const rotateZ = useRef(new Animated.Value(0)).current;
 
+  const [subscription, setSubscription] = useState(null);
+
+  // Setup accelerometer for realistic swinging
   useEffect(() => {
     if (visible) {
       // Drop down animation
@@ -34,37 +39,8 @@ export default function LanyardCard({
         useNativeDriver: true,
       }).start();
 
-      // Swing animation
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(swingAnim, {
-            toValue: 1,
-            duration: 2000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(swingAnim, {
-            toValue: 0,
-            duration: 2000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      // Subtle rotation
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(rotateAnim, {
-            toValue: 1,
-            duration: 3000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(rotateAnim, {
-            toValue: 0,
-            duration: 3000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
+      // Subscribe to accelerometer
+      _subscribe();
     } else {
       // Pull up animation
       Animated.spring(slideAnim, {
@@ -73,17 +49,98 @@ export default function LanyardCard({
         friction: 8,
         useNativeDriver: true,
       }).start();
+
+      // Unsubscribe from accelerometer
+      _unsubscribe();
     }
+
+    return () => {
+      _unsubscribe();
+    };
   }, [visible]);
 
-  const swingInterpolate = swingAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-5, 5],
+  const _subscribe = () => {
+    // Set update interval to 100ms for smooth animation
+    Accelerometer.setUpdateInterval(100);
+
+    const sub = Accelerometer.addListener(accelerometerData => {
+      const { x, y, z } = accelerometerData;
+
+      // Apply physics-based swinging with pivot at top
+      // X-axis: left-right tilt causes rotation
+      // Y-axis: forward-backward tilt causes 3D rotation
+      // The card rotates from the top center like a real lanyard
+
+      const swingFactor = 40; // Increased for more dramatic swing
+      const rotateFactor = 20; // Increased rotation
+
+      // Horizontal swing (stores value for 3D rotation)
+      Animated.spring(swingX, {
+        toValue: x * swingFactor,
+        tension: 8,  // Lower tension = more swing
+        friction: 4, // Lower friction = longer swing
+        useNativeDriver: true,
+      }).start();
+
+      // Vertical movement (minimal, just for realism)
+      Animated.spring(swingY, {
+        toValue: -y * swingFactor * 0.3,
+        tension: 8,
+        friction: 4,
+        useNativeDriver: true,
+      }).start();
+
+      // Z-axis rotation (main swinging motion)
+      Animated.spring(rotateZ, {
+        toValue: x * rotateFactor,
+        tension: 8,
+        friction: 4,
+        useNativeDriver: true,
+      }).start();
+    });
+
+    setSubscription(sub);
+  };
+
+  const _unsubscribe = () => {
+    subscription && subscription.remove();
+    setSubscription(null);
+
+    // Reset to center position
+    Animated.parallel([
+      Animated.spring(swingX, {
+        toValue: 0,
+        tension: 20,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+      Animated.spring(swingY, {
+        toValue: 0,
+        tension: 20,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+      Animated.spring(rotateZ, {
+        toValue: 0,
+        tension: 20,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  // Rotation around Z-axis (left-right swing)
+  const rotateInterpolate = rotateZ.interpolate({
+    inputRange: [-30, 30],
+    outputRange: ['-20deg', '20deg'],
+    extrapolate: 'clamp',
   });
 
-  const rotateInterpolate = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['-2deg', '2deg'],
+  // Rotation around Y-axis (3D depth effect)
+  const rotateYInterpolate = swingX.interpolate({
+    inputRange: [-30, 30],
+    outputRange: ['-10deg', '10deg'],
+    extrapolate: 'clamp',
   });
 
   const getInitials = (name) => {
@@ -102,9 +159,9 @@ export default function LanyardCard({
       animationType="none"
       onRequestClose={onClose}
     >
-      <TouchableOpacity 
-        style={styles.overlay} 
-        activeOpacity={1} 
+      <TouchableOpacity
+        style={styles.overlay}
+        activeOpacity={1}
         onPress={onClose}
       >
         <View style={styles.lanyardContainer}>
@@ -115,7 +172,7 @@ export default function LanyardCard({
               {
                 transform: [
                   { translateY: slideAnim },
-                  { translateX: swingInterpolate },
+                  { translateX: swingX },
                 ],
               },
             ]}
@@ -124,15 +181,16 @@ export default function LanyardCard({
             <View style={[styles.stringLine, { backgroundColor: theme.primary }]} />
           </Animated.View>
 
-          {/* ID Card */}
+          {/* ID Card - Pivot point at top center */}
           <Animated.View
             style={[
               styles.cardContainer,
               {
                 transform: [
                   { translateY: slideAnim },
-                  { translateX: swingInterpolate },
-                  { rotate: rotateInterpolate },
+                  { perspective: 1000 },
+                  { rotateZ: rotateInterpolate },
+                  { rotateY: rotateYInterpolate },
                 ],
               },
             ]}
@@ -145,7 +203,7 @@ export default function LanyardCard({
               onLongPress={onOpenFullProfile}
               delayLongPress={500}
             >
-              <View style={[styles.card, { 
+              <View style={[styles.card, {
                 backgroundColor: theme.cardBackground,
                 borderColor: theme.primary,
               }]}>
@@ -157,8 +215,8 @@ export default function LanyardCard({
                 {/* Photo */}
                 <View style={styles.photoContainer}>
                   {userData?.photoUrl ? (
-                    <Image 
-                      source={{ uri: userData.photoUrl }} 
+                    <Image
+                      source={{ uri: userData.photoUrl }}
                       style={styles.photo}
                     />
                   ) : (
@@ -175,7 +233,7 @@ export default function LanyardCard({
                   <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
                     {userData?.name || 'Student Name'}
                   </Text>
-                  
+
                   <View style={styles.infoRow}>
                     <Text style={[styles.label, { color: theme.textSecondary }]}>ID:</Text>
                     <Text style={[styles.value, { color: theme.text }]}>
@@ -238,6 +296,8 @@ const styles = StyleSheet.create({
   },
   cardContainer: {
     width: 280,
+    // Set transform origin to top center for realistic swinging
+    transformOrigin: 'top center',
   },
   card: {
     borderRadius: 16,

@@ -36,6 +36,10 @@
                     <span class="icon">🏫</span>
                     <span>Classrooms</span>
                 </button>
+                <button class="nav-item" data-section="calendar">
+                    <span class="icon">📆</span>
+                    <span>Calendar</span>
+                </button>
                 <button class="nav-item" data-section="settings">
                     <span class="icon">⚙️</span>
                     <span>Settings</span>
@@ -294,6 +298,43 @@
 
                     <div id="timetableEditor" class="timetable-editor">
                         <!-- Timetable grid will be rendered here -->
+                    </div>
+                </section>
+
+                <!-- Calendar Section -->
+                <section id="calendar-section" class="section">
+                    <div class="section-header">
+                        <h2 class="section-title">Academic Calendar</h2>
+                        <div class="action-buttons">
+                            <button class="btn btn-secondary" id="exportCalendarBtn">📤 Export</button>
+                            <button class="btn btn-primary" id="addHolidayBtn">➕ Add Holiday</button>
+                        </div>
+                    </div>
+
+                    <div class="calendar-tools">
+                        <button class="tool-btn" onclick="showAcademicYearSettings()">📅 Academic Year</button>
+                        <button class="tool-btn" onclick="showSemesterDates()">📆 Semester Dates</button>
+                        <button class="tool-btn" onclick="showExamSchedule()">📝 Exam Schedule</button>
+                        <button class="tool-btn" onclick="showEventManager()">🎉 Events</button>
+                        <button class="tool-btn" onclick="bulkImportHolidays()">📥 Import Holidays</button>
+                    </div>
+
+                    <div class="calendar-container">
+                        <div class="calendar-header">
+                            <button class="calendar-nav-btn" onclick="previousMonth()">◀</button>
+                            <h3 id="calendarMonthYear">January 2025</h3>
+                            <button class="calendar-nav-btn" onclick="nextMonth()">▶</button>
+                        </div>
+                        <div id="adminCalendar" class="admin-calendar">
+                            <!-- Calendar grid will be rendered here -->
+                        </div>
+                    </div>
+
+                    <div class="holidays-list">
+                        <h3>Holidays & Events</h3>
+                        <div id="holidaysList">
+                            <!-- Holidays list will be rendered here -->
+                        </div>
                     </div>
                 </section>
 

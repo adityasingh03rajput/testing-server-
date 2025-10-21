@@ -1328,6 +1328,109 @@ const classroomSchema = new mongoose.Schema({
 
 const Classroom = mongoose.model('Classroom', classroomSchema);
 
+// Holiday Schema
+const holidaySchema = new mongoose.Schema({
+    date: { type: Date, required: true },
+    name: { type: String, required: true },
+    type: { type: String, enum: ['holiday', 'exam', 'event'], default: 'holiday' },
+    description: String,
+    color: { type: String, default: '#ff6b6b' },
+    createdAt: { type: Date, default: Date.now }
+});
+
+const Holiday = mongoose.model('Holiday', holidaySchema);
+
+// Holiday APIs
+app.get('/api/holidays', async (req, res) => {
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const holidays = await Holiday.find().sort({ date: 1 });
+            res.json({ success: true, holidays });
+        } else {
+            res.json({ success: true, holidays: [] });
+        }
+    } catch (error) {
+        console.error('Error fetching holidays:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/holidays', async (req, res) => {
+    try {
+        const { date, name, type, description, color } = req.body;
+        
+        if (mongoose.connection.readyState === 1) {
+            const holiday = new Holiday({ date, name, type, description, color });
+            await holiday.save();
+            res.json({ success: true, holiday });
+        } else {
+            res.json({ success: true, holiday: req.body });
+        }
+    } catch (error) {
+        console.error('Error adding holiday:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/holidays/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { date, name, type, description, color } = req.body;
+        
+        if (mongoose.connection.readyState === 1) {
+            const holiday = await Holiday.findByIdAndUpdate(
+                id,
+                { date, name, type, description, color },
+                { new: true }
+            );
+            res.json({ success: true, holiday });
+        } else {
+            res.json({ success: true, holiday: req.body });
+        }
+    } catch (error) {
+        console.error('Error updating holiday:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.delete('/api/holidays/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        if (mongoose.connection.readyState === 1) {
+            await Holiday.findByIdAndDelete(id);
+            res.json({ success: true });
+        } else {
+            res.json({ success: true });
+        }
+    } catch (error) {
+        console.error('Error deleting holiday:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get holidays for a specific date range
+app.get('/api/holidays/range', async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+        
+        if (mongoose.connection.readyState === 1) {
+            const holidays = await Holiday.find({
+                date: {
+                    $gte: new Date(startDate),
+                    $lte: new Date(endDate)
+                }
+            }).sort({ date: 1 });
+            res.json({ success: true, holidays });
+        } else {
+            res.json({ success: true, holidays: [] });
+        }
+    } catch (error) {
+        console.error('Error fetching holidays:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.get('/api/classrooms', async (req, res) => {
     try {
         if (mongoose.connection.readyState === 1) {

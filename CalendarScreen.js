@@ -17,6 +17,7 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
     const [monthStats, setMonthStats] = useState({ present: 0, absent: 0, total: 0 });
     const [showDetailsModal, setShowDetailsModal] = useState(false);
     const [selectedDateDetails, setSelectedDateDetails] = useState(null);
+    const [holidays, setHolidays] = useState({});
 
     useEffect(() => {
         console.log('📱 CalendarScreen mounted with props:', {
@@ -27,7 +28,31 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
             currentMonth: currentDate.toDateString()
         });
         fetchMonthAttendance();
+        fetchHolidays();
     }, [currentDate, studentId]);
+
+    const fetchHolidays = async () => {
+        try {
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            const startDate = new Date(year, month, 1);
+            const endDate = new Date(year, month + 1, 0);
+
+            const response = await fetch(`${socketUrl}/api/holidays/range?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`);
+            const data = await response.json();
+
+            if (data.success && data.holidays) {
+                const holidayMap = {};
+                data.holidays.forEach(holiday => {
+                    const date = new Date(holiday.date).toDateString();
+                    holidayMap[date] = holiday;
+                });
+                setHolidays(holidayMap);
+            }
+        } catch (error) {
+            console.log('Error fetching holidays:', error);
+        }
+    };
 
     const fetchMonthAttendance = async () => {
         if (!studentId) {
@@ -133,20 +158,27 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
         return attendanceData[date.toDateString()];
     };
 
+    const getHoliday = (date) => {
+        if (!date) return null;
+        return holidays[date.toDateString()];
+    };
+
     const showDateDetails = (date) => {
         if (!date) return;
         const dateKey = date.toDateString();
         const record = attendanceRecords[dateKey];
+        const holiday = holidays[dateKey];
 
         console.log('📅 Showing details for:', dateKey);
         console.log('📋 Record:', record);
+        console.log('🏖️ Holiday:', holiday);
 
-        if (record) {
+        if (record || holiday) {
             setSelectedDate(date);
-            setSelectedDateDetails(record);
+            setSelectedDateDetails({ ...record, holiday });
             setShowDetailsModal(true);
         } else {
-            console.log('⚠️ No attendance record for this date');
+            console.log('⚠️ No attendance record or holiday for this date');
         }
     };
 
@@ -232,6 +264,7 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
                     <View style={styles.daysGrid}>
                         {days.map((date, index) => {
                             const status = getAttendanceStatus(date);
+                            const holiday = getHoliday(date);
                             const today = isToday(date);
                             const selected = isSelected(date);
 
@@ -245,6 +278,7 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
                                         selected && { borderColor: theme.primary, borderWidth: 2 },
                                         status === 'present' && styles.presentCell,
                                         status === 'absent' && styles.absentCell,
+                                        holiday && styles.holidayCell,
                                     ]}
                                     onPress={() => date && showDateDetails(date)}
                                     disabled={!date}
@@ -255,11 +289,19 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
                                                 styles.dayNumber,
                                                 { color: theme.text },
                                                 today && styles.todayText,
-                                                (status === 'present' || status === 'absent') && styles.statusText
+                                                (status === 'present' || status === 'absent') && styles.statusText,
+                                                holiday && styles.holidayText
                                             ]}>
                                                 {date.getDate()}
                                             </Text>
-                                            {status && (
+                                            {holiday && (
+                                                <View style={[styles.holidayBadge, { backgroundColor: holiday.color }]}>
+                                                    <Text style={styles.holidayEmoji}>
+                                                        {holiday.type === 'holiday' ? '🏖️' : holiday.type === 'exam' ? '📝' : '🎉'}
+                                                    </Text>
+                                                </View>
+                                            )}
+                                            {status && !holiday && (
                                                 <View style={styles.statusIcon}>
                                                     {status === 'present' ? (
                                                         <CheckIcon size={10} color="#10b981" />
@@ -316,6 +358,26 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
 
                         {selectedDateDetails && (
                             <ScrollView style={styles.modalBody}>
+                                {/* Holiday Info (if applicable) */}
+                                {selectedDateDetails.holiday && (
+                                    <View style={[
+                                        styles.holidayInfo,
+                                        { backgroundColor: selectedDateDetails.holiday.color + '20', borderColor: selectedDateDetails.holiday.color }
+                                    ]}>
+                                        <Text style={styles.holidayInfoEmoji}>
+                                            {selectedDateDetails.holiday.type === 'holiday' ? '🏖️' : selectedDateDetails.holiday.type === 'exam' ? '📝' : '🎉'}
+                                        </Text>
+                                        <Text style={[styles.holidayInfoName, { color: selectedDateDetails.holiday.color }]}>
+                                            {selectedDateDetails.holiday.name}
+                                        </Text>
+                                        {selectedDateDetails.holiday.description && (
+                                            <Text style={[styles.holidayInfoDesc, { color: theme.textSecondary }]}>
+                                                {selectedDateDetails.holiday.description}
+                                            </Text>
+                                        )}
+                                    </View>
+                                )}
+
                                 {/* Overall Status */}
                                 <View style={[
                                     styles.overallStatus,
@@ -501,9 +563,31 @@ const styles = StyleSheet.create({
     absentCell: {
         backgroundColor: 'rgba(239, 68, 68, 0.15)',
     },
+    holidayCell: {
+        backgroundColor: 'rgba(255, 107, 107, 0.1)',
+        borderColor: '#ff6b6b',
+        borderWidth: 1,
+    },
     dayNumber: {
         fontSize: 14,
         fontWeight: '500',
+    },
+    holidayText: {
+        color: '#ff6b6b',
+        fontWeight: 'bold',
+    },
+    holidayBadge: {
+        position: 'absolute',
+        top: 2,
+        right: 2,
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    holidayEmoji: {
+        fontSize: 8,
     },
     todayText: {
         fontWeight: 'bold',
@@ -635,5 +719,25 @@ const styles = StyleSheet.create({
     lectureRoom: {
         fontSize: 10,
         marginTop: 2,
+    },
+    holidayInfo: {
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 16,
+        alignItems: 'center',
+        borderWidth: 2,
+    },
+    holidayInfoEmoji: {
+        fontSize: 40,
+        marginBottom: 8,
+    },
+    holidayInfoName: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginBottom: 4,
+    },
+    holidayInfoDesc: {
+        fontSize: 13,
+        textAlign: 'center',
     },
 });

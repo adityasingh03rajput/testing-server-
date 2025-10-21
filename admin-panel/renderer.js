@@ -170,6 +170,7 @@ function switchSection(sectionName) {
         case 'students': loadStudents(); break;
         case 'teachers': loadTeachers(); break;
         case 'classrooms': loadClassrooms(); break;
+        case 'calendar': loadCalendar(); break;
         case 'dashboard':
             loadDashboardData();
             setTimeout(() => initCursorTracking(), 300);
@@ -1292,9 +1293,9 @@ function renderAdvancedTimetableEditor(timetable) {
 
     html += '<div class="toolbar-section">';
     html += '<h3>🔍 View Options</h3>';
-    html += '<button class="tool-btn" onclick="toggleTeacherView()">� Show Teacihers</button>';
-    html += '<button class="tool-btn" onclick="toggleRoomView()">🏢 Show Rooms</button>';
-    html += '<button class="tool-btn" onclick="toggleCompactView()">📏 Compact View</button>';
+    html += `<button class="tool-btn" onclick="toggleTeacherView()">👨‍🏫 ${showTeachers ? 'Hide' : 'Show'} Teachers</button>`;
+    html += `<button class="tool-btn" onclick="toggleRoomView()">🏢 ${showRooms ? 'Hide' : 'Show'} Rooms</button>`;
+    html += `<button class="tool-btn" onclick="toggleCompactView()">📏 ${compactView ? 'Normal' : 'Compact'} View</button>`;
     html += '</div>';
 
     html += '<div class="toolbar-section">';
@@ -1306,6 +1307,7 @@ function renderAdvancedTimetableEditor(timetable) {
 
     html += '<div class="toolbar-section">';
     html += '<h3>⚙️ Advanced</h3>';
+    html += '<button class="tool-btn" onclick="showPeriodSettings()">⏰ Period Settings</button>';
     html += '<button class="tool-btn" onclick="showTemplateDialog()">💾 Save Template</button>';
     html += '<button class="tool-btn" onclick="duplicateTimetable()">📑 Duplicate</button>';
     html += '<button class="tool-btn" onclick="showConflictCheck()">⚠️ Check Conflicts</button>';
@@ -1321,13 +1323,14 @@ function renderAdvancedTimetableEditor(timetable) {
     html += `<div class="info-item"><strong>Selected:</strong> <span id="selectedCount">0</span> cells</div>`;
     html += '</div>';
 
-    // Timetable Grid
-    html += '<div class="timetable-grid-advanced">';
+    // Timetable Grid with dynamic columns
+    const numPeriods = timetable.periods.length;
+    html += `<div class="timetable-grid-advanced" style="grid-template-columns: 120px repeat(${numPeriods}, 1fr);">`;
 
     // Header row
     html += '<div class="tt-cell tt-header tt-corner">Day/Period</div>';
     timetable.periods.forEach(period => {
-        const isBreak = period.number === 4 || period.number === 6;
+        const isBreak = period.isBreak || period.number === 4 || period.number === 6;
         html += `<div class="tt-cell tt-header ${isBreak ? 'tt-break-header' : ''}">
             <div class="period-number">${isBreak ? (period.number === 4 ? '🍽️' : '☕') : `P${period.number}`}</div>
             <div class="period-time">${period.startTime}-${period.endTime}</div>
@@ -3309,4 +3312,891 @@ function clearSingleCell(dayIdx, periodIdx) {
     }
 
     renderAdvancedTimetableEditor(currentTimetable);
+}
+
+// Period Settings Management
+function showPeriodSettings() {
+    if (!currentTimetable) {
+        showNotification('Please load or create a timetable first', 'warning');
+        return;
+    }
+
+    const modalBody = document.getElementById('modalBody');
+    let html = '<h2>⏰ Period Settings</h2>';
+    html += '<p style="color: var(--text-secondary); margin-bottom: 20px;">Configure period timings for your college schedule</p>';
+
+    html += '<div class="period-settings-container">';
+
+    // Period list
+    html += '<div class="period-list">';
+    currentTimetable.periods.forEach((period, index) => {
+        const isBreak = currentTimetable.timetable.monday[index]?.isBreak || false;
+        html += `
+            <div class="period-item" id="period-item-${index}">
+                <div class="period-header">
+                    <span class="period-label">Period ${period.number}</span>
+                    <div class="period-actions">
+                        <button class="icon-btn" onclick="editPeriod(${index})" title="Edit">✏️</button>
+                        <button class="icon-btn" onclick="deletePeriod(${index})" title="Delete">🗑️</button>
+                        <button class="icon-btn" onclick="movePeriodUp(${index})" ${index === 0 ? 'disabled' : ''} title="Move Up">⬆️</button>
+                        <button class="icon-btn" onclick="movePeriodDown(${index})" ${index === currentTimetable.periods.length - 1 ? 'disabled' : ''} title="Move Down">⬇️</button>
+                    </div>
+                </div>
+                <div class="period-details">
+                    <span class="time-badge">⏰ ${period.startTime} - ${period.endTime}</span>
+                    <span class="duration-badge">⏱️ ${calculateDuration(period.startTime, period.endTime)} min</span>
+                    ${isBreak ? '<span class="break-badge">☕ Break</span>' : ''}
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+
+    // Add period button
+    html += '<button class="btn btn-primary" onclick="addNewPeriod()" style="width: 100%; margin-top: 20px;">➕ Add New Period</button>';
+
+    html += '</div>';
+
+    modalBody.innerHTML = html;
+    openModal();
+}
+
+function calculateDuration(startTime, endTime) {
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+    return endMinutes - startMinutes;
+}
+
+function editPeriod(index) {
+    const period = currentTimetable.periods[index];
+    const isBreak = currentTimetable.timetable.monday[index]?.isBreak || false;
+
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>✏️ Edit Period ${period.number}</h2>
+        <form id="editPeriodForm">
+            <div class="form-group">
+                <label>Period Number</label>
+                <input type="number" id="periodNumber" class="form-input" value="${period.number}" min="1" required>
+            </div>
+            <div class="form-group">
+                <label>Start Time</label>
+                <input type="time" id="startTime" class="form-input" value="${period.startTime}" required>
+            </div>
+            <div class="form-group">
+                <label>End Time</label>
+                <input type="time" id="endTime" class="form-input" value="${period.endTime}" required>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="isBreak" ${isBreak ? 'checked' : ''}>
+                    Mark as Break Period
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">💾 Save Changes</button>
+                <button type="button" class="btn btn-secondary" onclick="showPeriodSettings()">❌ Cancel</button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById('editPeriodForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        savePeriodEdit(index);
+    });
+}
+
+function savePeriodEdit(index) {
+    const periodNumber = parseInt(document.getElementById('periodNumber').value);
+    const startTime = document.getElementById('startTime').value;
+    const endTime = document.getElementById('endTime').value;
+    const isBreak = document.getElementById('isBreak').checked;
+
+    // Validate times
+    if (startTime >= endTime) {
+        showNotification('End time must be after start time', 'error');
+        return;
+    }
+
+    saveToHistory();
+
+    // Update period timing
+    currentTimetable.periods[index] = {
+        number: periodNumber,
+        startTime,
+        endTime
+    };
+
+    // Update break status in all days
+    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    dayKeys.forEach(day => {
+        if (currentTimetable.timetable[day][index]) {
+            currentTimetable.timetable[day][index].isBreak = isBreak;
+            if (isBreak && !currentTimetable.timetable[day][index].subject.includes('Break')) {
+                currentTimetable.timetable[day][index].subject = 'Break';
+            }
+        }
+    });
+
+    showNotification('Period updated successfully', 'success');
+    showPeriodSettings();
+}
+
+function addNewPeriod() {
+    const modalBody = document.getElementById('modalBody');
+
+    // Calculate suggested time based on last period
+    const lastPeriod = currentTimetable.periods[currentTimetable.periods.length - 1];
+    const suggestedStart = lastPeriod ? lastPeriod.endTime : '09:00';
+    const [h, m] = suggestedStart.split(':').map(Number);
+    const suggestedEnd = `${String(h + 1).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+    modalBody.innerHTML = `
+        <h2>➕ Add New Period</h2>
+        <form id="addPeriodForm">
+            <div class="form-group">
+                <label>Period Number</label>
+                <input type="number" id="newPeriodNumber" class="form-input" value="${currentTimetable.periods.length + 1}" min="1" required>
+            </div>
+            <div class="form-group">
+                <label>Start Time</label>
+                <input type="time" id="newStartTime" class="form-input" value="${suggestedStart}" required>
+            </div>
+            <div class="form-group">
+                <label>End Time</label>
+                <input type="time" id="newEndTime" class="form-input" value="${suggestedEnd}" required>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="newIsBreak">
+                    Mark as Break Period
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">➕ Add Period</button>
+                <button type="button" class="btn btn-secondary" onclick="showPeriodSettings()">❌ Cancel</button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById('addPeriodForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        saveNewPeriod();
+    });
+}
+
+function saveNewPeriod() {
+    const periodNumber = parseInt(document.getElementById('newPeriodNumber').value);
+    const startTime = document.getElementById('newStartTime').value;
+    const endTime = document.getElementById('newEndTime').value;
+    const isBreak = document.getElementById('newIsBreak').checked;
+
+    // Validate times
+    if (startTime >= endTime) {
+        showNotification('End time must be after start time', 'error');
+        return;
+    }
+
+    saveToHistory();
+
+    // Add new period
+    currentTimetable.periods.push({
+        number: periodNumber,
+        startTime,
+        endTime
+    });
+
+    // Add period slot to all days
+    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    dayKeys.forEach(day => {
+        currentTimetable.timetable[day].push({
+            period: periodNumber,
+            subject: isBreak ? 'Break' : '',
+            room: '',
+            isBreak: isBreak,
+            teacher: '',
+            color: ''
+        });
+    });
+
+    showNotification('Period added successfully', 'success');
+    renderAdvancedTimetableEditor(currentTimetable);
+    showPeriodSettings();
+}
+
+function deletePeriod(index) {
+    if (currentTimetable.periods.length <= 1) {
+        showNotification('Cannot delete the last period', 'error');
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to delete Period ${currentTimetable.periods[index].number}? This will remove it from all days.`)) {
+        return;
+    }
+
+    saveToHistory();
+
+    // Remove period
+    currentTimetable.periods.splice(index, 1);
+
+    // Remove period from all days
+    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    dayKeys.forEach(day => {
+        currentTimetable.timetable[day].splice(index, 1);
+    });
+
+    // Renumber remaining periods
+    currentTimetable.periods.forEach((period, idx) => {
+        period.number = idx + 1;
+        dayKeys.forEach(day => {
+            currentTimetable.timetable[day][idx].period = idx + 1;
+        });
+    });
+
+    showNotification('Period deleted successfully', 'success');
+    renderAdvancedTimetableEditor(currentTimetable);
+    showPeriodSettings();
+}
+
+function movePeriodUp(index) {
+    if (index === 0) return;
+
+    saveToHistory();
+
+    // Swap periods
+    [currentTimetable.periods[index], currentTimetable.periods[index - 1]] =
+        [currentTimetable.periods[index - 1], currentTimetable.periods[index]];
+
+    // Swap in all days
+    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    dayKeys.forEach(day => {
+        [currentTimetable.timetable[day][index], currentTimetable.timetable[day][index - 1]] =
+            [currentTimetable.timetable[day][index - 1], currentTimetable.timetable[day][index]];
+    });
+
+    // Renumber
+    currentTimetable.periods.forEach((period, idx) => {
+        period.number = idx + 1;
+        dayKeys.forEach(day => {
+            currentTimetable.timetable[day][idx].period = idx + 1;
+        });
+    });
+
+    showNotification('Period moved up', 'success');
+    renderAdvancedTimetableEditor(currentTimetable);
+    showPeriodSettings();
+}
+
+function movePeriodDown(index) {
+    if (index === currentTimetable.periods.length - 1) return;
+
+    saveToHistory();
+
+    // Swap periods
+    [currentTimetable.periods[index], currentTimetable.periods[index + 1]] =
+        [currentTimetable.periods[index + 1], currentTimetable.periods[index]];
+
+    // Swap in all days
+    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    dayKeys.forEach(day => {
+        [currentTimetable.timetable[day][index], currentTimetable.timetable[day][index + 1]] =
+            [currentTimetable.timetable[day][index + 1], currentTimetable.timetable[day][index]];
+    });
+
+    // Renumber
+    currentTimetable.periods.forEach((period, idx) => {
+        period.number = idx + 1;
+        dayKeys.forEach(day => {
+            currentTimetable.timetable[day][idx].period = idx + 1;
+        });
+    });
+
+    showNotification('Period moved down', 'success');
+    renderAdvancedTimetableEditor(currentTimetable);
+    showPeriodSettings();
+}
+
+// Inline Period Time Editing
+function editPeriodTime(index, currentStart, currentEnd) {
+    const modalBody = document.getElementById('modalBody');
+    const isBreak = currentTimetable.timetable.monday[index]?.isBreak || false;
+
+    modalBody.innerHTML = `
+        <h2>⏰ Edit Period ${index + 1} Timing</h2>
+        <form id="editTimeForm">
+            <div class="form-group">
+                <label>Start Time</label>
+                <input type="time" id="editStartTime" class="form-input" value="${currentStart}" required>
+            </div>
+            <div class="form-group">
+                <label>End Time</label>
+                <input type="time" id="editEndTime" class="form-input" value="${currentEnd}" required>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="editIsBreak" ${isBreak ? 'checked' : ''}>
+                    Mark as Break Period
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">💾 Save</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById('editTimeForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const newStart = document.getElementById('editStartTime').value;
+        const newEnd = document.getElementById('editEndTime').value;
+        const isBreak = document.getElementById('editIsBreak').checked;
+
+        if (newStart >= newEnd) {
+            showNotification('End time must be after start time', 'error');
+            return;
+        }
+
+        saveToHistory();
+        currentTimetable.periods[index].startTime = newStart;
+        currentTimetable.periods[index].endTime = newEnd;
+
+        // Update break status
+        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        dayKeys.forEach(day => {
+            if (currentTimetable.timetable[day][index]) {
+                currentTimetable.timetable[day][index].isBreak = isBreak;
+                if (isBreak && !currentTimetable.timetable[day][index].subject.includes('Break')) {
+                    currentTimetable.timetable[day][index].subject = 'Break';
+                }
+            }
+        });
+
+        renderAdvancedTimetableEditor(currentTimetable);
+        closeModal();
+        showNotification('Period timing updated', 'success');
+    });
+
+    openModal();
+}
+
+function addNewPeriodInline() {
+    const lastPeriod = currentTimetable.periods[currentTimetable.periods.length - 1];
+    const suggestedStart = lastPeriod ? lastPeriod.endTime : '09:00';
+    const [h, m] = suggestedStart.split(':').map(Number);
+    const suggestedEnd = `${String(h + 1).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>➕ Add New Period</h2>
+        <form id="addPeriodForm">
+            <div class="form-group">
+                <label>Start Time</label>
+                <input type="time" id="newStartTime" class="form-input" value="${suggestedStart}" required>
+            </div>
+            <div class="form-group">
+                <label>End Time</label>
+                <input type="time" id="newEndTime" class="form-input" value="${suggestedEnd}" required>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="newIsBreak">
+                    Mark as Break Period
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">➕ Add</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById('addPeriodForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const startTime = document.getElementById('newStartTime').value;
+        const endTime = document.getElementById('newEndTime').value;
+        const isBreak = document.getElementById('newIsBreak').checked;
+
+        if (startTime >= endTime) {
+            showNotification('End time must be after start time', 'error');
+            return;
+        }
+
+        saveToHistory();
+
+        const newPeriodNumber = currentTimetable.periods.length + 1;
+        currentTimetable.periods.push({
+            number: newPeriodNumber,
+            startTime,
+            endTime
+        });
+
+        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        dayKeys.forEach(day => {
+            currentTimetable.timetable[day].push({
+                period: newPeriodNumber,
+                subject: isBreak ? 'Break' : '',
+                room: '',
+                isBreak: isBreak,
+                teacher: '',
+                color: ''
+            });
+        });
+
+        renderAdvancedTimetableEditor(currentTimetable);
+        closeModal();
+        showNotification('Period added successfully', 'success');
+    });
+
+    openModal();
+}
+
+
+// ============================================
+// CALENDAR MANAGEMENT
+// ============================================
+
+let currentCalendarDate = new Date();
+let holidays = [];
+let academicEvents = [];
+
+// Calendar Schema for MongoDB
+const holidaySchema = {
+    date: Date,
+    name: String,
+    type: String, // 'holiday', 'exam', 'event'
+    description: String,
+    color: String
+};
+
+async function loadCalendar() {
+    await loadHolidays();
+    renderCalendar();
+    renderHolidaysList();
+}
+
+async function loadHolidays() {
+    try {
+        const response = await fetch(`${SERVER_URL}/api/holidays`);
+        const data = await response.json();
+        if (data.success) {
+            holidays = data.holidays || [];
+        }
+    } catch (error) {
+        console.log('Error loading holidays:', error);
+        // Use default holidays if server fails
+        holidays = getDefaultHolidays();
+    }
+}
+
+function getDefaultHolidays() {
+    const year = new Date().getFullYear();
+    return [
+        // National Holidays
+        { date: new Date(year, 0, 26), name: 'Republic Day', type: 'holiday', color: '#ff6b6b', description: 'National Holiday' },
+        { date: new Date(year, 7, 15), name: 'Independence Day', type: 'holiday', color: '#ff6b6b', description: 'National Holiday' },
+        { date: new Date(year, 9, 2), name: 'Gandhi Jayanti', type: 'holiday', color: '#ff6b6b', description: 'National Holiday' },
+        
+        // Religious Holidays (2025 dates - update yearly)
+        { date: new Date(year, 2, 14), name: 'Holi', type: 'holiday', color: '#e74c3c', description: 'Festival of Colors' },
+        { date: new Date(year, 2, 29), name: 'Good Friday', type: 'holiday', color: '#9b59b6', description: 'Christian Holiday' },
+        { date: new Date(year, 3, 10), name: 'Eid ul-Fitr', type: 'holiday', color: '#27ae60', description: 'Islamic Festival' },
+        { date: new Date(year, 3, 14), name: 'Mahavir Jayanti', type: 'holiday', color: '#f39c12', description: 'Jain Festival' },
+        { date: new Date(year, 3, 21), name: 'Ram Navami', type: 'holiday', color: '#e67e22', description: 'Hindu Festival' },
+        { date: new Date(year, 4, 23), name: 'Buddha Purnima', type: 'holiday', color: '#3498db', description: 'Buddhist Festival' },
+        { date: new Date(year, 5, 16), name: 'Eid ul-Adha', type: 'holiday', color: '#27ae60', description: 'Islamic Festival' },
+        { date: new Date(year, 7, 15), name: 'Raksha Bandhan', type: 'holiday', color: '#e74c3c', description: 'Hindu Festival' },
+        { date: new Date(year, 7, 26), name: 'Janmashtami', type: 'holiday', color: '#3498db', description: 'Hindu Festival' },
+        { date: new Date(year, 8, 15), name: 'Ganesh Chaturthi', type: 'holiday', color: '#e67e22', description: 'Hindu Festival' },
+        { date: new Date(year, 9, 2), name: 'Dussehra', type: 'holiday', color: '#e74c3c', description: 'Hindu Festival' },
+        { date: new Date(year, 9, 20), name: 'Diwali', type: 'holiday', color: '#f39c12', description: 'Festival of Lights' },
+        { date: new Date(year, 10, 5), name: 'Guru Nanak Jayanti', type: 'holiday', color: '#3498db', description: 'Sikh Festival' },
+        { date: new Date(year, 11, 25), name: 'Christmas', type: 'holiday', color: '#e74c3c', description: 'Christian Holiday' },
+        
+        // Academic Events
+        { date: new Date(year, 0, 1), name: 'New Year', type: 'event', color: '#9b59b6', description: 'New Year Celebration' },
+        { date: new Date(year, 1, 5), name: 'Semester Start', type: 'event', color: '#3498db', description: 'Even Semester Begins' },
+        { date: new Date(year, 6, 15), name: 'Semester Start', type: 'event', color: '#3498db', description: 'Odd Semester Begins' },
+    ];
+}
+
+function renderCalendar() {
+    const calendar = document.getElementById('adminCalendar');
+    const monthYear = document.getElementById('calendarMonthYear');
+    
+    const year = currentCalendarDate.getFullYear();
+    const month = currentCalendarDate.getMonth();
+    
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    monthYear.textContent = `${monthNames[month]} ${year}`;
+    
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+    
+    let html = '<div class="calendar-grid">';
+    
+    // Day headers
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    days.forEach(day => {
+        html += `<div class="calendar-day-header">${day}</div>`;
+    });
+    
+    // Empty cells before month starts
+    for (let i = 0; i < startingDayOfWeek; i++) {
+        html += '<div class="calendar-cell empty"></div>';
+    }
+    
+    // Days of month
+    for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month, day);
+        const dateStr = date.toDateString();
+        const today = new Date().toDateString() === dateStr;
+        const holiday = holidays.find(h => new Date(h.date).toDateString() === dateStr);
+        const isSunday = date.getDay() === 0;
+        
+        html += `<div class="calendar-cell ${today ? 'today' : ''} ${holiday ? 'has-event' : ''} ${isSunday ? 'sunday' : ''}" 
+                      onclick="selectDate('${dateStr}')"
+                      style="${holiday ? `border-left: 4px solid ${holiday.color}` : ''}">
+            <div class="calendar-date">${day}</div>
+            ${holiday ? `<div class="calendar-event" style="background: ${holiday.color}">${holiday.name}</div>` : ''}
+        </div>`;
+    }
+    
+    html += '</div>';
+    calendar.innerHTML = html;
+}
+
+function renderHolidaysList() {
+    const list = document.getElementById('holidaysList');
+    
+    // Sort holidays by date
+    const sortedHolidays = [...holidays].sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    let html = '';
+    sortedHolidays.forEach((holiday, index) => {
+        const date = new Date(holiday.date);
+        // Use Indian date format: DD MMM YYYY
+        const dateStr = date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+        const dayName = date.toLocaleDateString('en-IN', { weekday: 'short' });
+        
+        html += `
+            <div class="holiday-item" style="border-left: 4px solid ${holiday.color}">
+                <div class="holiday-info">
+                    <div class="holiday-name">${holiday.name}</div>
+                    <div class="holiday-date">${dayName}, ${dateStr}</div>
+                    ${holiday.description ? `<div class="holiday-desc">${holiday.description}</div>` : ''}
+                </div>
+                <div class="holiday-actions">
+                    <button class="icon-btn" onclick="editHoliday(${index})" title="Edit">✏️</button>
+                    <button class="icon-btn" onclick="deleteHoliday(${index})" title="Delete">🗑️</button>
+                </div>
+            </div>
+        `;
+    });
+    
+    if (sortedHolidays.length === 0) {
+        html = '<div class="no-holidays">No holidays added yet. Click "Add Holiday" to get started.</div>';
+    }
+    
+    list.innerHTML = html;
+}
+
+function previousMonth() {
+    currentCalendarDate.setMonth(currentCalendarDate.getMonth() - 1);
+    renderCalendar();
+}
+
+function nextMonth() {
+    currentCalendarDate.setMonth(currentCalendarDate.getMonth() + 1);
+    renderCalendar();
+}
+
+function selectDate(dateStr) {
+    const date = new Date(dateStr);
+    const holiday = holidays.find(h => new Date(h.date).toDateString() === dateStr);
+    
+    if (holiday) {
+        showHolidayDetails(holiday);
+    } else {
+        showAddHolidayModal(date);
+    }
+}
+
+document.getElementById('addHolidayBtn').addEventListener('click', () => {
+    showAddHolidayModal(new Date());
+});
+
+function showAddHolidayModal(date = new Date()) {
+    const modalBody = document.getElementById('modalBody');
+    const dateStr = date.toISOString().split('T')[0];
+    
+    modalBody.innerHTML = `
+        <h2>➕ Add Holiday/Event</h2>
+        <form id="holidayForm">
+            <div class="form-group">
+                <label>Date *</label>
+                <input type="date" id="holidayDate" class="form-input" value="${dateStr}" required>
+            </div>
+            <div class="form-group">
+                <label>Name *</label>
+                <input type="text" id="holidayName" class="form-input" placeholder="e.g., Diwali" required>
+            </div>
+            <div class="form-group">
+                <label>Type *</label>
+                <select id="holidayType" class="form-select" required>
+                    <option value="holiday">🏖️ Holiday</option>
+                    <option value="exam">📝 Exam</option>
+                    <option value="event">🎉 Event</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Color</label>
+                <div class="color-picker">
+                    <input type="color" id="holidayColor" value="#ff6b6b">
+                    <span class="color-label">Choose color</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="holidayDescription" class="form-textarea" rows="3" placeholder="Optional description"></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">➕ Add</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">❌ Cancel</button>
+            </div>
+        </form>
+    `;
+    
+    document.getElementById('holidayForm').addEventListener('submit', handleAddHoliday);
+    openModal();
+}
+
+async function handleAddHoliday(e) {
+    e.preventDefault();
+    
+    const holiday = {
+        date: new Date(document.getElementById('holidayDate').value),
+        name: document.getElementById('holidayName').value,
+        type: document.getElementById('holidayType').value,
+        color: document.getElementById('holidayColor').value,
+        description: document.getElementById('holidayDescription').value
+    };
+    
+    try {
+        const response = await fetch(`${SERVER_URL}/api/holidays`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(holiday)
+        });
+        
+        if (response.ok) {
+            holidays.push(holiday);
+            renderCalendar();
+            renderHolidaysList();
+            closeModal();
+            showNotification('Holiday added successfully', 'success');
+        }
+    } catch (error) {
+        // Fallback to local storage
+        holidays.push(holiday);
+        localStorage.setItem('holidays', JSON.stringify(holidays));
+        renderCalendar();
+        renderHolidaysList();
+        closeModal();
+        showNotification('Holiday added (saved locally)', 'success');
+    }
+}
+
+function editHoliday(index) {
+    const holiday = holidays[index];
+    const modalBody = document.getElementById('modalBody');
+    const dateStr = new Date(holiday.date).toISOString().split('T')[0];
+    
+    modalBody.innerHTML = `
+        <h2>✏️ Edit Holiday/Event</h2>
+        <form id="editHolidayForm">
+            <div class="form-group">
+                <label>Date *</label>
+                <input type="date" id="editHolidayDate" class="form-input" value="${dateStr}" required>
+            </div>
+            <div class="form-group">
+                <label>Name *</label>
+                <input type="text" id="editHolidayName" class="form-input" value="${holiday.name}" required>
+            </div>
+            <div class="form-group">
+                <label>Type *</label>
+                <select id="editHolidayType" class="form-select" required>
+                    <option value="holiday" ${holiday.type === 'holiday' ? 'selected' : ''}>🏖️ Holiday</option>
+                    <option value="exam" ${holiday.type === 'exam' ? 'selected' : ''}>📝 Exam</option>
+                    <option value="event" ${holiday.type === 'event' ? 'selected' : ''}>🎉 Event</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Color</label>
+                <input type="color" id="editHolidayColor" value="${holiday.color || '#ff6b6b'}">
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="editHolidayDescription" class="form-textarea" rows="3">${holiday.description || ''}</textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">💾 Save</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">❌ Cancel</button>
+            </div>
+        </form>
+    `;
+    
+    document.getElementById('editHolidayForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        saveHolidayEdit(index);
+    });
+    openModal();
+}
+
+async function saveHolidayEdit(index) {
+    holidays[index] = {
+        date: new Date(document.getElementById('editHolidayDate').value),
+        name: document.getElementById('editHolidayName').value,
+        type: document.getElementById('editHolidayType').value,
+        color: document.getElementById('editHolidayColor').value,
+        description: document.getElementById('editHolidayDescription').value
+    };
+    
+    try {
+        await fetch(`${SERVER_URL}/api/holidays/${index}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(holidays[index])
+        });
+    } catch (error) {
+        localStorage.setItem('holidays', JSON.stringify(holidays));
+    }
+    
+    renderCalendar();
+    renderHolidaysList();
+    closeModal();
+    showNotification('Holiday updated', 'success');
+}
+
+async function deleteHoliday(index) {
+    if (!confirm('Are you sure you want to delete this holiday?')) return;
+    
+    try {
+        await fetch(`${SERVER_URL}/api/holidays/${index}`, { method: 'DELETE' });
+    } catch (error) {
+        console.log('Error deleting holiday:', error);
+    }
+    
+    holidays.splice(index, 1);
+    localStorage.setItem('holidays', JSON.stringify(holidays));
+    renderCalendar();
+    renderHolidaysList();
+    showNotification('Holiday deleted', 'success');
+}
+
+function showHolidayDetails(holiday) {
+    const modalBody = document.getElementById('modalBody');
+    const date = new Date(holiday.date);
+    // Use Indian date format
+    const dateStr = date.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    
+    modalBody.innerHTML = `
+        <div class="holiday-details">
+            <div class="holiday-icon" style="background: ${holiday.color}">
+                ${holiday.type === 'holiday' ? '🏖️' : holiday.type === 'exam' ? '📝' : '🎉'}
+            </div>
+            <h2>${holiday.name}</h2>
+            <p class="holiday-date-full">${dateStr}</p>
+            ${holiday.description ? `<p class="holiday-description">${holiday.description}</p>` : ''}
+            <div class="holiday-type-badge" style="background: ${holiday.color}20; color: ${holiday.color}">
+                ${holiday.type.toUpperCase()}
+            </div>
+        </div>
+    `;
+    openModal();
+}
+
+// Academic Year Settings (Indian Academic Calendar)
+function showAcademicYearSettings() {
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>📅 Academic Year Settings</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 16px;">
+            Indian academic year typically runs from July to June
+        </p>
+        <form id="academicYearForm">
+            <div class="form-group">
+                <label>Academic Year</label>
+                <input type="text" class="form-input" value="2024-2025" placeholder="e.g., 2024-2025">
+            </div>
+            <div class="form-group">
+                <label>Start Date (Usually July)</label>
+                <input type="date" class="form-input" value="2024-07-01">
+            </div>
+            <div class="form-group">
+                <label>End Date (Usually June)</label>
+                <input type="date" class="form-input" value="2025-06-30">
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" checked> Include Indian Holidays
+                </label>
+            </div>
+            <button type="submit" class="btn btn-primary">💾 Save</button>
+        </form>
+    `;
+    openModal();
+}
+
+// Semester Dates
+function showSemesterDates() {
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>📆 Semester Dates</h2>
+        <div class="semester-dates-list">
+            <div class="semester-date-item">
+                <h4>Semester 1 (Odd)</h4>
+                <input type="date" class="form-input" placeholder="Start Date">
+                <input type="date" class="form-input" placeholder="End Date">
+            </div>
+            <div class="semester-date-item">
+                <h4>Semester 2 (Even)</h4>
+                <input type="date" class="form-input" placeholder="Start Date">
+                <input type="date" class="form-input" placeholder="End Date">
+            </div>
+        </div>
+        <button class="btn btn-primary">💾 Save Dates</button>
+    `;
+    openModal();
+}
+
+// Exam Schedule
+function showExamSchedule() {
+    showNotification('Exam Schedule feature coming soon!', 'info');
+}
+
+// Event Manager
+function showEventManager() {
+    showNotification('Event Manager feature coming soon!', 'info');
+}
+
+// Bulk Import Holidays
+function bulkImportHolidays() {
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>📥 Bulk Import Holidays</h2>
+        <p>Upload a CSV file with columns: date, name, type, color, description</p>
+        <input type="file" accept=".csv" class="form-input" id="holidayCSV">
+        <button class="btn btn-primary" onclick="processHolidayCSV()">Import</button>
+    `;
+    openModal();
+}
+
+function processHolidayCSV() {
+    showNotification('CSV import feature coming soon!', 'info');
 }
