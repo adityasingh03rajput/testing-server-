@@ -1,0 +1,110 @@
+========================================
+ADMIN PANEL INSTALLER
+========================================
+
+The Windows installer (.exe file) is too large to
+store on GitHub (71 MB).
+
+========================================
+HOW TO GET THE INSTALLER
+========================================
+
+Option 1: Build It Yourself (Recommended)
+------------------------------------------
+From the project root, run:
+
+  QUICK_INSTALL_ADMIN.bat
+
+Or manually:
+  cd admin-panel
+  npm install
+  npm install --save-dev electron electron-builder
+  copy package-electron.json package.json
+  npm run build-win
+
+The installer will be created at:
+  admin-panel\dist\College Attendance Admin Setup 1.0.0.exe
+
+Building takes 5-10 minutes.
+
+Option 2: Download from Release
+--------------------------------
+Check the GitHub Releases page:
+https://github.com/YOUR_USERNAME/YOUR_REPO/releases
+
+The installer may be available as a release asset.
+
+Option 3: Request from Developer
+---------------------------------
+Contact the project maintainer to get the
+pre-built installer via:
+- Google Drive
+- Dropbox
+- OneDrive
+- Direct transfer
+
+========================================
+WHY NOT ON GITHUB?
+========================================
+
+GitHub has file size limits:
+- Individual files: 100 MB max
+- Repository: 1 GB recommended max
+- Large files cause slow clones
+
+The installer is 71 MB, which can cause:
+- Slow repository cloning
+- Push/pull timeouts
+- Storage quota issues
+
+========================================
+ALTERNATIVE: BUILD LOCALLY
+========================================
+
+Building locally is EASY and FAST:
+
+1. Clone this repository
+2. Run: QUICK_INSTALL_ADMIN.bat
+3. Wait 5-10 minutes
+4. Get your installer!
+
+Benefits:
+✓ Always get latest version
+✓ Customize if needed
+✓ No download limits
+✓ Verify source code
+
+========================================
+FILE INFORMATION
+========================================
+
+Installer Name: College Attendance Admin Setup 1.0.0.exe
+Size: ~71 MB
+Type: NSIS Windows Installer
+Platform: Windows 7/8/10/11 (64-bit)
+
+Contents:
+- Complete admin panel application
+- All dependencies included
+- Desktop & Start Menu shortcuts
+- Uninstaller
+
+========================================
+WHAT YOU NEED
+========================================
+
+To build the installer, you need:
+✓ Node.js (v16+)
+✓ npm (comes with Node.js)
+✓ Windows OS
+✓ 10 minutes of time
+
+That's it!
+
+========================================
+
+For questions, check:
+- HOW_TO_CREATE_INSTALLER.md
+- INSTALLER_GUIDE.md
+- DEPLOYMENT_GUIDE.md
+
