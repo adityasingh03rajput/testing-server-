@@ -1,37 +1,24 @@
 # Dependencies
 node_modules/
-admin-panel/node_modules/
-server/node_modules/
-
-# Expo
-.expo/
-.expo-shared/
-dist/
-npm-debug.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-*.orig.*
-web-build/
-
-# Uploaded files (user photos)
-server/uploads/
-uploads/
+*/node_modules/
 
 # Build outputs
-android/app/build/
-android/.gradle/
-ios/build/
+dist/
+build/
 *.apk
 *.aab
+android/app/build/
+android/.gradle/
+android/app/release/
 
-# Environment variables
+# Admin Panel Build
+admin-panel/dist/
+admin-panel/win-unpacked/
+
+# Environment
 .env
 .env.local
-.env.production
-server/.env
+.env.*.local
 
 # IDE
 .vscode/
@@ -43,14 +30,54 @@ server/.env
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Logs
-logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+logs/
 
-# Admin panel build
-admin-panel/dist/
-admin-panel/out/
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Expo
+.expo/
+.expo-shared/
+
+# Android
+*.iml
+.gradle
+local.properties
+*.hprof
+.cxx/
+
+# iOS (if needed later)
+ios/Pods/
+ios/build/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+xcuserdata/
+
+# Server uploads
+server/uploads/*
+!server/uploads/.gitkeep
+
+# Face detection models (large files)
+server/models/*
+!server/models/.gitkeep
+
+# Database
+*.db
+*.sqlite
+
+# Misc
+.git-credentials
+*.pem
+*.key
+*.cert

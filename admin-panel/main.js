@@ -1,6 +1,15 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 
+// Handle Squirrel events for Windows installer
+try {
+  if (require('electron-squirrel-startup')) {
+    app.quit();
+  }
+} catch (e) {
+  // electron-squirrel-startup not available, continue normally
+}
+
 let mainWindow;
 
 function createWindow() {
@@ -16,17 +25,78 @@ function createWindow() {
     },
     frame: true,
     backgroundColor: '#0a0e27',
-    icon: path.join(__dirname, 'assets/icon.png')
+    // icon: path.join(__dirname, 'icon.ico'),
+    title: 'College Attendance Admin Panel',
+    show: false // Don't show until ready
   });
 
   mainWindow.loadFile('index.html');
-  
+
+  // Show window when ready
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+
   // Open DevTools in development
   // mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  // Set application menu
+  const { Menu } = require('electron');
+  const template = [
+    {
+      label: 'File',
+      submenu: [
+        { role: 'quit' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'About',
+          click: () => {
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'About',
+              message: 'College Attendance Admin Panel',
+              detail: 'Version 1.0.0\n\nManage students, teachers, and timetables.'
+            });
+          }
+        }
+      ]
+    }
+  ];
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
 }
 
 app.whenReady().then(createWindow);
@@ -52,7 +122,7 @@ ipcMain.handle('select-csv-file', async () => {
       { name: 'All Files', extensions: ['*'] }
     ]
   });
-  
+
   if (!result.canceled && result.filePaths.length > 0) {
     return result.filePaths[0];
   }

@@ -1,0 +1,197 @@
+========================================
+INSTALLATION GUIDE
+College Attendance Admin Panel
+========================================
+
+📦 STEP-BY-STEP INSTALLATION
+========================================
+
+STEP 1: Run the Installer
+--------------------------
+→ Double-click "College Attendance Admin Setup 1.0.0.exe"
+
+STEP 2: Handle Windows SmartScreen (if appears)
+------------------------------------------------
+→ Click "More info"
+→ Click "Run anyway"
+
+Note: This warning appears because the app is not 
+code-signed. The app is safe to install.
+
+STEP 3: License Agreement
+--------------------------
+→ Read the license
+→ Click "I Agree"
+
+STEP 4: Choose Installation Location
+-------------------------------------
+→ Default: C:\Program Files\College Attendance Admin\
+→ Or click "Browse" to choose custom location
+→ Click "Next"
+
+STEP 5: Select Shortcuts
+-------------------------
+→ ✓ Create Desktop Shortcut (recommended)
+→ ✓ Create Start Menu Shortcut (recommended)
+→ Click "Next"
+
+STEP 6: Install
+---------------
+→ Click "Install"
+→ Wait for installation to complete (30-60 seconds)
+
+STEP 7: Finish
+--------------
+→ ✓ Run College Attendance Admin (optional)
+→ Click "Finish"
+
+========================================
+🎯 FIRST TIME CONFIGURATION
+========================================
+
+After installation, configure the server connection:
+
+1. Launch the Admin Panel
+   - From Desktop shortcut, OR
+   - From Start Menu → College Attendance
+
+2. Click Settings Icon (⚙️)
+   - Located in top-right corner
+
+3. Enter Server URL
+   - Format: http://SERVER_IP:3000
+   
+   Examples:
+   • Local: http://localhost:3000
+   • Network: http://192.168.1.100:3000
+   • Remote: http://myserver.com:3000
+
+4. Click "Save Settings"
+
+5. Verify Connection
+   - Green indicator = Connected ✓
+   - Red indicator = Check server/URL
+
+========================================
+✅ VERIFICATION CHECKLIST
+========================================
+
+After installation, verify:
+
+□ Desktop shortcut created
+□ Start Menu entry exists
+□ App launches successfully
+□ Settings page accessible
+□ Server URL configured
+□ Connection indicator green
+□ Dashboard loads data
+
+========================================
+🔧 COMMON ISSUES & SOLUTIONS
+========================================
+
+Issue: "Windows protected your PC"
+-----------------------------------
+This is normal for unsigned apps.
+→ Click "More info"
+→ Click "Run anyway"
+
+Issue: "Installation failed"
+-----------------------------
+→ Run installer as Administrator
+→ Check available disk space (need 500MB)
+→ Temporarily disable antivirus
+→ Try again
+
+Issue: "App won't start"
+------------------------
+→ Restart your computer
+→ Run app as Administrator
+→ Reinstall the application
+
+Issue: "Cannot connect to server"
+----------------------------------
+→ Verify server is running
+→ Check server URL format
+→ Test server URL in browser
+→ Check firewall settings
+→ Verify network connection
+
+Issue: "Blank screen on launch"
+-------------------------------
+→ Wait 10-15 seconds (first launch is slow)
+→ Check internet connection
+→ Restart the application
+
+========================================
+📁 INSTALLATION FILES
+========================================
+
+After installation, files are located at:
+
+Program Files:
+C:\Program Files\College Attendance Admin\
+
+Shortcuts:
+Desktop: College Attendance Admin.lnk
+Start Menu: College Attendance\College Attendance Admin.lnk
+
+Uninstaller:
+C:\Program Files\College Attendance Admin\Uninstall.exe
+
+========================================
+🗑️ UNINSTALLATION
+========================================
+
+To remove the admin panel:
+
+Method 1: Windows 10/11 Settings
+---------------------------------
+1. Open Settings
+2. Go to Apps → Apps & features
+3. Find "College Attendance Admin"
+4. Click → Uninstall
+5. Confirm
+
+Method 2: Control Panel
+------------------------
+1. Open Control Panel
+2. Programs → Uninstall a program
+3. Select "College Attendance Admin"
+4. Click Uninstall
+5. Follow prompts
+
+Method 3: Start Menu
+--------------------
+1. Open Start Menu
+2. Find "College Attendance" folder
+3. Click "Uninstall"
+4. Follow prompts
+
+========================================
+💡 TIPS FOR SUCCESS
+========================================
+
+✓ Install on a PC with stable internet
+✓ Keep server URL handy before installation
+✓ Create both Desktop and Start Menu shortcuts
+✓ Test connection immediately after setup
+✓ Bookmark the server URL for reference
+
+========================================
+📞 NEED HELP?
+========================================
+
+If you encounter issues:
+
+1. Read this guide completely
+2. Check README.txt file
+3. Verify server is running
+4. Test server URL in web browser
+5. Contact your system administrator
+
+========================================
+
+Installation should take 2-3 minutes total.
+The app is ready to use immediately after setup!
+

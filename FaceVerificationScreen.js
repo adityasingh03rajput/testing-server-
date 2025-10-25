@@ -71,12 +71,16 @@ export default function FaceVerificationScreen({
           const data = await response.json();
 
           if (data.success && data.students) {
-            const student = data.students.find(s => s._id === userId);
+            // Try to find by enrollmentNo first, then by _id
+            const student = data.students.find(s => 
+              s.enrollmentNo === userId || s._id === userId
+            );
             if (student && student.photoUrl) {
               setCachedPhoto(student.photoUrl);
               console.log('✅ Got photo URL:', student.photoUrl);
             } else {
-              setVerificationMessage('No reference photo found');
+              console.log('⚠️ Student found but no photo:', student);
+              setVerificationMessage('No reference photo found. Please upload your photo first.');
               return;
             }
           } else {

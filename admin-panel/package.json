@@ -1,42 +1,49 @@
 {
-  "name": "college-admin-panel",
+  "name": "college-attendance-admin",
   "version": "1.0.0",
-  "description": "College Management Admin Panel - Desktop Application",
+  "description": "College Attendance Management System - Admin Panel",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
-    "build-win": "electron-builder --win",
-    "build-linux": "electron-builder --linux",
-    "build-mac": "electron-builder --mac"
+    "build-win": "electron-builder --win --x64",
+    "build-installer": "electron-builder --win --x64 --config electron-builder.json"
   },
-  "build": {
-    "appId": "com.college.adminpanel",
-    "productName": "College Admin Panel",
-    "directories": {
-      "output": "dist"
-    },
-    "win": {
-      "target": "nsis",
-      "icon": "assets/icon.ico"
-    },
-    "linux": {
-      "target": "AppImage",
-      "icon": "assets/icon.png"
-    },
-    "mac": {
-      "target": "dmg",
-      "icon": "assets/icon.icns"
-    }
-  },
-  "keywords": ["college", "admin", "management", "electron"],
-  "author": "Your Name",
+  "author": "College Attendance System",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^28.0.0",
-    "electron-builder": "^24.9.1"
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4"
   },
   "dependencies": {
-    "axios": "^1.6.2"
+    "electron-squirrel-startup": "^1.0.0"
+  },
+  "build": {
+    "appId": "com.college.attendance.admin",
+    "productName": "College Attendance Admin",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "College Attendance Admin",
+      "license": "LICENSE.txt"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/**/*",
+      "node_modules/electron-squirrel-startup/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    }
   }
 }

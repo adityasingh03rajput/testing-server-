@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import io from 'socket.io-client';
 import FaceVerificationScreen from './FaceVerificationScreen';
 import { initializeFaceCache, cacheProfilePhoto, isPhotoCached } from './FaceVerification';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import BottomNavigation from './BottomNavigation';
 import CalendarScreen from './CalendarScreen';
 import ProfileScreen from './ProfileScreen';
@@ -140,6 +141,7 @@ export default function App() {
   const [showFaceVerification, setShowFaceVerification] = useState(false);
   const [isFaceVerified, setIsFaceVerified] = useState(false);
   const [photoCached, setPhotoCached] = useState(false);
+  const [verifiedToday, setVerifiedToday] = useState(false); // Track if verified today
 
   // Bottom navigation state
   const [activeTab, setActiveTab] = useState('home');
@@ -236,12 +238,25 @@ export default function App() {
     }
   }, [showProfile]);
 
-  // Update current day at midnight
+  // Update current day at midnight and reset verification
   useEffect(() => {
+    let lastDate = new Date().toDateString();
+
     const updateCurrentDay = () => {
-      const dayIndex = new Date().getDay();
+      const now = new Date();
+      const currentDate = now.toDateString();
+      const dayIndex = now.getDay();
       const days = ['Monday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       setCurrentDay(days[dayIndex]); // Sunday maps to Monday
+
+      // Check if date changed (new day)
+      if (currentDate !== lastDate) {
+        console.log('🌅 New day detected! Resetting face verification status.');
+        setVerifiedToday(false);
+        setIsFaceVerified(false);
+        setIsRunning(false);
+        lastDate = currentDate;
+      }
     };
 
     // Check every minute if day has changed
@@ -321,6 +336,7 @@ export default function App() {
               endTime: end,
               elapsedMinutes: Math.floor(elapsed / 60),
               remainingMinutes: Math.floor(remaining / 60),
+              remainingSeconds: remaining,
               totalMinutes: Math.floor(total / 60),
               elapsedSeconds: elapsed,
               totalSeconds: total,
@@ -332,9 +348,23 @@ export default function App() {
 
       // Update class info and attendance tracking
       setCurrentClassInfo(prevClass => {
-        // Detect class end and save attendance
-        if (!foundClass && prevClass && attendedMinutes > 0) {
+        // Detect class change - new class started
+        if (foundClass && prevClass && foundClass.subject !== prevClass.subject) {
+          // Save attendance for previous class
+          if (attendedMinutes > 0) {
+            saveLectureAttendance(prevClass, attendedMinutes);
+          }
+          // Reset attendance tracking for new class, but keep verification status
+          setClassStartTime(null);
+          setAttendedMinutes(0);
+          // Timer continues running if already verified today
+        }
+        // Detect class end
+        else if (!foundClass && prevClass && attendedMinutes > 0) {
           saveLectureAttendance(prevClass, attendedMinutes);
+          setClassStartTime(null);
+          setAttendedMinutes(0);
+          // Keep timer running if verified, it will auto-start for next class
         }
         return foundClass;
       });
@@ -346,9 +376,6 @@ export default function App() {
           const startTime = classStartTime || Date.now();
           return Math.floor((Date.now() - startTime) / 60000);
         });
-      } else if (!foundClass) {
-        setClassStartTime(null);
-        setAttendedMinutes(0);
       }
     };
 
@@ -356,7 +383,7 @@ export default function App() {
     const progressInterval = setInterval(updateClassProgress, 1000);
 
     return () => clearInterval(progressInterval);
-  }, [timetable, currentDay, selectedRole, isRunning]);
+  }, [timetable, currentDay, selectedRole, isRunning, classStartTime, attendedMinutes]);
 
   useEffect(() => {
     // Initialize face cache
@@ -758,21 +785,12 @@ export default function App() {
     }
   };
 
+  // Remove the old 2-minute timer logic - timer now runs continuously based on lectures
   useEffect(() => {
-    if (isRunning && timeLeft > 0) {
-      intervalRef.current = setInterval(() => {
-        setTimeLeft(prev => {
-          const newTime = prev - 1;
-          updateTimerOnServer(newTime, true);
-          return newTime;
-        });
-      }, 1000);
-    } else if (timeLeft === 0) {
-      setIsRunning(false);
-      updateTimerOnServer(0, false, 'present');
-    }
+    // Timer runs continuously when started, no automatic stop
+    // Attendance is tracked per lecture in the class progress effect
     return () => clearInterval(intervalRef.current);
-  }, [isRunning, timeLeft]);
+  }, [isRunning]);
 
   useEffect(() => {
     if (isRunning) {
@@ -836,21 +854,47 @@ export default function App() {
   };
 
   const handleStartPause = () => {
-    // If trying to start timer and not verified yet, show face verification
-    if (!isRunning && !isFaceVerified) {
+    // Only allow starting, no pausing
+    if (isRunning) {
+      // Already running, do nothing
+      return;
+    }
+
+    // Check if there's an active class
+    if (!currentClassInfo) {
+      alert('No active class right now. Please wait for the next lecture to start.');
+      return;
+    }
+
+    // If trying to start timer and not verified today yet, show face verification
+    if (!verifiedToday) {
       setShowFaceVerification(true);
       return;
     }
 
-    const newRunning = !isRunning;
-    setIsRunning(newRunning);
-    updateTimerOnServer(timeLeft, newRunning);
+    // Start timer (no toggle, only start)
+    setIsRunning(true);
+    updateTimerOnServer(timeLeft, true);
   };
 
-  const handleVerificationSuccess = (result) => {
+  const handleVerificationSuccess = async (result) => {
     console.log('✅ Face verification successful:', result);
     setIsFaceVerified(true);
+    setVerifiedToday(true); // Mark as verified for the entire day
     setShowFaceVerification(false);
+
+    // Mark verification for current class
+    if (currentClassInfo) {
+      setClassStartTime(Date.now());
+    }
+
+    // Keep screen awake for continuous tracking
+    try {
+      await activateKeepAwakeAsync('attendance-tracking');
+      console.log('✅ Keep awake activated');
+    } catch (error) {
+      console.log('Error activating keep awake:', error);
+    }
 
     // Auto-start timer after verification
     setTimeout(() => {
@@ -865,10 +909,15 @@ export default function App() {
   };
 
   const handleReset = () => {
+    // Reset stops the timer and clears verification for the day
     setIsRunning(false);
+    setVerifiedToday(false);
+    setIsFaceVerified(false);
+    setClassStartTime(null);
+    setAttendedMinutes(0);
+    clearInterval(intervalRef.current);
     const duration = config?.studentScreen?.timer?.duration || 120;
     setTimeLeft(duration);
-    clearInterval(intervalRef.current);
     updateTimerOnServer(duration, false, 'absent');
   };
 
@@ -1390,6 +1439,14 @@ export default function App() {
 
   // Logout function
   const handleLogout = async () => {
+    // Deactivate keep awake
+    try {
+      deactivateKeepAwake('attendance-tracking');
+      console.log('✅ Keep awake deactivated');
+    } catch (error) {
+      console.log('Error deactivating keep awake:', error);
+    }
+
     // Clear all stored data FIRST
     try {
       await AsyncStorage.multiRemove([
@@ -1413,6 +1470,8 @@ export default function App() {
     setStudentId(null);
     setSelectedRole(null);
     setShowLogin(true);
+    setVerifiedToday(false); // Reset verification status
+    setIsFaceVerified(false);
   };
 
   // Teacher Dashboard
@@ -2150,23 +2209,52 @@ export default function App() {
               {currentClassInfo.startTime} - {currentClassInfo.endTime} • {currentClassInfo.room}
             </Text>
 
+            {/* Countdown Timer Display */}
+            <View style={{
+              backgroundColor: theme.background,
+              borderRadius: 12,
+              padding: 15,
+              marginBottom: 10,
+              alignItems: 'center',
+              borderWidth: 2,
+              borderColor: isRunning ? '#22c55e' : theme.border,
+            }}>
+              <Text style={{ color: theme.textSecondary, fontSize: 11, marginBottom: 5 }}>
+                Time Remaining
+              </Text>
+              <Text style={{
+                color: isRunning ? '#22c55e' : theme.text,
+                fontSize: 36,
+                fontWeight: 'bold',
+                fontFamily: 'monospace'
+              }}>
+                {Math.floor(currentClassInfo.remainingSeconds / 60)}:{(currentClassInfo.remainingSeconds % 60).toString().padStart(2, '0')}
+              </Text>
+              <Text style={{ color: theme.textSecondary, fontSize: 10, marginTop: 5 }}>
+                {currentClassInfo.elapsedMinutes} min elapsed • {currentClassInfo.totalMinutes} min total
+              </Text>
+            </View>
+
+            {/* Attendance Status */}
             <View style={{
               backgroundColor: theme.background,
               borderRadius: 8,
               padding: 10,
               marginBottom: 8
             }}>
-              <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', textAlign: 'center' }}>
-                ⏱️ {currentClassInfo.elapsedMinutes} min done, {currentClassInfo.remainingMinutes} min left
-              </Text>
-              {isRunning && (
-                <Text style={{ color: '#22c55e', fontSize: 12, fontWeight: '600', textAlign: 'center', marginTop: 5 }}>
-                  ✅ You attended {attendedMinutes} min
+              {!verifiedToday && (
+                <Text style={{ color: '#fbbf24', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>
+                  ⚠️ Face verification required to start attendance
                 </Text>
               )}
-              {!isRunning && (
-                <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '600', textAlign: 'center', marginTop: 5 }}>
-                  ⚠️ Timer not started
+              {verifiedToday && isRunning && (
+                <Text style={{ color: '#22c55e', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>
+                  ✅ Attendance tracking: {attendedMinutes} min recorded
+                </Text>
+              )}
+              {verifiedToday && !isRunning && (
+                <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>
+                  ⏸️ Attendance paused
                 </Text>
               )}
             </View>
@@ -2181,7 +2269,7 @@ export default function App() {
               <View style={{
                 height: '100%',
                 width: `${(currentClassInfo.elapsedSeconds / currentClassInfo.totalSeconds) * 100}%`,
-                backgroundColor: theme.primary,
+                backgroundColor: isRunning ? '#22c55e' : theme.primary,
               }} />
             </View>
           </View>

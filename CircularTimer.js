@@ -116,25 +116,86 @@ export default function CircularTimer({
         };
 
         const newSegments = schedule.map((slot, i) => {
-          const colorMap = {
-            ENGLISH: '#22c55e', MATH: '#991b1b', MATHEMATICS: '#991b1b',
-            SCIENCE: '#f97316', PHYSICS: '#3b82f6', CHEMISTRY: '#8b5cf6',
-            BIOLOGY: '#10b981', HISTORY: '#1f2937', GEOGRAPHY: '#0891b2',
-            ART: '#ec4899', MUSIC: '#a855f7', GYM: '#84cc16', PE: '#84cc16',
-            COMPUTER: '#6366f1', CS: '#6366f1', BREAK: '#fbbf24', LUNCH: '#f59e0b',
-            'PROGRAMMING PRACTICE': '#6366f1', 'MATHEMATICS TUTORIAL': '#991b1b',
-            'PHYSICS LAB': '#3b82f6', 'CHEMISTRY WORKSHOP': '#8b5cf6',
-            'ENGLISH READING': '#22c55e', 'PROJECT WORK': '#64748b',
+          const subject = (slot.subject || '').toUpperCase().trim();
+          
+          // Enhanced color mapping with partial matching
+          const getColor = (subj) => {
+            // Direct matches
+            const colorMap = {
+              'ENGLISH': '#22c55e',
+              'MATH': '#991b1b',
+              'MATHEMATICS': '#991b1b',
+              'MATHEMATICS-I': '#991b1b',
+              'MATHEMATICS-II': '#991b1b',
+              'SCIENCE': '#f97316',
+              'PHYSICS': '#3b82f6',
+              'CHEMISTRY': '#8b5cf6',
+              'BIOLOGY': '#10b981',
+              'HISTORY': '#1f2937',
+              'GEOGRAPHY': '#0891b2',
+              'ART': '#ec4899',
+              'MUSIC': '#a855f7',
+              'GYM': '#84cc16',
+              'PE': '#84cc16',
+              'COMPUTER': '#6366f1',
+              'CS': '#6366f1',
+              'BREAK': '#fbbf24',
+              'LUNCH': '#f59e0b',
+              'PROGRAMMING': '#6366f1',
+              'PROGRAMMING IN C': '#6366f1',
+              'PROGRAMMING PRACTICE': '#6366f1',
+              'PROGRAMMING LAB': '#6366f1',
+              'MATHEMATICS PRACTICE': '#991b1b',
+              'MATHEMATICS TUTORIAL': '#991b1b',
+              'PHYSICS WORKSHOP': '#3b82f6',
+              'PHYSICS LAB': '#3b82f6',
+              'CHEMISTRY LAB': '#8b5cf6',
+              'CHEMISTRY WORKSHOP': '#8b5cf6',
+              'ENGINEERING DRAWING': '#f97316',
+              'ENGLISH PROJECT': '#22c55e',
+              'ENGLISH READING': '#22c55e',
+              'PROJECT WORK': '#64748b',
+              'DATA STRUCTURES': '#6366f1',
+              'DATABASE': '#8b5cf6',
+              'DBMS': '#8b5cf6',
+              'MACHINE LEARNING': '#ec4899',
+              'ML': '#ec4899',
+              'ARTIFICIAL INTELLIGENCE': '#a855f7',
+              'AI': '#a855f7',
+              'DIGITAL': '#3b82f6',
+              'SIGNALS': '#0891b2',
+            };
+            
+            // Check direct match first
+            if (colorMap[subj]) return colorMap[subj];
+            
+            // Check partial matches
+            if (subj.includes('PROG')) return '#6366f1';
+            if (subj.includes('MATH')) return '#991b1b';
+            if (subj.includes('PHYS')) return '#3b82f6';
+            if (subj.includes('CHEM')) return '#8b5cf6';
+            if (subj.includes('ENG')) return '#22c55e';
+            if (subj.includes('BREAK') || subj.includes('LUNCH')) return '#fbbf24';
+            if (subj.includes('LAB')) return '#10b981';
+            if (subj.includes('WORKSHOP')) return '#f97316';
+            
+            // Generate color based on hash for consistency
+            const colors = ['#22c55e', '#991b1b', '#f97316', '#3b82f6', '#8b5cf6', '#10b981', '#ec4899', '#a855f7', '#84cc16', '#0891b2'];
+            const hash = subj.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+            return colors[hash % colors.length];
           };
-          const subject = (slot.subject || '').toUpperCase();
+          
           const shortLabel = getShortForm(subject);
+          const color = getColor(subject);
+          
+          console.log(`Segment ${i}: ${subject} -> ${shortLabel} -> ${color}`);
 
           return {
             id: i + 1,
             label: shortLabel || 'CLASS',
             room: slot.room || '',
             time: slot.time || '',
-            color: colorMap[subject] || '#64748b',
+            color: color,
             start: i * angleStep,
             end: (i + 1) * angleStep,
           };
@@ -409,7 +470,8 @@ export default function CircularTimer({
                   fill={seg.color}
                   stroke={safeTheme.background}
                   strokeWidth="2"
-                  opacity={isActive ? 0 : 0.9}
+                  opacity={isActive ? 0 : 1}
+                  fillOpacity={isActive ? 0 : 0.95}
                 />
 
                 {/* Morphed circle - appears in place */}
@@ -523,27 +585,36 @@ export default function CircularTimer({
             {formatTime(initialTime)}
           </Text>
 
-          <TouchableOpacity
-            style={[styles.playBtn, { backgroundColor: safeTheme.primary }]}
-            onPress={onToggleTimer}
-            activeOpacity={0.8}
-          >
-            {isRunning ? (
-              <PauseIcon size={20} color={safeTheme.background} />
-            ) : (
+          {/* Only show start button if not running */}
+          {!isRunning && (
+            <TouchableOpacity
+              style={[styles.playBtn, { backgroundColor: safeTheme.primary }]}
+              onPress={onToggleTimer}
+              activeOpacity={0.8}
+            >
               <PlayIcon size={20} color={safeTheme.background} />
-            )}
-          </TouchableOpacity>
+            </TouchableOpacity>
+          )}
 
-          <TouchableOpacity
-            style={[styles.resetBtn, { borderColor: safeTheme.border }]}
-            onPress={onReset}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.resetText, { color: safeTheme.textSecondary }]}>
-              Reset
-            </Text>
-          </TouchableOpacity>
+          {/* Show running indicator when active */}
+          {isRunning && (
+            <View style={[styles.runningBadge, { backgroundColor: '#22c55e' }]}>
+              <Text style={styles.runningText}>● TRACKING</Text>
+            </View>
+          )}
+
+          {/* Reset button - only visible when not running */}
+          {!isRunning && (
+            <TouchableOpacity
+              style={[styles.resetBtn, { borderColor: safeTheme.border }]}
+              onPress={onReset}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.resetText, { color: safeTheme.textSecondary }]}>
+                Reset
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </Animated.View>
 
@@ -606,6 +677,17 @@ const styles = StyleSheet.create({
   resetText: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  runningBadge: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginBottom: 10,
+  },
+  runningText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   hint: {
     marginTop: 20,

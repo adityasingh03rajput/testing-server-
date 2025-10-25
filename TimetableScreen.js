@@ -5,16 +5,6 @@ import {
 import { BookIcon, CalendarIcon, CoffeeIcon, LocationIcon } from './Icons';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const PERIODS = [
-  { number: 1, time: '09:00 - 10:00' },
-  { number: 2, time: '10:00 - 11:00' },
-  { number: 3, time: '11:00 - 12:00' },
-  { number: 4, time: '12:00 - 01:00' },
-  { number: 5, time: '01:00 - 02:00' },
-  { number: 6, time: '02:00 - 03:00' },
-  { number: 7, time: '03:00 - 04:00' },
-  { number: 8, time: '04:00 - 05:00' },
-];
 
 export default function TimetableScreen({ theme, semester, branch, socketUrl }) {
   const [timetable, setTimetable] = useState(null);
@@ -60,6 +50,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl }) 
       if (data.success && data.timetable) {
         setTimetable(data.timetable);
         console.log('Timetable loaded successfully');
+        console.log('Periods from API:', data.timetable.periods);
       } else {
         console.log('No timetable found');
         setTimetable(null);
@@ -70,6 +61,27 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl }) 
     } finally {
       setLoading(false);
     }
+  };
+
+  // Get periods from timetable data or use defaults
+  const getPeriods = () => {
+    if (timetable && timetable.periods && timetable.periods.length > 0) {
+      return timetable.periods.map(p => ({
+        number: p.number,
+        time: `${p.startTime} - ${p.endTime}`
+      }));
+    }
+    // Fallback periods
+    return [
+      { number: 1, time: '09:40 - 10:40' },
+      { number: 2, time: '10:40 - 11:40' },
+      { number: 3, time: '11:40 - 12:10' },
+      { number: 4, time: '12:10 - 13:10' },
+      { number: 5, time: '13:10 - 14:10' },
+      { number: 6, time: '14:10 - 14:20' },
+      { number: 7, time: '14:20 - 15:30' },
+      { number: 8, time: '15:30 - 16:10' },
+    ];
   };
 
   const getTodaySchedule = () => {
@@ -168,7 +180,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl }) 
               {DAYS[currentDay] || 'Monday'}'s Schedule
             </Text>
 
-            {PERIODS.map((period) => {
+            {getPeriods().map((period) => {
               const subject = getSubjectForPeriod(currentDay, period.number);
               const isCurrentPeriod = currentPeriod === period.number;
               const isBreak = subject?.isBreak;
@@ -257,7 +269,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl }) 
                 </View>
 
                 {/* Period Rows */}
-                {PERIODS.map(period => (
+                {getPeriods().map(period => (
                   <View key={period.number} style={styles.weekRow}>
                     <View style={[styles.weekCell, { backgroundColor: theme.background }]}>
                       <Text style={[styles.weekCellText, { color: theme.primary }]}>

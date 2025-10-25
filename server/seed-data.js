@@ -197,15 +197,16 @@ function generateAttendanceRecords(students) {
     return records;
 }
 
+// Standard periods ending at 4:10 PM (16:10)
 const standardPeriods = [
     { number: 1, startTime: '09:40', endTime: '10:40' },
     { number: 2, startTime: '10:40', endTime: '11:40' },
     { number: 3, startTime: '11:40', endTime: '12:10' },
-    { number: 4, startTime: '12:10', endTime: '13:10' },
+    { number: 4, startTime: '12:10', endTime: '13:10' }, // Lunch break
     { number: 5, startTime: '13:10', endTime: '14:10' },
-    { number: 6, startTime: '14:10', endTime: '14:20' },
+    { number: 6, startTime: '14:10', endTime: '14:20' }, // Short break
     { number: 7, startTime: '14:20', endTime: '15:30' },
-    { number: 8, startTime: '15:30', endTime: '16:10' },
+    { number: 8, startTime: '15:30', endTime: '16:10' }, // Last period ends at 4:10 PM
 ];
 
 

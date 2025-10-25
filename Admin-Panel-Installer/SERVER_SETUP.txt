@@ -1,0 +1,212 @@
+========================================
+SERVER SETUP INFORMATION
+For System Administrators
+========================================
+
+This document explains how to set up the backend
+server that the Admin Panel connects to.
+
+========================================
+📋 PREREQUISITES
+========================================
+
+Before using the Admin Panel, ensure:
+
+✓ Backend server is installed and running
+✓ MongoDB database is running
+✓ Server is accessible on network
+✓ Firewall allows port 3000
+
+========================================
+🖥️ SERVER REQUIREMENTS
+========================================
+
+The backend server needs:
+
+- Node.js (v16 or higher)
+- MongoDB (v4.4 or higher)
+- Port 3000 available
+- Network connectivity
+
+========================================
+🚀 STARTING THE SERVER
+========================================
+
+On the server machine:
+
+1. Navigate to server folder:
+   cd path\to\project\server
+
+2. Start MongoDB (if not running):
+   mongod
+
+3. Start the backend server:
+   node index.js
+
+4. Verify server is running:
+   - Should show: "Server running on port 3000"
+   - Should show: "Connected to MongoDB"
+
+========================================
+🌐 FINDING YOUR SERVER URL
+========================================
+
+For Admin Panel configuration, you need the server URL:
+
+Local Machine (same PC):
+------------------------
+http://localhost:3000
+
+Same Network (LAN):
+-------------------
+1. On server PC, open Command Prompt
+2. Type: ipconfig
+3. Find "IPv4 Address" (e.g., 192.168.1.100)
+4. Server URL: http://192.168.1.100:3000
+
+Remote/Internet:
+----------------
+1. Use your public IP or domain name
+2. Server URL: http://your-domain.com:3000
+3. Ensure port 3000 is forwarded
+
+========================================
+🔧 SERVER CONFIGURATION
+========================================
+
+Default Configuration:
+- Port: 3000
+- Database: MongoDB on localhost:27017
+- Database Name: attendance_app
+
+To change port, edit server/index.js:
+const PORT = 3000; // Change this
+
+========================================
+🔥 FIREWALL CONFIGURATION
+========================================
+
+Windows Firewall:
+-----------------
+1. Open Windows Defender Firewall
+2. Advanced Settings
+3. Inbound Rules → New Rule
+4. Port → TCP → 3000
+5. Allow the connection
+6. Apply to all profiles
+
+Router Port Forwarding (for remote access):
+-------------------------------------------
+1. Access router admin panel
+2. Port Forwarding section
+3. Forward external port 3000 to server IP:3000
+4. Save settings
+
+========================================
+✅ TESTING SERVER CONNECTION
+========================================
+
+Test 1: Local Test
+------------------
+Open browser on server PC:
+http://localhost:3000/api/health
+
+Should show: {"status":"ok"}
+
+Test 2: Network Test
+--------------------
+Open browser on another PC:
+http://SERVER_IP:3000/api/health
+
+Should show: {"status":"ok"}
+
+Test 3: Admin Panel Test
+-------------------------
+1. Open Admin Panel
+2. Go to Settings
+3. Enter server URL
+4. Check connection indicator (should be green)
+
+========================================
+📊 MONITORING SERVER
+========================================
+
+Check if server is running:
+
+Windows:
+--------
+netstat -ano | findstr :3000
+
+Should show active connection on port 3000
+
+Check MongoDB:
+--------------
+mongo
+show dbs
+use attendance_app
+show collections
+
+Should show: students, teachers, timetables, etc.
+
+========================================
+🐛 TROUBLESHOOTING
+========================================
+
+Problem: Server won't start
+----------------------------
+→ Check if port 3000 is already in use
+→ Verify MongoDB is running
+→ Check Node.js is installed: node --version
+
+Problem: Cannot connect from Admin Panel
+-----------------------------------------
+→ Verify server is running
+→ Check firewall settings
+→ Ping server IP from client PC
+→ Test URL in web browser first
+
+Problem: Database connection failed
+------------------------------------
+→ Start MongoDB: mongod
+→ Check MongoDB is running: mongo
+→ Verify database name in server config
+
+========================================
+🔐 SECURITY RECOMMENDATIONS
+========================================
+
+For Production Use:
+
+✓ Change default passwords
+✓ Enable MongoDB authentication
+✓ Use HTTPS instead of HTTP
+✓ Implement rate limiting
+✓ Regular database backups
+✓ Keep Node.js and packages updated
+
+========================================
+📝 QUICK REFERENCE
+========================================
+
+Start Server:
+  cd server
+  node index.js
+
+Start MongoDB:
+  mongod
+
+Check Server Status:
+  http://localhost:3000/api/health
+
+Find Server IP:
+  ipconfig (Windows)
+  ifconfig (Linux/Mac)
+
+Stop Server:
+  Ctrl + C in server terminal
+
+========================================
+
+For detailed server setup, refer to the main
+project documentation or contact the developer.
+
