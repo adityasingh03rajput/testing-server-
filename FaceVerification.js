@@ -64,12 +64,21 @@ export const cacheProfilePhoto = async (photoUrl, userId) => {
     const cachedPhotoPath = `${CACHE_DIR}${userId}_encrypted.dat`;
     await FileSystem.writeAsStringAsync(cachedPhotoPath, encryptedData);
 
-    // Store metadata
+    // Store metadata with server time if available
+    let timestamp;
+    try {
+      const { getServerTime } = require('./ServerTime');
+      const serverTime = getServerTime();
+      timestamp = serverTime.now();
+    } catch {
+      timestamp = Date.now();
+    }
+    
     await AsyncStorage.setItem(
       `${PHOTO_CACHE_KEY}${userId}`,
       JSON.stringify({
         path: cachedPhotoPath,
-        timestamp: Date.now(),
+        timestamp: timestamp,
         userId: userId,
       })
     );

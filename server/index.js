@@ -412,12 +412,41 @@ io.on('connection', (socket) => {
             const isOfflineId = studentId && studentId.toString().startsWith('offline_');
 
             if (mongoose.connection.readyState === 1 && !isOfflineId) {
-                await Student.findByIdAndUpdate(studentId, {
-                    timerValue,
-                    isRunning,
-                    status,
-                    lastUpdated: new Date()
-                });
+                try {
+                    // Check if studentId is a valid ObjectId format
+                    const isValidObjectId = mongoose.Types.ObjectId.isValid(studentId) && 
+                                           /^[0-9a-fA-F]{24}$/.test(studentId);
+                    
+                    let student;
+                    if (isValidObjectId) {
+                        // Try both _id and enrollmentNo
+                        student = await StudentManagement.findOne({
+                            $or: [
+                                { _id: studentId },
+                                { enrollmentNo: studentId }
+                            ]
+                        });
+                    } else {
+                        // Not a valid ObjectId, search only by enrollmentNo
+                        console.log(`🔍 Searching for student by enrollmentNo: ${studentId}`);
+                        student = await StudentManagement.findOne({ enrollmentNo: studentId });
+                    }
+                    
+                    if (student) {
+                        console.log(`✅ Found student: ${student.name} (${student.enrollmentNo})`);
+                        await StudentManagement.findByIdAndUpdate(student._id, {
+                            timerValue,
+                            isRunning,
+                            status,
+                            lastUpdated: new Date()
+                        });
+                    } else {
+                        console.log(`⚠️ Student not found with ID: ${studentId}`);
+                    }
+                } catch (dbError) {
+                    console.error('❌ Database error in timer update:', dbError.message);
+                    // Continue without throwing - don't break the socket connection
+                }
             } else {
                 // Handle offline/in-memory students
                 let student = studentsMemory.find(s => s._id === studentId);
@@ -461,11 +490,28 @@ app.post('/api/attendance/record', async (req, res) => {
     try {
         const { 
             studentId, studentName, enrollmentNumber, status, timerValue, semester, branch,
-            lectures, totalAttended, totalClassTime, dayPercentage 
+            lectures, totalAttended, totalClassTime, dayPercentage, clientDate 
         } = req.body;
         
+        // SECURITY: Always use server time, never trust client
         const today = new Date();
         today.setHours(0, 0, 0, 0);
+        
+        // Optional: Validate client date matches server date (within 1 day tolerance)
+        if (clientDate) {
+            const clientDateObj = new Date(clientDate);
+            clientDateObj.setHours(0, 0, 0, 0);
+            const daysDiff = Math.abs((today - clientDateObj) / (1000 * 60 * 60 * 24));
+            
+            if (daysDiff > 1) {
+                console.warn(`⚠️ Client date mismatch: client=${clientDate}, server=${today.toISOString()}`);
+                return res.status(400).json({ 
+                    success: false, 
+                    error: 'Date mismatch. Please sync your device time.',
+                    serverDate: today.toISOString()
+                });
+            }
+        }
 
         if (mongoose.connection.readyState === 1) {
             // Check if record already exists for today
@@ -791,26 +837,25 @@ app.post('/api/verify-face', async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-    console.log('========================================');
-    console.log('🚀 Attendance SDUI Server Running');
-    console.log('========================================');
-    console.log(`📡 HTTP Server: http://localhost:${PORT}`);
-    console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
-    console.log(`📊 Config API: http://localhost:${PORT}/api/config`);
-    console.log(`👥 Students API: http://localhost:${PORT}/api/students`);
-    console.log(`🔍 Face Verify: http://localhost:${PORT}/api/verify-face`);
-    console.log('========================================');
-});
-
-
 // ==================== ADMIN PANEL API ENDPOINTS ====================
 
 // Health check
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date() });
 });
+
+// Server time endpoint (for time synchronization)
+app.get('/api/time', (req, res) => {
+    const serverTime = Date.now();
+    res.json({
+        success: true,
+        serverTime: serverTime,
+        serverTimeISO: new Date(serverTime).toISOString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+});
+
+// Server will be started at the end of the file after all routes are registered
 
 // Login endpoint
 app.post('/api/login', async (req, res) => {
@@ -1057,7 +1102,7 @@ app.post('/api/upload-photo', async (req, res) => {
         console.log(`✅ Photo saved: ${filename}`);
 
         // Use full URL with IP address so mobile app can access it
-        const photoUrl = `http://192.168.107.31:3000/uploads/${filename}`;
+        const photoUrl = `http://192.168.9.31:3000/uploads/${filename}`;
         res.json({ success: true, photoUrl, filename, message: 'Photo uploaded successfully with face detected!' });
     } catch (error) {
         console.error('❌ Error uploading photo:', error);
@@ -1512,4 +1557,20 @@ app.delete('/api/classrooms/:id', async (req, res) => {
         console.error('Error deleting classroom:', error);
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+// ==================== START SERVER ====================
+// All routes must be registered before starting the server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log('========================================');
+    console.log('🚀 Attendance SDUI Server Running');
+    console.log('========================================');
+    console.log(`📡 HTTP Server: http://localhost:${PORT}`);
+    console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
+    console.log(`📊 Config API: http://localhost:${PORT}/api/config`);
+    console.log(`👥 Students API: http://localhost:${PORT}/api/students`);
+    console.log(`🔍 Face Verify: http://localhost:${PORT}/api/verify-face`);
+    console.log(`⏰ Time Sync: http://localhost:${PORT}/api/time`);
+    console.log('========================================');
 });

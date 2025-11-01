@@ -2,7 +2,7 @@
 // Configuration
 // IMPORTANT: Use your server's IP address so mobile app can access photos
 // Change this to your actual server IP (check with ipconfig or ifconfig)
-let SERVER_URL = 'http://192.168.107.31:3000';
+let SERVER_URL = 'http://192.168.9.31:3000';
 
 // State
 let students = [];

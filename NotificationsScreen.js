@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { BellIcon, CheckIcon, ClockIcon } from './Icons';
 import NotificationService from './NotificationService';
+import { getServerTime } from './ServerTime';
 
 export default function NotificationsScreen({ theme, userData, socketUrl }) {
   const [notifications, setNotifications] = useState([]);
@@ -52,9 +53,18 @@ export default function NotificationsScreen({ theme, userData, socketUrl }) {
 
   const fetchTodaySchedule = async () => {
     try {
-      const today = new Date();
-      const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-      const currentDay = dayNames[today.getDay()];
+      // Use server time to get current day
+      let today, currentDay;
+      try {
+        const serverTime = getServerTime();
+        today = serverTime.nowDate();
+        const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        currentDay = dayNames[today.getDay()];
+      } catch {
+        today = new Date();
+        const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        currentDay = dayNames[today.getDay()];
+      }
 
       // Fetch all timetables and filter by teacher
       const response = await fetch(`${socketUrl}/api/teacher-schedule/${userData.employeeId}/${currentDay}`);
@@ -107,10 +117,20 @@ export default function NotificationsScreen({ theme, userData, socketUrl }) {
   };
 
   const generateNotifications = (schedule) => {
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-    const currentTime = currentHour * 60 + currentMinute;
+    // Use server time for notifications
+    let now, currentHour, currentMinute, currentTime;
+    try {
+      const serverTime = getServerTime();
+      now = serverTime.nowDate();
+      currentHour = now.getHours();
+      currentMinute = now.getMinutes();
+      currentTime = currentHour * 60 + currentMinute;
+    } catch {
+      now = new Date();
+      currentHour = now.getHours();
+      currentMinute = now.getMinutes();
+      currentTime = currentHour * 60 + currentMinute;
+    }
 
     const notifs = schedule.map((lecture) => {
       const [startH, startM] = lecture.startTime.split(':').map(Number);
@@ -137,7 +157,14 @@ export default function NotificationsScreen({ theme, userData, socketUrl }) {
         status,
         message,
         lecture,
-        time: new Date(),
+        time: (() => {
+          try {
+            const serverTime = getServerTime();
+            return serverTime.nowDate();
+          } catch {
+            return new Date();
+          }
+        })(),
       };
     });
 

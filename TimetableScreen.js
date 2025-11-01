@@ -1,20 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, Modal
 } from 'react-native';
 import { BookIcon, CalendarIcon, CoffeeIcon, LocationIcon } from './Icons';
+import { getServerTime } from './ServerTime';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-export default function TimetableScreen({ theme, semester, branch, socketUrl }) {
+export default function TimetableScreen({ theme, semester, branch, socketUrl, canEdit = false, isTeacher = false }) {
   const [timetable, setTimetable] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [editingCell, setEditingCell] = useState(null);
+  const [editSubject, setEditSubject] = useState('');
+  const [editRoom, setEditRoom] = useState('');
+  const [saving, setSaving] = useState(false);
   
   // Get current day (0 = Monday, 5 = Saturday, Sunday defaults to Monday)
   const getCurrentDayIndex = () => {
-    const day = new Date().getDay();
-    if (day === 0) return 0; // Sunday -> Monday
-    return day - 1; // Monday = 0, Saturday = 5
+    try {
+      const day = getServerTime().nowDate().getDay();
+      if (day === 0) return 0; // Sunday -> Monday
+      return day - 1; // Monday = 0, Saturday = 5
+    } catch {
+      const day = new Date().getDay();
+      if (day === 0) return 0;
+      return day - 1;
+    }
   };
   
   const [currentDay, setCurrentDay] = useState(getCurrentDayIndex());
@@ -63,6 +74,70 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl }) 
     }
   };
 
+  const saveTimetable = async () => {
+    if (!canEdit || !timetable) return;
+    
+    setSaving(true);
+    try {
+      const response = await fetch(`${socketUrl}/api/timetable/${semester}/${branch}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timetable: timetable.timetable })
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        console.log('✅ Timetable saved successfully');
+        alert('Timetable saved successfully!');
+      } else {
+        console.log('❌ Failed to save timetable');
+        alert('Failed to save timetable');
+      }
+    } catch (error) {
+      console.log('Error saving timetable:', error);
+      alert('Error saving timetable');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCellPress = (dayIndex, periodNumber) => {
+    if (!canEdit) return;
+    
+    const dayKey = DAYS[dayIndex].toLowerCase();
+    const period = timetable.timetable[dayKey].find(p => p.number === periodNumber);
+    
+    if (period) {
+      setEditingCell({ dayIndex, periodNumber });
+      setEditSubject(period.subject || '');
+      setEditRoom(period.room || '');
+    }
+  };
+
+  const handleSaveCell = () => {
+    if (!editingCell) return;
+    
+    const { dayIndex, periodNumber } = editingCell;
+    const dayKey = DAYS[dayIndex].toLowerCase();
+    
+    const updatedTimetable = { ...timetable };
+    const periodIndex = updatedTimetable.timetable[dayKey].findIndex(p => p.number === periodNumber);
+    
+    if (periodIndex !== -1) {
+      updatedTimetable.timetable[dayKey][periodIndex] = {
+        ...updatedTimetable.timetable[dayKey][periodIndex],
+        subject: editSubject,
+        room: editRoom,
+        isBreak: false
+      };
+      setTimetable(updatedTimetable);
+    }
+    
+    setEditingCell(null);
+    setEditSubject('');
+    setEditRoom('');
+  };
+
   // Get periods from timetable data or use defaults
   const getPeriods = () => {
     if (timetable && timetable.periods && timetable.periods.length > 0) {
@@ -100,12 +175,21 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl }) 
   };
 
   const getCurrentPeriod = () => {
-    const now = new Date();
-    const hour = now.getHours();
-    if (hour >= 9 && hour < 17) {
-      return hour - 8; // Period 1 starts at 9 AM
+    try {
+      const now = getServerTime().nowDate();
+      const hour = now.getHours();
+      if (hour >= 9 && hour < 17) {
+        return hour - 8; // Period 1 starts at 9 AM
+      }
+      return null;
+    } catch {
+      const now = new Date();
+      const hour = now.getHours();
+      if (hour >= 9 && hour < 17) {
+        return hour - 8;
+      }
+      return null;
     }
-    return null;
   };
 
   const currentPeriod = getCurrentPeriod();
@@ -117,9 +201,27 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl }) 
         <View style={styles.titleRow}>
           <BookIcon size={28} color={theme.primary} />
           <Text style={[styles.title, { color: theme.primary }]}>Timetable</Text>
+          {canEdit && (
+            <TouchableOpacity 
+              onPress={saveTimetable}
+              disabled={saving}
+              style={{
+                backgroundColor: theme.primary,
+                paddingHorizontal: 16,
+                paddingVertical: 8,
+                borderRadius: 8,
+                marginLeft: 'auto',
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>
+                {saving ? 'Saving...' : '💾 Save'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
         <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
           {semester && branch ? `Semester ${semester} • ${branch}` : 'Your class schedule'}
+          {canEdit && ' • Tap to edit'}
         </Text>
       </View>
 
@@ -186,15 +288,20 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl }) 
               const isBreak = subject?.isBreak;
 
               return (
-                <View
+                <TouchableOpacity
                   key={period.number}
-                  style={[
-                    styles.periodRow,
-                    { borderBottomColor: theme.border },
-                    isCurrentPeriod && { backgroundColor: theme.primary + '15' },
-                    isBreak && { backgroundColor: '#fbbf2420' }
-                  ]}
+                  onPress={() => canEdit && handleCellPress(currentDay, period.number)}
+                  disabled={!canEdit}
+                  activeOpacity={canEdit ? 0.7 : 1}
                 >
+                  <View
+                    style={[
+                      styles.periodRow,
+                      { borderBottomColor: theme.border },
+                      isCurrentPeriod && { backgroundColor: theme.primary + '15' },
+                      isBreak && { backgroundColor: '#fbbf2420' }
+                    ]}
+                  >
                   <View style={styles.periodInfo}>
                     <Text style={[styles.periodNumber, { color: theme.primary }]}>
                       {period.number}
@@ -239,6 +346,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl }) 
                     </View>
                   )}
                 </View>
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -321,6 +429,115 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl }) 
       )}
 
       <View style={{ height: 100 }} />
+
+      {/* Edit Modal */}
+      <Modal
+        visible={editingCell !== null && canEdit}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setEditingCell(null)}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 20,
+        }}>
+          <View style={{
+            backgroundColor: theme.cardBackground,
+            borderRadius: 16,
+            padding: 24,
+            width: '100%',
+            maxWidth: 400,
+            borderWidth: 2,
+            borderColor: theme.primary,
+          }}>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: theme.text, marginBottom: 4 }}>
+              Edit Period
+            </Text>
+            <Text style={{ fontSize: 14, color: theme.textSecondary, marginBottom: 20 }}>
+              {editingCell && `${DAYS[editingCell.dayIndex]} - Period ${editingCell.periodNumber}`}
+            </Text>
+
+            <Text style={{ fontSize: 14, fontWeight: '600', color: theme.text, marginBottom: 8 }}>
+              Subject Name
+            </Text>
+            <TextInput
+              style={{
+                backgroundColor: theme.background,
+                borderWidth: 1,
+                borderColor: theme.border,
+                borderRadius: 8,
+                padding: 12,
+                fontSize: 16,
+                color: theme.text,
+                marginBottom: 16,
+              }}
+              value={editSubject}
+              onChangeText={setEditSubject}
+              placeholder="Enter subject name"
+              placeholderTextColor={theme.textSecondary}
+            />
+
+            <Text style={{ fontSize: 14, fontWeight: '600', color: theme.text, marginBottom: 8 }}>
+              Room Number
+            </Text>
+            <TextInput
+              style={{
+                backgroundColor: theme.background,
+                borderWidth: 1,
+                borderColor: theme.border,
+                borderRadius: 8,
+                padding: 12,
+                fontSize: 16,
+                color: theme.text,
+                marginBottom: 24,
+              }}
+              value={editRoom}
+              onChangeText={setEditRoom}
+              placeholder="Enter room number"
+              placeholderTextColor={theme.textSecondary}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setEditingCell(null);
+                  setEditSubject('');
+                  setEditRoom('');
+                }}
+                style={{
+                  flex: 1,
+                  backgroundColor: theme.border,
+                  padding: 14,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 16 }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleSaveCell}
+                style={{
+                  flex: 1,
+                  backgroundColor: theme.primary,
+                  padding: 14,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 16 }}>
+                  Save
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }

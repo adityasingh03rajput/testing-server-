@@ -15,6 +15,9 @@ android/app/release/
 admin-panel/dist/
 admin-panel/win-unpacked/
 
+# Admin Panel Installer (too large for GitHub)
+Admin-Panel-Installer/*.exe
+
 # Environment
 .env
 .env.local

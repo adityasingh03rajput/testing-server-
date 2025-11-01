@@ -120,7 +120,7 @@ npm install
 
 ### Step 2: Update Server URL
 
-Edit these files and replace `192.168.107.31` with your server IP:
+Edit these files and replace `192.168.9.31` with your server IP:
 
 - `App.js` (line with `SOCKET_URL`)
 - `FaceVerificationScreen.js` (if applicable)

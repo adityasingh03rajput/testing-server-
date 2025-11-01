@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { HomeIcon, CalendarIcon, BookIcon, BellIcon } from './Icons';
+import { HomeIcon, CalendarIcon, BookIcon, BellIcon, UserIcon } from './Icons';
 
 export default function BottomNavigation({ theme, activeTab, onTabChange, userRole, notificationBadge }) {
   // Different tabs for student vs teacher
@@ -12,8 +12,9 @@ export default function BottomNavigation({ theme, activeTab, onTabChange, userRo
 
   const teacherTabs = [
     { id: 'home', Icon: HomeIcon, label: 'Home' },
-    { id: 'notifications', Icon: BellIcon, label: 'Schedule', badge: notificationBadge },
     { id: 'timetable', Icon: BookIcon, label: 'Timetable' },
+    { id: 'notifications', Icon: BellIcon, label: 'Schedule', badge: notificationBadge },
+    { id: 'students', Icon: UserIcon, label: 'Students' },
   ];
 
   const tabs = userRole === 'teacher' ? teacherTabs : studentTabs;

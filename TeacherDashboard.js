@@ -9,6 +9,7 @@ import {
   Animated,
 } from 'react-native';
 import Colors from './Colors';
+import { getServerTime } from './ServerTime';
 
 export default function TeacherDashboard({ 
   theme, 
@@ -40,8 +41,15 @@ export default function TeacherDashboard({
 
   const loadDashboardData = async () => {
     try {
-      // Fetch today's classes
-      const today = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+      // Fetch today's classes using server time
+      let today;
+      try {
+        const serverTime = getServerTime();
+        today = serverTime.nowDate().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+      } catch {
+        today = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+      }
+      
       const classesResponse = await fetch(
         `${socketUrl}/api/teacher-schedule/${userData.employeeId}/${today}`
       );
@@ -50,10 +58,18 @@ export default function TeacherDashboard({
       if (classesData.success) {
         setTodayClasses(classesData.schedule || []);
         
-        // Find current class
-        const now = new Date();
-        const currentHour = now.getHours();
-        const currentMinute = now.getMinutes();
+        // Find current class using server time
+        let now, currentHour, currentMinute;
+        try {
+          const serverTime = getServerTime();
+          now = serverTime.nowDate();
+          currentHour = now.getHours();
+          currentMinute = now.getMinutes();
+        } catch {
+          now = new Date();
+          currentHour = now.getHours();
+          currentMinute = now.getMinutes();
+        }
         const currentTime = currentHour * 60 + currentMinute;
         
         const ongoing = classesData.schedule.find(cls => {
@@ -94,23 +110,41 @@ export default function TeacherDashboard({
   };
 
   const getCurrentTime = () => {
-    return new Date().toLocaleTimeString('en-IN', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      hour12: true 
-    });
+    try {
+      const serverTime = getServerTime();
+      return serverTime.nowDate().toLocaleTimeString('en-IN', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    } catch {
+      return new Date().toLocaleTimeString('en-IN', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    }
   };
 
   const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
+    try {
+      const serverTime = getServerTime();
+      const hour = serverTime.nowDate().getHours();
+      if (hour < 12) return 'Good Morning';
+      if (hour < 17) return 'Good Afternoon';
+      return 'Good Evening';
+    } catch {
+      const hour = new Date().getHours();
+      if (hour < 12) return 'Good Morning';
+      if (hour < 17) return 'Good Afternoon';
+      return 'Good Evening';
+    }
   };
 
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: theme.background }]}
+      contentContainerStyle={{ paddingBottom: 100 }}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
@@ -127,11 +161,22 @@ export default function TeacherDashboard({
             <View style={styles.timeContainer}>
               <Text style={styles.time}>{getCurrentTime()}</Text>
               <Text style={styles.date}>
-                {new Date().toLocaleDateString('en-IN', { 
-                  day: 'numeric', 
-                  month: 'short',
-                  year: 'numeric'
-                })}
+                {(() => {
+                  try {
+                    const serverTime = getServerTime();
+                    return serverTime.nowDate().toLocaleDateString('en-IN', { 
+                      day: 'numeric', 
+                      month: 'short',
+                      year: 'numeric'
+                    });
+                  } catch {
+                    return new Date().toLocaleDateString('en-IN', { 
+                      day: 'numeric', 
+                      month: 'short',
+                      year: 'numeric'
+                    });
+                  }
+                })()}
               </Text>
             </View>
           </View>

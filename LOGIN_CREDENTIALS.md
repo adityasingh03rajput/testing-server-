@@ -93,7 +93,7 @@ start-admin.bat
 
 ## 📊 Server Endpoints
 
-**Base URL:** `http://192.168.107.31:3000`
+**Base URL:** `http://192.168.9.31:3000`
 
 ### Login
 ```
@@ -138,14 +138,14 @@ Body: { "studentId": "0246CS241001", "status": "present" }
 - Default password: `aditya` (for easy testing)
 - Server must be running for login to work
 - Phone and PC must be on same WiFi network
-- IP Address: `192.168.107.31:3000`
+- IP Address: `192.168.9.31:3000`
 
 ---
 
 ## 🆘 Troubleshooting
 
 ### Can't Login?
-1. Check server is running: `http://192.168.107.31:3000/health`
+1. Check server is running: `http://192.168.9.31:3000/health`
 2. Verify database is seeded: `node server/seed-data.js`
 3. Check WiFi connection
 4. Verify IP address matches

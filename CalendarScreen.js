@@ -8,9 +8,21 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
 
+import { getServerTime } from './ServerTime';
+
 export default function CalendarScreen({ theme, studentId, semester, branch, socketUrl }) {
-    const [currentDate, setCurrentDate] = useState(new Date());
-    const [selectedDate, setSelectedDate] = useState(new Date());
+    // Use server time for calendar
+    const getInitialDate = () => {
+        try {
+            const serverTime = getServerTime();
+            return serverTime.nowDate();
+        } catch {
+            return new Date();
+        }
+    };
+    
+    const [currentDate, setCurrentDate] = useState(getInitialDate());
+    const [selectedDate, setSelectedDate] = useState(getInitialDate());
     const [attendanceData, setAttendanceData] = useState({});
     const [attendanceRecords, setAttendanceRecords] = useState({});
     const [loading, setLoading] = useState(false);
@@ -184,8 +196,14 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
 
     const isToday = (date) => {
         if (!date) return false;
-        const today = new Date();
-        return date.toDateString() === today.toDateString();
+        try {
+            const serverTime = getServerTime();
+            const today = serverTime.nowDate();
+            return date.toDateString() === today.toDateString();
+        } catch {
+            const today = new Date();
+            return date.toDateString() === today.toDateString();
+        }
     };
 
     const isSelected = (date) => {

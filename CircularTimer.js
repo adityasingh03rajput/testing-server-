@@ -19,6 +19,7 @@ import Svg, {
   Text as SvgText,
 } from 'react-native-svg';
 import { PlayIcon, PauseIcon } from './Icons';
+import { useServerTime } from './useServerTime';
 
 // Constants for circle dimensions
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -68,7 +69,7 @@ export default function CircularTimer({
   const [segments, setSegments] = useState(DEFAULT_SEGMENTS);
   const [activeSegment, setActiveSegment] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const currentTime = useServerTime(1000); // Use server time hook
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -225,13 +226,7 @@ export default function CircularTimer({
     }
   }, [isRunning]);
 
-  // Update current time every second for clock hands
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000); // Update every second for smooth movement
-    return () => clearInterval(timer);
-  }, []);
+  // Current time is now managed by useServerTime hook - no need for manual updates
 
   // Animate morph when active segment changes
   useEffect(() => {

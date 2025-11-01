@@ -4,6 +4,7 @@ import { Camera, CameraView } from 'expo-camera';
 import * as FileSystem from 'expo-file-system';
 import { initializeFaceAPI } from './OfflineFaceVerification';
 import { CheckIcon, XIcon, SunIcon, UserIcon } from './Icons';
+import { getServerTime } from './ServerTime';
 
 export default function FaceVerificationScreen({
   userId,
@@ -67,7 +68,7 @@ export default function FaceVerificationScreen({
         // Get user's photo URL from server
         setVerificationMessage('Loading reference photo...');
         try {
-          const response = await fetch(`http://192.168.107.31:3000/api/students`);
+          const response = await fetch(`http://192.168.9.31:3000/api/students`);
           const data = await response.json();
 
           if (data.success && data.students) {
@@ -75,21 +76,32 @@ export default function FaceVerificationScreen({
             const student = data.students.find(s => 
               s.enrollmentNo === userId || s._id === userId
             );
-            if (student && student.photoUrl) {
-              setCachedPhoto(student.photoUrl);
-              console.log('✅ Got photo URL:', student.photoUrl);
+            if (student) {
+              if (student.photoUrl) {
+                setCachedPhoto(student.photoUrl);
+                console.log('✅ Got photo URL:', student.photoUrl);
+              } else {
+                console.log('⚠️ Student found but no photo URL:', student);
+                setVerificationMessage('❌ No reference photo found. Please upload your photo in the admin panel first.');
+                setIsInitializing(false);
+                return;
+              }
             } else {
-              console.log('⚠️ Student found but no photo:', student);
-              setVerificationMessage('No reference photo found. Please upload your photo first.');
+              console.log('⚠️ Student not found with ID:', userId);
+              setVerificationMessage('❌ Student not found. Please check your enrollment number.');
+              setIsInitializing(false);
               return;
             }
           } else {
-            setVerificationMessage('Could not load student data');
+            console.log('⚠️ Invalid response from server:', data);
+            setVerificationMessage('❌ Could not load student data from server');
+            setIsInitializing(false);
             return;
           }
         } catch (error) {
-          console.log('❌ Error loading photo:', error);
-          setVerificationMessage('Could not load reference photo');
+          console.log('❌ Error loading reference photo:', error);
+          setVerificationMessage('❌ Network error. Could not load reference photo.');
+          setIsInitializing(false);
           return;
         }
 

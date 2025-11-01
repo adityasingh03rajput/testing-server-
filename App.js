@@ -17,9 +17,10 @@ import NotificationsScreen from './NotificationsScreen';
 import LanyardCard from './LanyardCard';
 import CircularTimer from './CircularTimer';
 import { SunIcon, MoonIcon, LogoutIcon, RefreshIcon } from './Icons';
+import { initializeServerTime, getServerTime } from './ServerTime';
 
-const API_URL = 'http://192.168.107.31:3000/api/config';
-const SOCKET_URL = 'http://192.168.107.31:3000';
+const API_URL = 'http://192.168.9.31:3000/api/config';
+const SOCKET_URL = 'http://192.168.9.31:3000';
 const CACHE_KEY = '@timer_config';
 const ROLE_KEY = '@user_role';
 const STUDENT_ID_KEY = '@student_id';
@@ -150,11 +151,17 @@ export default function App() {
   // Lanyard state
   const [showLanyard, setShowLanyard] = useState(false);
 
-  // Current day state for real-time timetable updates
+  // Current day state for real-time timetable updates (using server time)
   const [currentDay, setCurrentDay] = useState(() => {
-    const dayIndex = new Date().getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
-    const days = ['Monday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    return days[dayIndex]; // Sunday maps to Monday
+    try {
+      const serverTime = getServerTime();
+      return serverTime.getCurrentDay();
+    } catch {
+      // Fallback to device time if server time not initialized yet
+      const dayIndex = new Date().getDay();
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      return days[dayIndex];
+    }
   });
 
   // Class progress tracking
@@ -162,9 +169,16 @@ export default function App() {
   const [classStartTime, setClassStartTime] = useState(null);
   const [attendedMinutes, setAttendedMinutes] = useState(0);
 
-  // Detailed attendance tracking
+  // Detailed attendance tracking (using server time)
   const [todayAttendance, setTodayAttendance] = useState({
-    date: new Date().toDateString(),
+    date: (() => {
+      try {
+        const serverTime = getServerTime();
+        return serverTime.nowDate().toDateString();
+      } catch {
+        return new Date().toDateString();
+      }
+    })(),
     lectures: [], // { subject, attended, total, present }
     totalAttended: 0,
     totalClassTime: 0,
@@ -238,24 +252,49 @@ export default function App() {
     }
   }, [showProfile]);
 
-  // Update current day at midnight and reset verification
+  // Update current day at midnight and reset verification (using server time)
   useEffect(() => {
-    let lastDate = new Date().toDateString();
+    let lastDate = (() => {
+      try {
+        const serverTime = getServerTime();
+        return serverTime.nowDate().toDateString();
+      } catch {
+        return new Date().toDateString();
+      }
+    })();
 
     const updateCurrentDay = () => {
-      const now = new Date();
-      const currentDate = now.toDateString();
-      const dayIndex = now.getDay();
-      const days = ['Monday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      setCurrentDay(days[dayIndex]); // Sunday maps to Monday
+      try {
+        const serverTime = getServerTime();
+        const now = serverTime.nowDate();
+        const currentDate = now.toDateString();
 
-      // Check if date changed (new day)
-      if (currentDate !== lastDate) {
-        console.log('🌅 New day detected! Resetting face verification status.');
-        setVerifiedToday(false);
-        setIsFaceVerified(false);
-        setIsRunning(false);
-        lastDate = currentDate;
+        // Update current day using server time
+        setCurrentDay(serverTime.getCurrentDay());
+
+        // Check if date changed (new day)
+        if (currentDate !== lastDate) {
+          console.log('🌅 New day detected (server time)! Resetting face verification status.');
+          setVerifiedToday(false);
+          setIsFaceVerified(false);
+          setIsRunning(false);
+          lastDate = currentDate;
+        }
+      } catch (error) {
+        console.warn('⚠️ Server time not available, using device time');
+        const now = new Date();
+        const currentDate = now.toDateString();
+        const dayIndex = now.getDay();
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        setCurrentDay(days[dayIndex]);
+
+        if (currentDate !== lastDate) {
+          console.log('🌅 New day detected (device time)! Resetting face verification status.');
+          setVerifiedToday(false);
+          setIsFaceVerified(false);
+          setIsRunning(false);
+          lastDate = currentDate;
+        }
       }
     };
 
@@ -278,7 +317,8 @@ export default function App() {
   // Check if today is a leave day (Sunday or no classes)
   const isLeaveDay = () => {
     try {
-      const today = new Date().getDay();
+      const serverTime = getServerTime();
+      const today = serverTime.nowDate().getDay();
       // Sunday = 0
       if (today === 0) return true;
 
@@ -306,11 +346,22 @@ export default function App() {
     if (!timetable?.schedule?.[currentDay] || selectedRole !== 'student') return;
 
     const updateClassProgress = () => {
-      const now = new Date();
-      const currentHour = now.getHours();
-      const currentMinute = now.getMinutes();
-      const currentSeconds = now.getSeconds();
-      const currentTimeInSeconds = (currentHour * 3600) + (currentMinute * 60) + currentSeconds;
+      let now, currentHour, currentMinute, currentSeconds, currentTimeInSeconds;
+
+      try {
+        const serverTime = getServerTime();
+        now = serverTime.nowDate();
+        currentHour = now.getHours();
+        currentMinute = now.getMinutes();
+        currentSeconds = now.getSeconds();
+        currentTimeInSeconds = (currentHour * 3600) + (currentMinute * 60) + currentSeconds;
+      } catch {
+        now = new Date();
+        currentHour = now.getHours();
+        currentMinute = now.getMinutes();
+        currentSeconds = now.getSeconds();
+        currentTimeInSeconds = (currentHour * 3600) + (currentMinute * 60) + currentSeconds;
+      }
 
       const schedule = timetable.schedule[currentDay];
       let foundClass = null;
@@ -371,11 +422,18 @@ export default function App() {
 
       // Track attendance time when timer is running
       if (foundClass && isRunning) {
-        setClassStartTime(prev => prev || Date.now());
-        setAttendedMinutes(prev => {
-          const startTime = classStartTime || Date.now();
-          return Math.floor((Date.now() - startTime) / 60000);
-        });
+        try {
+          const serverTime = getServerTime();
+          const currentServerTime = serverTime.now();
+          setClassStartTime(prev => prev || currentServerTime);
+          setAttendedMinutes(prev => {
+            const startTime = classStartTime || currentServerTime;
+            return Math.floor((currentServerTime - startTime) / 60000);
+          });
+        } catch {
+          // If server time fails, don't track attendance - security measure
+          console.error('⚠️ Cannot track attendance without server time');
+        }
       }
     };
 
@@ -386,6 +444,27 @@ export default function App() {
   }, [timetable, currentDay, selectedRole, isRunning, classStartTime, attendedMinutes]);
 
   useEffect(() => {
+    // Initialize server time synchronization (CRITICAL for security)
+    const serverTime = initializeServerTime(SOCKET_URL);
+    serverTime.initialize().then(async (success) => {
+      if (serverTime.isDeviceTimeManipulated()) {
+        console.error('🚨 DEVICE TIME MANIPULATION DETECTED');
+        console.error('   Please set your device time to automatic');
+        Alert.alert(
+          '⚠️ Time Error',
+          'Your device time is incorrect. Please set your device time to automatic (use network-provided time) and restart the app.\n\nThe app cannot function with incorrect device time for security reasons.',
+          [{ text: 'OK' }]
+        );
+      } else if (success) {
+        console.log('✅ Server time synchronized');
+        console.log('   Server time:', serverTime.nowISO());
+        console.log('   Device time:', new Date().toISOString());
+        console.log('   Offset:', serverTime.serverTimeOffset, 'ms');
+      } else {
+        console.warn('⚠️ Server time sync failed');
+      }
+    });
+
     // Initialize face cache
     initializeFaceCache();
 
@@ -397,18 +476,35 @@ export default function App() {
       if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
         // App came to foreground
         if (backgroundTimeRef.current && isRunning && selectedRole === 'student') {
-          const timeInBackground = Math.floor((Date.now() - backgroundTimeRef.current) / 1000);
-          setTimeLeft(prev => {
-            const newTime = Math.max(0, prev - timeInBackground);
-            updateTimerOnServer(newTime, newTime > 0, newTime === 0 ? 'present' : null);
-            return newTime;
-          });
+          try {
+            const serverTime = getServerTime();
+            const currentServerTime = serverTime.now();
+            const timeInBackground = Math.floor((currentServerTime - backgroundTimeRef.current) / 1000);
+            setTimeLeft(prev => {
+              const newTime = Math.max(0, prev - timeInBackground);
+              updateTimerOnServer(newTime, newTime > 0, newTime === 0 ? 'present' : null);
+              return newTime;
+            });
+          } catch {
+            // If server time fails, reset timer - security measure
+            console.error('⚠️ Cannot calculate background time without server time');
+            setTimeLeft(0);
+            updateTimerOnServer(0, false, null);
+          }
         }
         backgroundTimeRef.current = null;
       } else if (nextAppState.match(/inactive|background/)) {
         // App went to background
         if (isRunning && selectedRole === 'student') {
-          backgroundTimeRef.current = Date.now();
+          try {
+            const serverTime = getServerTime();
+            const currentServerTime = serverTime.now();
+            backgroundTimeRef.current = currentServerTime;
+          } catch {
+            // If server time fails, don't track background time
+            console.error('⚠️ Cannot track background time without server time');
+            backgroundTimeRef.current = null;
+          }
         }
       }
       appState.current = nextAppState;
@@ -472,8 +568,18 @@ export default function App() {
       const dayPercentage = totalClassTime > 0 ? (totalAttended / totalClassTime) * 100 : 0;
       const dayPresent = dayPercentage >= 75;
 
+      // CRITICAL: Use server time for attendance date to prevent manipulation
+      let attendanceDate;
+      try {
+        const serverTime = getServerTime();
+        attendanceDate = serverTime.nowDate().toDateString();
+      } catch {
+        console.warn('⚠️ Server time not available for attendance date, using device time');
+        attendanceDate = new Date().toDateString();
+      }
+
       return {
-        date: new Date().toDateString(),
+        date: attendanceDate,
         lectures: updatedLectures,
         totalAttended,
         totalClassTime,
@@ -500,6 +606,15 @@ export default function App() {
     if (!studentId || todayAttendance.lectures.length === 0) return;
 
     try {
+      // Get server date for validation
+      let clientDate;
+      try {
+        const serverTime = getServerTime();
+        clientDate = serverTime.nowDate().toISOString();
+      } catch {
+        clientDate = new Date().toISOString();
+      }
+
       const response = await fetch(`${SOCKET_URL}/api/attendance/record`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -514,7 +629,8 @@ export default function App() {
           lectures: todayAttendance.lectures,
           totalAttended: todayAttendance.totalAttended,
           totalClassTime: todayAttendance.totalClassTime,
-          dayPercentage: todayAttendance.dayPercentage
+          dayPercentage: todayAttendance.dayPercentage,
+          clientDate: clientDate // Send for server validation
         })
       });
 
@@ -642,9 +758,16 @@ export default function App() {
       const detailsResponse = await fetch(`${SOCKET_URL}/api/student-management?enrollmentNo=${student.enrollmentNumber || student._id}`);
       const detailsData = await detailsResponse.json();
 
-      // Fetch attendance records (last 30 days)
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      // Fetch attendance records (last 30 days) - use server time
+      let thirtyDaysAgo;
+      try {
+        const serverTime = getServerTime();
+        thirtyDaysAgo = new Date(serverTime.now());
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      } catch {
+        thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      }
       const recordsResponse = await fetch(`${SOCKET_URL}/api/attendance/records?studentId=${student._id}&startDate=${thirtyDaysAgo.toISOString()}`);
       const recordsData = await recordsResponse.json();
 
@@ -767,8 +890,14 @@ export default function App() {
         setStudentId(data.studentId);
         setShowNameInput(false);
       } else {
-        // Fallback: use offline mode
-        const offlineId = 'offline_' + Date.now();
+        // Fallback: use offline mode with server time if available
+        let offlineId;
+        try {
+          const serverTime = getServerTime();
+          offlineId = 'offline_' + serverTime.now();
+        } catch {
+          offlineId = 'offline_' + Date.now();
+        }
         await AsyncStorage.setItem(STUDENT_ID_KEY, offlineId);
         await AsyncStorage.setItem(STUDENT_NAME_KEY, studentName.trim());
         setStudentId(offlineId);
@@ -776,8 +905,14 @@ export default function App() {
       }
     } catch (error) {
       console.log('Error registering student, using offline mode:', error);
-      // Fallback: use offline mode
-      const offlineId = 'offline_' + Date.now();
+      // Fallback: use offline mode with server time if available
+      let offlineId;
+      try {
+        const serverTime = getServerTime();
+        offlineId = 'offline_' + serverTime.now();
+      } catch {
+        offlineId = 'offline_' + Date.now();
+      }
       await AsyncStorage.setItem(STUDENT_ID_KEY, offlineId);
       await AsyncStorage.setItem(STUDENT_NAME_KEY, studentName.trim());
       setStudentId(offlineId);
@@ -834,6 +969,15 @@ export default function App() {
     // Save attendance record when timer completes or student marks present/absent
     if (finalStatus === 'present' || finalStatus === 'absent') {
       try {
+        // Get server date for validation
+        let clientDate;
+        try {
+          const serverTime = getServerTime();
+          clientDate = serverTime.nowDate().toISOString();
+        } catch {
+          clientDate = new Date().toISOString();
+        }
+
         await fetch(`${SOCKET_URL}/api/attendance/record`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -844,7 +988,8 @@ export default function App() {
             status: finalStatus,
             timerValue: timer,
             semester,
-            branch
+            branch,
+            clientDate: clientDate // Send for server validation
           })
         });
       } catch (error) {
@@ -885,7 +1030,14 @@ export default function App() {
 
     // Mark verification for current class
     if (currentClassInfo) {
-      setClassStartTime(Date.now());
+      try {
+        const serverTime = getServerTime();
+        const currentServerTime = serverTime.now();
+        setClassStartTime(currentServerTime);
+      } catch {
+        // If server time fails, don't mark class start - security measure
+        console.error('⚠️ Cannot mark class start without server time');
+      }
     }
 
     // Keep screen awake for continuous tracking
@@ -1487,201 +1639,251 @@ export default function App() {
     const attendancePercentage = totalStudents > 0 ? Math.round((presentStudents / totalStudents) * 100) : 0;
 
     return (
-      <Animated.View style={[styles.container, { backgroundColor: theme.background, opacity: fadeAnim, paddingTop: 50 }]}>
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
         <StatusBar style={theme.statusBar} />
-
-        {/* Teacher Info Header */}
-        <View style={styles.teacherHeader}>
-          <TouchableOpacity onPress={() => setShowProfile(true)} activeOpacity={0.8}>
-            <View style={{
-              width: 60,
-              height: 60,
-              borderRadius: 30,
-              backgroundColor: theme.primary,
-              justifyContent: 'center',
-              alignItems: 'center',
-              borderWidth: 3,
-              borderColor: theme.border,
-              overflow: 'hidden',
-            }}>
-              {userData?.photoUrl ? (
-                <Image
-                  source={{ uri: userData.photoUrl }}
-                  style={{ width: '100%', height: '100%' }}
-                  resizeMode="cover"
-                  onError={(e) => {
-                    console.log('❌ Failed to load teacher photo:', userData.photoUrl);
-                    console.log('Error:', e.nativeEvent.error);
-                  }}
-                  onLoad={() => console.log('✅ Teacher photo loaded:', userData.photoUrl)}
-                />
-              ) : (
-                <Text style={{ fontSize: 24, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
-                  {getInitials(userData?.name || 'Teacher')}
-                </Text>
-              )}
-            </View>
-          </TouchableOpacity>
-          <View style={{ flex: 1, marginLeft: 15 }}>
-            <Text style={[styles.glowText, {
-              fontSize: 24,
-              color: theme.primary,
-            }]}>
-              {teacherConfig?.title?.text || 'Teacher Dashboard'}
-            </Text>
-            <Text style={{
-              fontSize: 14,
-              color: theme.textSecondary,
-              marginTop: 3,
-            }}>
-              👨‍🏫 {userData?.name || 'Teacher'}
-            </Text>
-            <Text style={{
-              fontSize: 12,
-              color: theme.textSecondary + '80',
-              marginTop: 1,
-            }}>
-              {userData?.department || ''} Department
-            </Text>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity onPress={toggleTheme} style={styles.themeButton}>
-              <Text style={styles.themeButtonText}>
-                {themeMode === 'system' ? '🔄' : isDarkTheme ? '☀️' : '🌙'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-              <Text style={styles.logoutButtonText}>🚪</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Statistics Cards */}
-        <View style={styles.statsContainer}>
-          <View style={[styles.statCard, { borderColor: theme.primary, backgroundColor: theme.cardBackground }]}>
-            <Text style={[styles.statNumber, { color: theme.primary }]}>{totalStudents}</Text>
-            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total</Text>
-          </View>
-          <View style={[styles.statCard, { borderColor: isDarkTheme ? '#00ff88' : '#10b981', backgroundColor: theme.cardBackground }]}>
-            <Text style={[styles.statNumber, { color: isDarkTheme ? '#00ff88' : '#10b981' }]}>{presentStudents}</Text>
-            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Present</Text>
-          </View>
-          <View style={[styles.statCard, { borderColor: isDarkTheme ? '#ffaa00' : '#f59e0b', backgroundColor: theme.cardBackground }]}>
-            <Text style={[styles.statNumber, { color: isDarkTheme ? '#ffaa00' : '#f59e0b' }]}>{attendingStudents}</Text>
-            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Active</Text>
-          </View>
-          <View style={[styles.statCard, { borderColor: '#ff4444', backgroundColor: theme.cardBackground }]}>
-            <Text style={[styles.statNumber, { color: '#ff4444' }]}>{absentStudents}</Text>
-            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Absent</Text>
-          </View>
-        </View>
-
-        {/* Attendance Percentage */}
-        {totalStudents > 0 && (
-          <View style={styles.percentageContainer}>
-            <Text style={styles.percentageText}>
-              📊 Attendance: {attendancePercentage}%
-            </Text>
-          </View>
-        )}
-
-        {/* Timetable Button */}
-        <TouchableOpacity
-          onPress={() => {
-            console.log('Timetable button pressed');
-            fetchTimetable(semester, branch);
-            setShowTimetable(true);
-          }}
-          activeOpacity={0.8}
-          style={{ marginBottom: 15, paddingHorizontal: 20 }}
+        
+        <ScrollView 
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 20 }}
+          showsVerticalScrollIndicator={false}
         >
-          <Animated.View style={{
-            backgroundColor: canEditTimetable ? theme.primary : theme.primary + '80',
-            paddingVertical: 15,
-            paddingHorizontal: 30,
-            borderRadius: 15,
-            alignItems: 'center',
-            shadowColor: theme.primary,
-            shadowOpacity: glowOpacity,
-            shadowRadius: 15,
-            elevation: 10,
+          {/* Compact Header */}
+          <View style={{
+            backgroundColor: theme.primary,
+            paddingTop: 50,
+            paddingBottom: 20,
+            paddingHorizontal: 20,
+            borderBottomLeftRadius: 24,
+            borderBottomRightRadius: 24,
           }}>
-            <Text style={{ color: isDarkTheme ? '#0a1628' : '#ffffff', fontSize: 16, fontWeight: 'bold' }}>
-              📅 {canEditTimetable ? 'MANAGE TIMETABLE' : 'VIEW TIMETABLE'}
-            </Text>
-            {!canEditTimetable && (
-              <Text style={{ color: isDarkTheme ? '#0a1628' : '#ffffff', fontSize: 11, marginTop: 3 }}>
-                (View Only)
-              </Text>
-            )}
-          </Animated.View>
-        </TouchableOpacity>
-
-        {/* Student List Header */}
-        <View style={styles.listHeader}>
-          <Text style={styles.listHeaderText}>
-            📋 Live Student Attendance
-          </Text>
-          <Text style={styles.listHeaderSubtext}>
-            Real-time tracking • Auto-refresh
-          </Text>
-        </View>
-
-        {/* Student List */}
-        <ScrollView style={styles.studentList} contentContainerStyle={styles.studentListContent}>
-          {students.map((student) => {
-            if (!student || !student._id) return null;
-
-            const studentStatus = student.status || 'absent';
-            const statusIcon = studentStatus === 'present' ? '✅' :
-              studentStatus === 'attending' ? '⏱️' : '❌';
-            const statusColor = teacherConfig?.statusColors?.[studentStatus] || '#00d9ff';
-
-            return (
-              <TouchableOpacity
-                key={student._id}
-                onPress={() => fetchStudentDetails(student)}
-                activeOpacity={0.7}
-              >
-                <Animated.View
-                  style={[styles.studentCard, {
-                    backgroundColor: theme.cardBackground,
-                    borderColor: statusColor,
-                    borderWidth: 2,
-                    shadowColor: isDarkTheme ? statusColor : 'transparent',
-                    shadowOpacity: glowOpacity,
-                    shadowRadius: 15,
-                  }]}
-                >
-                  <View style={styles.studentHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.studentName, { color: theme.text }]}>{statusIcon} {student.name || 'Unknown'}</Text>
-                      <Text style={[styles.studentId, { color: theme.textSecondary }]}>ID: {student.enrollmentNumber || 'N/A'}</Text>
-                    </View>
-                    <View style={[styles.statusBadge, {
-                      backgroundColor: statusColor
-                    }]}>
-                      <Text style={styles.statusText}>{studentStatus.toUpperCase()}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.studentFooter}>
-                    <Text style={[styles.timerText, { color: theme.text }]}>{formatTime(student.timerValue || 0)}</Text>
-                    {student.isRunning && (
-                      <Text style={styles.runningIndicator}>● LIVE</Text>
-                    )}
-                  </View>
-                  <Text style={[styles.tapHint, { color: theme.textSecondary + '80' }]}>Tap for details →</Text>
-                </Animated.View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
+              <TouchableOpacity onPress={() => setShowProfile(true)} activeOpacity={0.8}>
+                <View style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: 25,
+                  backgroundColor: '#fff',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  borderWidth: 2,
+                  borderColor: '#fff',
+                  overflow: 'hidden',
+                }}>
+                  {userData?.photoUrl ? (
+                    <Image
+                      source={{ uri: userData.photoUrl }}
+                      style={{ width: '100%', height: '100%' }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Text style={{ fontSize: 20, color: theme.primary, fontWeight: 'bold' }}>
+                      {getInitials(userData?.name || 'Teacher')}
+                    </Text>
+                  )}
+                </View>
               </TouchableOpacity>
-            );
-          })}
-          {students.length === 0 && (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyIcon}>📭</Text>
-              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No students attending yet</Text>
-              <Text style={[styles.emptySubtext, { color: theme.textSecondary + '80' }]}>Students will appear here when they start their session</Text>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#fff' }}>
+                  {userData?.name || 'Teacher'}
+                </Text>
+                <Text style={{ fontSize: 13, color: '#fff', opacity: 0.9, marginTop: 2 }}>
+                  {userData?.department || ''} Department
+                </Text>
+              </View>
+              <TouchableOpacity onPress={toggleTheme} style={{ padding: 8, marginRight: 8 }}>
+                <Text style={{ fontSize: 20 }}>
+                  {themeMode === 'system' ? '🔄' : isDarkTheme ? '☀️' : '🌙'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleLogout} style={{ padding: 8 }}>
+                <Text style={{ fontSize: 20 }}>🚪</Text>
+              </TouchableOpacity>
             </View>
-          )}
+
+            {/* Stats Grid - 2x2 */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              <View style={{
+                flex: 1,
+                minWidth: '47%',
+                backgroundColor: 'rgba(255,255,255,0.2)',
+                borderRadius: 12,
+                padding: 16,
+                alignItems: 'center',
+              }}>
+                <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#fff' }}>{totalStudents}</Text>
+                <Text style={{ fontSize: 12, color: '#fff', opacity: 0.9, marginTop: 4 }}>Total</Text>
+              </View>
+              <View style={{
+                flex: 1,
+                minWidth: '47%',
+                backgroundColor: 'rgba(0,255,136,0.2)',
+                borderRadius: 12,
+                padding: 16,
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: 'rgba(0,255,136,0.3)',
+              }}>
+                <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#00ff88' }}>{presentStudents}</Text>
+                <Text style={{ fontSize: 12, color: '#fff', opacity: 0.9, marginTop: 4 }}>Present</Text>
+              </View>
+              <View style={{
+                flex: 1,
+                minWidth: '47%',
+                backgroundColor: 'rgba(255,170,0,0.2)',
+                borderRadius: 12,
+                padding: 16,
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: 'rgba(255,170,0,0.3)',
+              }}>
+                <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#ffaa00' }}>{attendingStudents}</Text>
+                <Text style={{ fontSize: 12, color: '#fff', opacity: 0.9, marginTop: 4 }}>Active</Text>
+              </View>
+              <View style={{
+                flex: 1,
+                minWidth: '47%',
+                backgroundColor: 'rgba(255,68,68,0.2)',
+                borderRadius: 12,
+                padding: 16,
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: 'rgba(255,68,68,0.3)',
+              }}>
+                <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#ff4444' }}>{absentStudents}</Text>
+                <Text style={{ fontSize: 12, color: '#fff', opacity: 0.9, marginTop: 4 }}>Absent</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Quick Actions Row */}
+          <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingTop: 20, gap: 12 }}>
+            <TouchableOpacity
+              onPress={() => setActiveTab('timetable')}
+              activeOpacity={0.8}
+              style={{ flex: 1 }}
+            >
+              <View style={{
+                backgroundColor: theme.cardBackground,
+                borderRadius: 12,
+                padding: 16,
+                alignItems: 'center',
+                borderWidth: 2,
+                borderColor: theme.primary,
+              }}>
+                <Text style={{ fontSize: 24, marginBottom: 4 }}>📅</Text>
+                <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', textAlign: 'center' }}>
+                  {canEditTimetable ? 'Manage' : 'View'}
+                </Text>
+                <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', textAlign: 'center' }}>
+                  Timetable
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {totalStudents > 0 && (
+              <View style={{
+                flex: 1,
+                backgroundColor: theme.cardBackground,
+                borderRadius: 12,
+                padding: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 2,
+                borderColor: theme.border,
+              }}>
+                <Text style={{ fontSize: 28, fontWeight: 'bold', color: theme.primary }}>
+                  {attendancePercentage}%
+                </Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 4 }}>
+                  Attendance
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Student List */}
+          <View style={{ paddingHorizontal: 20, marginTop: 20 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.text }}>
+                📋 Live Attendance
+              </Text>
+              <Text style={{ fontSize: 12, color: theme.textSecondary }}>
+                {students.length} student{students.length !== 1 ? 's' : ''}
+              </Text>
+            </View>
+            {students.map((student) => {
+              if (!student || !student._id) return null;
+
+              const studentStatus = student.status || 'absent';
+              const statusIcon = studentStatus === 'present' ? '✅' :
+                studentStatus === 'attending' ? '⏱️' : '❌';
+              const statusColor = teacherConfig?.statusColors?.[studentStatus] || '#00d9ff';
+
+              return (
+                <TouchableOpacity
+                  key={student._id}
+                  onPress={() => fetchStudentDetails(student)}
+                  activeOpacity={0.7}
+                  style={{ marginBottom: 12 }}
+                >
+                  <View style={{
+                    backgroundColor: theme.cardBackground,
+                    borderRadius: 12,
+                    padding: 16,
+                    borderLeftWidth: 4,
+                    borderLeftColor: statusColor,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                  }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 16, fontWeight: '600', color: theme.text }}>
+                          {statusIcon} {student.name || 'Unknown'}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: theme.textSecondary, marginTop: 2 }}>
+                          {student.enrollmentNumber || 'N/A'}
+                        </Text>
+                      </View>
+                      <View style={{
+                        backgroundColor: statusColor + '20',
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: statusColor,
+                      }}>
+                        <Text style={{ fontSize: 10, fontWeight: 'bold', color: statusColor }}>
+                          {studentStatus.toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 24, fontWeight: 'bold', color: theme.text }}>
+                        {formatTime(student.timerValue || 0)}
+                      </Text>
+                      {student.isRunning && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#00ff88', marginRight: 6 }} />
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: '#00ff88' }}>LIVE</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+            {students.length === 0 && (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <Text style={{ fontSize: 48, marginBottom: 12 }}>📭</Text>
+                <Text style={{ fontSize: 16, color: theme.textSecondary, marginBottom: 4 }}>
+                  No students attending yet
+                </Text>
+                <Text style={{ fontSize: 13, color: theme.textSecondary, opacity: 0.7, textAlign: 'center' }}>
+                  Students will appear here when they start their session
+                </Text>
+              </View>
+            )}
+          </View>
         </ScrollView>
 
         {/* Student Detail Modal */}
@@ -1988,7 +2190,7 @@ export default function App() {
             </View>
           </Modal>
         )}
-      </Animated.View>
+      </View>
     );
   }
 
@@ -2028,7 +2230,31 @@ export default function App() {
     );
   }
 
-  // Render Notifications Screen (Teachers only)
+  // Render Timetable Screen (Teachers)
+  if (activeTab === 'timetable' && selectedRole === 'teacher') {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
+        <StatusBar style={theme.statusBar} />
+        <TimetableScreen
+          theme={theme}
+          semester={semester}
+          branch={branch}
+          socketUrl={SOCKET_URL}
+          canEdit={userData?.canEditTimetable || false}
+          isTeacher={true}
+        />
+        <BottomNavigation
+          theme={theme}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          userRole={selectedRole}
+          notificationBadge={notificationBadge}
+        />
+      </View>
+    );
+  }
+
+  // Render Notifications Screen (Teachers)
   if (activeTab === 'notifications' && selectedRole === 'teacher') {
     return (
       <View style={{ flex: 1, backgroundColor: theme.background }}>
@@ -2038,6 +2264,114 @@ export default function App() {
           userData={userData}
           socketUrl={SOCKET_URL}
         />
+        <BottomNavigation
+          theme={theme}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          userRole={selectedRole}
+          notificationBadge={notificationBadge}
+        />
+      </View>
+    );
+  }
+
+  // Render Students Screen (Teachers)
+  if (activeTab === 'students' && selectedRole === 'teacher') {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
+        <StatusBar style={theme.statusBar} />
+        <ScrollView style={{ flex: 1 }}>
+          <View style={{ padding: 20, paddingTop: 60, paddingBottom: 100 }}>
+            <Text style={{ fontSize: 28, fontWeight: 'bold', color: theme.text, marginBottom: 20 }}>
+              Students
+            </Text>
+            
+            {/* Student List */}
+            {students.map((student, index) => {
+              const studentStatus = student.status || 'absent';
+              const statusIcon = studentStatus === 'present' ? '✅' :
+                studentStatus === 'attending' ? '⏱️' : '❌';
+              const statusColor = studentStatus === 'present' ? '#10b981' :
+                studentStatus === 'attending' ? '#f59e0b' : '#ef4444';
+
+              return (
+                <View
+                  key={student._id || index}
+                  style={{
+                    backgroundColor: theme.cardBackground,
+                    padding: 16,
+                    borderRadius: 12,
+                    marginBottom: 12,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    borderLeftWidth: 4,
+                    borderLeftColor: statusColor,
+                  }}
+                >
+                  {/* Profile Photo */}
+                  <View style={{
+                    width: 50,
+                    height: 50,
+                    borderRadius: 25,
+                    backgroundColor: theme.primary + '20',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 12,
+                  }}>
+                    {student.photoUrl ? (
+                      <Image
+                        source={{ uri: student.photoUrl }}
+                        style={{ width: 50, height: 50, borderRadius: 25 }}
+                      />
+                    ) : (
+                      <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.primary }}>
+                        {getInitials(student.name)}
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* Student Info */}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: theme.text }}>
+                      {student.name}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: theme.textSecondary, marginTop: 2 }}>
+                      {student.enrollmentNo || student._id}
+                    </Text>
+                    {student.timerValue !== undefined && (
+                      <Text style={{ fontSize: 12, color: theme.textSecondary, marginTop: 4 }}>
+                        ⏱️ {Math.floor(student.timerValue / 60)}:{(student.timerValue % 60).toString().padStart(2, '0')}
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* Status Badge */}
+                  <View style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 12,
+                    backgroundColor: statusColor + '20',
+                  }}>
+                    <Text style={{ fontSize: 20 }}>{statusIcon}</Text>
+                  </View>
+                </View>
+              );
+            })}
+
+            {students.length === 0 && (
+              <View style={{
+                backgroundColor: theme.cardBackground,
+                padding: 40,
+                borderRadius: 12,
+                alignItems: 'center',
+              }}>
+                <Text style={{ fontSize: 16, color: theme.textSecondary }}>
+                  No students online
+                </Text>
+              </View>
+            )}
+          </View>
+        </ScrollView>
         <BottomNavigation
           theme={theme}
           activeTab={activeTab}
