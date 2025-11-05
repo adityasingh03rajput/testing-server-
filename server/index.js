@@ -1,6 +1,14 @@
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+// Load environment variables
+// On Render, variables are set in dashboard (no .env file needed)
+// For local development, load from .env file
+if (fs.existsSync(path.join(__dirname, '..', '.env'))) {
+    require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+} else {
+    // No .env file, use system environment variables (Render, production)
+    console.log('📝 Using system environment variables (no .env file)');
+}
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
