@@ -1,10 +1,11 @@
+const path = require('path');
+const fs = require('fs');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const http = require('http');
 const { Server } = require('socket.io');
-const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -50,12 +51,13 @@ if (!fs.existsSync(uploadsDir)) {
 app.use('/uploads', express.static(uploadsDir));
 
 // MongoDB Connection
-const MONGO_URI = 'mongodb://localhost:27017/attendance_app';
+const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/attendance_app';
 mongoose.connect(MONGO_URI, {
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 45000,
 }).then(() => {
-    console.log('✅ Connected to MongoDB');
+    console.log('✅ Connected to MongoDB Atlas');
+    console.log('📍 Database:', mongoose.connection.name);
 }).catch(err => {
     console.log('⚠️  MongoDB not connected, using in-memory storage');
     console.log('Error:', err.message);
@@ -111,7 +113,7 @@ const attendanceRecordSchema = new mongoose.Schema({
     enrollmentNumber: String,
     date: { type: Date, required: true },
     status: { type: String, enum: ['present', 'absent', 'leave'], required: true },
-    
+
     // Detailed lecture-wise attendance
     lectures: [{
         subject: String,
@@ -123,17 +125,17 @@ const attendanceRecordSchema = new mongoose.Schema({
         percentage: Number,    // attendance percentage
         present: Boolean       // true if >= 75%
     }],
-    
+
     // Daily totals (excluding breaks)
     totalAttended: { type: Number, default: 0 },      // total minutes attended
     totalClassTime: { type: Number, default: 0 },     // total class minutes
     dayPercentage: { type: Number, default: 0 },      // daily attendance %
-    
+
     // Legacy fields (for backward compatibility)
     timerValue: { type: Number, default: 0 },
     checkInTime: Date,
     checkOutTime: Date,
-    
+
     semester: String,
     branch: String,
     createdAt: { type: Date, default: Date.now }
@@ -313,32 +315,32 @@ app.post('/api/timetable', async (req, res) => {
 app.get('/api/teacher-schedule/:teacherId/:day', async (req, res) => {
     try {
         const { teacherId, day } = req.params;
-        
+
         if (mongoose.connection.readyState === 1) {
             // First, get the teacher's name from their ID
             let teacherName = teacherId;
-            const teacher = await Teacher.findOne({ 
+            const teacher = await Teacher.findOne({
                 $or: [
                     { employeeId: teacherId },
                     { name: teacherId }
                 ]
             });
-            
+
             if (teacher) {
                 teacherName = teacher.name;
             }
-            
+
             // Fetch all timetables
             const timetables = await Timetable.find({});
             const schedule = [];
-            
+
             timetables.forEach(tt => {
                 const daySchedule = tt.timetable[day.toLowerCase()] || [];
                 daySchedule.forEach((period, idx) => {
                     // Match by teacher name (case-insensitive)
-                    if (period.teacher && 
-                        (period.teacher.toLowerCase() === teacherName.toLowerCase() || 
-                         period.teacher.toLowerCase().includes(teacherName.toLowerCase()))) {
+                    if (period.teacher &&
+                        (period.teacher.toLowerCase() === teacherName.toLowerCase() ||
+                            period.teacher.toLowerCase().includes(teacherName.toLowerCase()))) {
                         schedule.push({
                             subject: period.subject,
                             room: period.room,
@@ -352,14 +354,14 @@ app.get('/api/teacher-schedule/:teacherId/:day', async (req, res) => {
                     }
                 });
             });
-            
+
             // Sort by start time
             schedule.sort((a, b) => {
                 const timeA = a.startTime.split(':').map(Number);
                 const timeB = b.startTime.split(':').map(Number);
                 return (timeA[0] * 60 + timeA[1]) - (timeB[0] * 60 + timeB[1]);
             });
-            
+
             res.json({ success: true, schedule });
         } else {
             res.json({ success: true, schedule: [] });
@@ -414,9 +416,9 @@ io.on('connection', (socket) => {
             if (mongoose.connection.readyState === 1 && !isOfflineId) {
                 try {
                     // Check if studentId is a valid ObjectId format
-                    const isValidObjectId = mongoose.Types.ObjectId.isValid(studentId) && 
-                                           /^[0-9a-fA-F]{24}$/.test(studentId);
-                    
+                    const isValidObjectId = mongoose.Types.ObjectId.isValid(studentId) &&
+                        /^[0-9a-fA-F]{24}$/.test(studentId);
+
                     let student;
                     if (isValidObjectId) {
                         // Try both _id and enrollmentNo
@@ -431,7 +433,7 @@ io.on('connection', (socket) => {
                         console.log(`🔍 Searching for student by enrollmentNo: ${studentId}`);
                         student = await StudentManagement.findOne({ enrollmentNo: studentId });
                     }
-                    
+
                     if (student) {
                         console.log(`✅ Found student: ${student.name} (${student.enrollmentNo})`);
                         await StudentManagement.findByIdAndUpdate(student._id, {
@@ -488,25 +490,25 @@ io.on('connection', (socket) => {
 // Attendance Records API
 app.post('/api/attendance/record', async (req, res) => {
     try {
-        const { 
+        const {
             studentId, studentName, enrollmentNumber, status, timerValue, semester, branch,
-            lectures, totalAttended, totalClassTime, dayPercentage, clientDate 
+            lectures, totalAttended, totalClassTime, dayPercentage, clientDate
         } = req.body;
-        
+
         // SECURITY: Always use server time, never trust client
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        
+
         // Optional: Validate client date matches server date (within 1 day tolerance)
         if (clientDate) {
             const clientDateObj = new Date(clientDate);
             clientDateObj.setHours(0, 0, 0, 0);
             const daysDiff = Math.abs((today - clientDateObj) / (1000 * 60 * 60 * 24));
-            
+
             if (daysDiff > 1) {
                 console.warn(`⚠️ Client date mismatch: client=${clientDate}, server=${today.toISOString()}`);
-                return res.status(400).json({ 
-                    success: false, 
+                return res.status(400).json({
+                    success: false,
                     error: 'Date mismatch. Please sync your device time.',
                     serverDate: today.toISOString()
                 });
@@ -525,13 +527,13 @@ app.post('/api/attendance/record', async (req, res) => {
                 record.status = status;
                 record.timerValue = timerValue;
                 record.checkOutTime = new Date();
-                
+
                 // Update detailed attendance if provided
                 if (lectures) record.lectures = lectures;
                 if (totalAttended !== undefined) record.totalAttended = totalAttended;
                 if (totalClassTime !== undefined) record.totalClassTime = totalClassTime;
                 if (dayPercentage !== undefined) record.dayPercentage = dayPercentage;
-                
+
                 await record.save();
             } else {
                 // Create new record
@@ -797,7 +799,7 @@ app.post('/api/verify-face', async (req, res) => {
 
         // Use face-api.js for verification
         console.log('🤖 Using face-api.js for verification...');
-        
+
         const result = await faceApiService.compareFaces(capturedImage, referenceImageBase64);
         const verificationTime = Date.now() - startTime;
 
@@ -1041,15 +1043,15 @@ app.post('/api/upload-photo', async (req, res) => {
 
         // Validate face detection before saving
         console.log('🔍 Validating face in uploaded photo...');
-        
+
         if (faceApiService.areModelsLoaded()) {
             try {
                 const canvas = require('canvas');
                 const buffer = Buffer.from(base64Data, 'base64');
                 const img = await canvas.loadImage(buffer);
-                
+
                 console.log(`   Photo size: ${img.width}x${img.height}px`);
-                
+
                 // Try to detect face with aggressive settings
                 const faceapi = require('face-api.js');
                 const detectionOptions = [
@@ -1074,8 +1076,8 @@ app.post('/api/upload-photo', async (req, res) => {
 
                 if (!faceDetected) {
                     console.log('   ❌ No face detected in uploaded photo');
-                    return res.status(400).json({ 
-                        success: false, 
+                    return res.status(400).json({
+                        success: false,
                         error: 'No face detected',
                         message: 'No face detected. Please use a clear, well-lit photo showing your face.'
                     });
@@ -1101,8 +1103,11 @@ app.post('/api/upload-photo', async (req, res) => {
         fs.writeFileSync(filepath, buffer);
         console.log(`✅ Photo saved: ${filename}`);
 
-        // Use full URL with IP address so mobile app can access it
-        const photoUrl = `http://192.168.9.31:3000/uploads/${filename}`;
+        // Use environment-aware URL (works for both local and Render)
+        const baseUrl = process.env.RENDER_EXTERNAL_URL || 
+                       process.env.BASE_URL || 
+                       'http://192.168.9.31:3000';
+        const photoUrl = `${baseUrl}/uploads/${filename}`;
         res.json({ success: true, photoUrl, filename, message: 'Photo uploaded successfully with face detected!' });
     } catch (error) {
         console.error('❌ Error uploading photo:', error);
@@ -1403,7 +1408,7 @@ app.get('/api/holidays', async (req, res) => {
 app.post('/api/holidays', async (req, res) => {
     try {
         const { date, name, type, description, color } = req.body;
-        
+
         if (mongoose.connection.readyState === 1) {
             const holiday = new Holiday({ date, name, type, description, color });
             await holiday.save();
@@ -1421,7 +1426,7 @@ app.put('/api/holidays/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { date, name, type, description, color } = req.body;
-        
+
         if (mongoose.connection.readyState === 1) {
             const holiday = await Holiday.findByIdAndUpdate(
                 id,
@@ -1441,7 +1446,7 @@ app.put('/api/holidays/:id', async (req, res) => {
 app.delete('/api/holidays/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         if (mongoose.connection.readyState === 1) {
             await Holiday.findByIdAndDelete(id);
             res.json({ success: true });
@@ -1458,7 +1463,7 @@ app.delete('/api/holidays/:id', async (req, res) => {
 app.get('/api/holidays/range', async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
-        
+
         if (mongoose.connection.readyState === 1) {
             const holidays = await Holiday.find({
                 date: {
@@ -1572,5 +1577,6 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`👥 Students API: http://localhost:${PORT}/api/students`);
     console.log(`🔍 Face Verify: http://localhost:${PORT}/api/verify-face`);
     console.log(`⏰ Time Sync: http://localhost:${PORT}/api/time`);
+    console.log(`💾 Database: ${mongoose.connection.readyState === 1 ? 'MongoDB Atlas' : 'In-Memory'}`);
     console.log('========================================');
 });
