@@ -14,7 +14,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
   const [editSubject, setEditSubject] = useState('');
   const [editRoom, setEditRoom] = useState('');
   const [saving, setSaving] = useState(false);
-  
+
   // Get current day (0 = Monday, 5 = Saturday, Sunday defaults to Monday)
   const getCurrentDayIndex = () => {
     try {
@@ -27,12 +27,23 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
       return day - 1;
     }
   };
-  
+
   const [currentDay, setCurrentDay] = useState(getCurrentDayIndex());
 
   useEffect(() => {
     fetchTimetable();
   }, [semester, branch]);
+
+  // Force refresh when screen is focused
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Check if timetable needs refresh every 30 seconds
+      if (semester && branch && socketUrl) {
+        fetchTimetable();
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [semester, branch, socketUrl]);
 
   const fetchTimetable = async () => {
     if (!semester || !branch) {
@@ -59,9 +70,19 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
       console.log('Timetable data received:', data);
 
       if (data.success && data.timetable) {
+        // Log first subject of each day to verify data structure
+        const tt = data.timetable.timetable;
+        if (tt) {
+          console.log('📅 Timetable first subjects:');
+          console.log('  Monday:', tt.monday?.[0]?.subject);
+          console.log('  Tuesday:', tt.tuesday?.[0]?.subject);
+          console.log('  Wednesday:', tt.wednesday?.[0]?.subject);
+          console.log('  Thursday:', tt.thursday?.[0]?.subject);
+          console.log('  Friday:', tt.friday?.[0]?.subject);
+        }
+
         setTimetable(data.timetable);
         console.log('Timetable loaded successfully');
-        console.log('Periods from API:', data.timetable.periods);
       } else {
         console.log('No timetable found');
         setTimetable(null);
@@ -76,7 +97,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
 
   const saveTimetable = async () => {
     if (!canEdit || !timetable) return;
-    
+
     setSaving(true);
     try {
       const response = await fetch(`${socketUrl}/api/timetable/${semester}/${branch}`, {
@@ -84,7 +105,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ timetable: timetable.timetable })
       });
-      
+
       const data = await response.json();
       if (data.success) {
         console.log('✅ Timetable saved successfully');
@@ -103,10 +124,10 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
 
   const handleCellPress = (dayIndex, periodNumber) => {
     if (!canEdit) return;
-    
+
     const dayKey = DAYS[dayIndex].toLowerCase();
     const period = timetable.timetable[dayKey].find(p => p.period === periodNumber);
-    
+
     if (period) {
       setEditingCell({ dayIndex, periodNumber });
       setEditSubject(period.subject || '');
@@ -116,13 +137,13 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
 
   const handleSaveCell = () => {
     if (!editingCell) return;
-    
+
     const { dayIndex, periodNumber } = editingCell;
     const dayKey = DAYS[dayIndex].toLowerCase();
-    
+
     const updatedTimetable = { ...timetable };
     const periodIndex = updatedTimetable.timetable[dayKey].findIndex(p => p.period === periodNumber);
-    
+
     if (periodIndex !== -1) {
       updatedTimetable.timetable[dayKey][periodIndex] = {
         ...updatedTimetable.timetable[dayKey][periodIndex],
@@ -132,7 +153,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
       };
       setTimetable(updatedTimetable);
     }
-    
+
     setEditingCell(null);
     setEditSubject('');
     setEditRoom('');
@@ -167,10 +188,21 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
   };
 
   const getSubjectForPeriod = (day, periodNum) => {
-    if (!timetable || !timetable.timetable) return null;
+    if (!timetable || !timetable.timetable) {
+      console.log('⚠️ No timetable data');
+      return null;
+    }
     if (day < 0 || day >= DAYS.length) return null;
+
     const dayName = DAYS[day].toLowerCase();
     const schedule = timetable.timetable[dayName] || [];
+
+    // Debug: Log for period 1 of each day to see what's being fetched
+    if (periodNum === 1) {
+      const subject = schedule.find(s => s && s.period === periodNum);
+      console.log(`📅 ${dayName} Period 1:`, subject?.subject || 'none');
+    }
+
     return schedule.find(s => s && s.period === periodNum);
   };
 
@@ -202,7 +234,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
           <BookIcon size={28} color={theme.primary} />
           <Text style={[styles.title, { color: theme.primary }]}>Timetable</Text>
           {canEdit && (
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={saveTimetable}
               disabled={saving}
               style={{
@@ -245,8 +277,8 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
       ) : (
         <>
           {/* Day Selector */}
-          <ScrollView 
-            horizontal 
+          <ScrollView
+            horizontal
             showsHorizontalScrollIndicator={false}
             style={styles.daySelector}
             contentContainerStyle={styles.daySelectorContent}
@@ -256,7 +288,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
                 key={day}
                 style={[
                   styles.dayButton,
-                  { 
+                  {
                     backgroundColor: currentDay === index ? theme.primary : theme.cardBackground,
                     borderColor: theme.border
                   }
@@ -274,16 +306,27 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
           </ScrollView>
 
           {/* Today's Schedule */}
-          <View style={[styles.scheduleCard, { 
-            backgroundColor: theme.cardBackground, 
-            borderColor: theme.border 
+          <View style={[styles.scheduleCard, {
+            backgroundColor: theme.cardBackground,
+            borderColor: theme.border
           }]}>
-            <Text style={[styles.scheduleTitle, { color: theme.text }]}>
-              {DAYS[currentDay] || 'Monday'}'s Schedule
-            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={[styles.scheduleTitle, { color: theme.text }]}>
+                {DAYS[currentDay] || 'Monday'}'s Schedule
+              </Text>
+              <TouchableOpacity onPress={fetchTimetable} style={{ padding: 8 }}>
+                <Text style={{ color: theme.primary, fontSize: 14 }}>🔄 Refresh</Text>
+              </TouchableOpacity>
+            </View>
 
             {getPeriods().map((period) => {
               const subject = getSubjectForPeriod(currentDay, period.number);
+              
+              // Debug: Log what list view is showing
+              if (period.number === 1) {
+                console.log(`📋 LIST VIEW - ${DAYS[currentDay]} Period 1:`, subject?.subject);
+              }
+              
               const isCurrentPeriod = currentPeriod === period.number;
               const isBreak = subject?.isBreak;
 
@@ -302,62 +345,62 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
                       isBreak && { backgroundColor: '#fbbf2420' }
                     ]}
                   >
-                  <View style={styles.periodInfo}>
-                    <Text style={[styles.periodNumber, { color: theme.primary }]}>
-                      {period.number}
-                    </Text>
-                    <Text style={[styles.periodTime, { color: theme.textSecondary }]}>
-                      {period.time}
-                    </Text>
-                  </View>
+                    <View style={styles.periodInfo}>
+                      <Text style={[styles.periodNumber, { color: theme.primary }]}>
+                        {period.number}
+                      </Text>
+                      <Text style={[styles.periodTime, { color: theme.textSecondary }]}>
+                        {period.time}
+                      </Text>
+                    </View>
 
-                  <View style={styles.subjectInfo}>
-                    {subject ? (
-                      <>
-                        <View style={styles.subjectRow}>
-                          {isBreak && <CoffeeIcon size={16} color="#fbbf24" />}
-                          <Text style={[
-                            styles.subjectName,
-                            { color: isBreak ? '#fbbf24' : theme.text },
-                            isBreak && { marginLeft: 6 }
-                          ]}>
-                            {isBreak ? 'Break' : subject.subject || 'Free Period'}
-                          </Text>
-                        </View>
-                        {!isBreak && subject.room && (
-                          <View style={styles.roomRow}>
-                            <LocationIcon size={12} color={theme.textSecondary} />
-                            <Text style={[styles.roomName, { color: theme.textSecondary, marginLeft: 4 }]}>
-                              {subject.room}
+                    <View style={styles.subjectInfo}>
+                      {subject ? (
+                        <>
+                          <View style={styles.subjectRow}>
+                            {isBreak && <CoffeeIcon size={16} color="#fbbf24" />}
+                            <Text style={[
+                              styles.subjectName,
+                              { color: isBreak ? '#fbbf24' : theme.text },
+                              isBreak && { marginLeft: 6 }
+                            ]}>
+                              {isBreak ? 'Break' : subject.subject || 'Free Period'}
                             </Text>
                           </View>
-                        )}
-                      </>
-                    ) : (
-                      <Text style={[styles.subjectName, { color: theme.textSecondary }]}>
-                        Free Period
-                      </Text>
+                          {!isBreak && subject.room && (
+                            <View style={styles.roomRow}>
+                              <LocationIcon size={12} color={theme.textSecondary} />
+                              <Text style={[styles.roomName, { color: theme.textSecondary, marginLeft: 4 }]}>
+                                {subject.room}
+                              </Text>
+                            </View>
+                          )}
+                        </>
+                      ) : (
+                        <Text style={[styles.subjectName, { color: theme.textSecondary }]}>
+                          Free Period
+                        </Text>
+                      )}
+                    </View>
+
+                    {isCurrentPeriod && (
+                      <View style={[styles.currentBadge, { backgroundColor: theme.primary }]}>
+                        <Text style={styles.currentBadgeText}>Now</Text>
+                      </View>
                     )}
                   </View>
-
-                  {isCurrentPeriod && (
-                    <View style={[styles.currentBadge, { backgroundColor: theme.primary }]}>
-                      <Text style={styles.currentBadgeText}>Now</Text>
-                    </View>
-                  )}
-                </View>
                 </TouchableOpacity>
               );
             })}
           </View>
 
           {/* Week Overview */}
-          <View style={[styles.weekCard, { 
-            backgroundColor: theme.cardBackground, 
-            borderColor: theme.border 
+          <View style={[styles.weekCard, {
+            backgroundColor: theme.cardBackground,
+            borderColor: theme.border
           }]}>
             <Text style={[styles.weekTitle, { color: theme.text }]}>Week Overview</Text>
-            
+
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={styles.weekGrid}>
                 {/* Header Row */}
@@ -386,9 +429,15 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
                     </View>
                     {DAYS.map((day, dayIndex) => {
                       const subject = getSubjectForPeriod(dayIndex, period.number);
+                      
+                      // Debug: Log what table view is showing
+                      if (period.number === 1 && dayIndex === 0) {
+                        console.log(`📊 TABLE VIEW - Monday Period 1:`, subject?.subject);
+                      }
+                      
                       return (
-                        <View 
-                          key={day} 
+                        <View
+                          key={day}
                           style={[
                             styles.weekCell,
                             { backgroundColor: theme.background },
@@ -396,9 +445,9 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
                           ]}
                         >
                           <View style={{ alignItems: 'center' }}>
-                            <Text 
+                            <Text
                               style={[
-                                styles.weekCellText, 
+                                styles.weekCellText,
                                 { color: subject?.isBreak ? '#fbbf24' : theme.text, fontWeight: '600' }
                               ]}
                               numberOfLines={2}
@@ -406,7 +455,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
                               {subject?.isBreak ? 'Break' : subject?.subject?.substring(0, 10) || '-'}
                             </Text>
                             {subject && !subject.isBreak && subject.room && (
-                              <Text 
+                              <Text
                                 style={[
                                   styles.weekCellRoom,
                                   { color: theme.textSecondary }
