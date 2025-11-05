@@ -15,6 +15,14 @@ const mongoose = require('mongoose');
 const http = require('http');
 const { Server } = require('socket.io');
 
+// Cloudinary configuration
+const cloudinary = require('cloudinary').v2;
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -315,6 +323,49 @@ app.post('/api/timetable', async (req, res) => {
         // Notify all students
         io.emit('timetable_updated', { semester, branch });
     } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// PUT endpoint for updating timetable (used by mobile app)
+app.put('/api/timetable/:semester/:branch', async (req, res) => {
+    try {
+        const { semester, branch } = req.params;
+        const { timetable, periods } = req.body;
+
+        console.log(`📝 Updating timetable for ${branch} Semester ${semester}`);
+
+        if (mongoose.connection.readyState === 1) {
+            let existingTimetable = await Timetable.findOne({ semester, branch });
+            if (existingTimetable) {
+                existingTimetable.timetable = timetable;
+                if (periods) existingTimetable.periods = periods;
+                existingTimetable.lastUpdated = new Date();
+                await existingTimetable.save();
+                console.log('✅ Timetable updated successfully');
+                res.json({ success: true, timetable: existingTimetable });
+            } else {
+                // Create new timetable if doesn't exist
+                const newTimetable = new Timetable({ 
+                    semester, 
+                    branch, 
+                    periods: periods || [], 
+                    timetable 
+                });
+                await newTimetable.save();
+                console.log('✅ New timetable created');
+                res.json({ success: true, timetable: newTimetable });
+            }
+        } else {
+            const key = `${semester}_${branch}`;
+            timetableMemory[key] = { semester, branch, periods: periods || [], timetable, lastUpdated: new Date() };
+            res.json({ success: true, timetable: timetableMemory[key] });
+        }
+
+        // Notify all students
+        io.emit('timetable_updated', { semester, branch });
+    } catch (error) {
+        console.error('❌ Error updating timetable:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -1099,24 +1150,26 @@ app.post('/api/upload-photo', async (req, res) => {
             console.log('⚠️  Face detection models not loaded, skipping validation');
         }
 
-        const buffer = Buffer.from(base64Data, 'base64');
-
-        // Generate filename with sanitized id (limit length)
+        // Upload to Cloudinary
         const sanitizedId = String(id).replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
-        const timestamp = Date.now();
-        const filename = `${type}_${sanitizedId}_${timestamp}.jpg`;
-        const filepath = path.join(uploadsDir, filename);
+        const publicId = `attendance/${type}_${sanitizedId}_${Date.now()}`;
+        
+        console.log('☁️  Uploading to Cloudinary...');
+        const uploadResult = await cloudinary.uploader.upload(`data:image/jpeg;base64,${base64Data}`, {
+            public_id: publicId,
+            folder: 'attendance',
+            resource_type: 'image'
+        });
 
-        // Save file to disk
-        fs.writeFileSync(filepath, buffer);
-        console.log(`✅ Photo saved: ${filename}`);
-
-        // Use environment-aware URL (works for both local and Render)
-        const baseUrl = process.env.RENDER_EXTERNAL_URL || 
-                       process.env.BASE_URL || 
-                       'http://192.168.9.31:3000';
-        const photoUrl = `${baseUrl}/uploads/${filename}`;
-        res.json({ success: true, photoUrl, filename, message: 'Photo uploaded successfully with face detected!' });
+        console.log(`✅ Photo uploaded to Cloudinary: ${uploadResult.public_id}`);
+        
+        const photoUrl = uploadResult.secure_url;
+        res.json({ 
+            success: true, 
+            photoUrl, 
+            filename: uploadResult.public_id,
+            message: 'Photo uploaded successfully with face detected!' 
+        });
     } catch (error) {
         console.error('❌ Error uploading photo:', error);
         res.status(500).json({ success: false, error: error.message });
