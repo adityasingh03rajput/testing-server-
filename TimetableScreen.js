@@ -321,12 +321,12 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
 
             {getPeriods().map((period) => {
               const subject = getSubjectForPeriod(currentDay, period.number);
-              
+
               // Debug: Log what list view is showing
               if (period.number === 1) {
                 console.log(`📋 LIST VIEW - ${DAYS[currentDay]} Period 1:`, subject?.subject);
               }
-              
+
               const isCurrentPeriod = currentPeriod === period.number;
               const isBreak = subject?.isBreak;
 
@@ -429,12 +429,12 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
                     </View>
                     {DAYS.map((day, dayIndex) => {
                       const subject = getSubjectForPeriod(dayIndex, period.number);
-                      
+
                       // Debug: Log what table view is showing
                       if (period.number === 1 && dayIndex === 0) {
                         console.log(`📊 TABLE VIEW - Monday Period 1:`, subject?.subject);
                       }
-                      
+
                       return (
                         <View
                           key={day}

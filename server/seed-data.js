@@ -79,10 +79,20 @@ const timetableSchema = new mongoose.Schema({
     lastUpdated: { type: Date, default: Date.now }
 });
 
+const classroomSchema = new mongoose.Schema({
+    roomNumber: { type: String, required: true, unique: true },
+    building: { type: String, required: true },
+    capacity: { type: Number, required: true },
+    wifiBSSID: String,
+    isActive: { type: Boolean, default: true },
+    createdAt: { type: Date, default: Date.now }
+});
+
 const StudentManagement = mongoose.model('StudentManagement', studentManagementSchema);
 const Teacher = mongoose.model('Teacher', teacherSchema);
 const AttendanceRecord = mongoose.model('AttendanceRecord', attendanceRecordSchema);
 const Timetable = mongoose.model('Timetable', timetableSchema);
+const Classroom = mongoose.model('Classroom', classroomSchema);
 
 // Sample Data - Students from different semesters and courses
 const students = [
@@ -144,6 +154,42 @@ const teachers = [
     { employeeId: 'TEACH008', name: 'Prof. Kavita Nair', email: 'kavita.nair@college.edu', password: 'aditya', department: 'ME', subject: 'Fluid Mechanics', semester: '3', canEditTimetable: false },
     { employeeId: 'TEACH009', name: 'Dr. Prakash Joshi', email: 'prakash.joshi@college.edu', password: 'aditya', department: 'Civil', subject: 'Structural Analysis', semester: '3', canEditTimetable: false },
     { employeeId: 'TEACH010', name: 'Prof. Rekha Iyer', email: 'rekha.iyer@college.edu', password: 'aditya', department: 'Civil', subject: 'Surveying', semester: '1', canEditTimetable: false },
+];
+
+const classrooms = [
+    // CSE Department Classrooms
+    { roomNumber: 'CS-101', building: 'A Block', capacity: 60, wifiBSSID: '00:1A:2B:3C:4D:01', isActive: true },
+    { roomNumber: 'CS-102', building: 'A Block', capacity: 60, wifiBSSID: '00:1A:2B:3C:4D:02', isActive: true },
+    { roomNumber: 'CS-103', building: 'A Block', capacity: 60, wifiBSSID: '00:1A:2B:3C:4D:03', isActive: true },
+    { roomNumber: 'CS-104', building: 'A Block', capacity: 60, wifiBSSID: '00:1A:2B:3C:4D:04', isActive: true },
+    { roomNumber: 'CS-105', building: 'A Block', capacity: 60, wifiBSSID: '00:1A:2B:3C:4D:05', isActive: true },
+    { roomNumber: 'CS-Lab-1', building: 'A Block', capacity: 40, wifiBSSID: '00:1A:2B:3C:4D:06', isActive: true },
+    { roomNumber: 'CS-Lab-2', building: 'A Block', capacity: 40, wifiBSSID: '00:1A:2B:3C:4D:07', isActive: true },
+    
+    // ECE Department Classrooms
+    { roomNumber: 'EC-101', building: 'B Block', capacity: 60, wifiBSSID: '00:1A:2B:3C:5D:01', isActive: true },
+    { roomNumber: 'EC-102', building: 'B Block', capacity: 60, wifiBSSID: '00:1A:2B:3C:5D:02', isActive: true },
+    { roomNumber: 'EC-103', building: 'B Block', capacity: 60, wifiBSSID: '00:1A:2B:3C:5D:03', isActive: true },
+    { roomNumber: 'EC-104', building: 'B Block', capacity: 60, wifiBSSID: '00:1A:2B:3C:5D:04', isActive: true },
+    { roomNumber: 'EC-Lab-1', building: 'B Block', capacity: 35, wifiBSSID: '00:1A:2B:3C:5D:05', isActive: true },
+    { roomNumber: 'EC-Lab-2', building: 'B Block', capacity: 35, wifiBSSID: '00:1A:2B:3C:5D:06', isActive: true },
+    
+    // Mechanical Engineering Classrooms
+    { roomNumber: 'ME-101', building: 'C Block', capacity: 60, wifiBSSID: '00:1A:2B:3C:6D:01', isActive: true },
+    { roomNumber: 'ME-102', building: 'C Block', capacity: 60, wifiBSSID: '00:1A:2B:3C:6D:02', isActive: true },
+    { roomNumber: 'ME-103', building: 'C Block', capacity: 60, wifiBSSID: '00:1A:2B:3C:6D:03', isActive: true },
+    { roomNumber: 'ME-Workshop', building: 'C Block', capacity: 50, wifiBSSID: '00:1A:2B:3C:6D:04', isActive: true },
+    
+    // Civil Engineering Classrooms
+    { roomNumber: 'CE-101', building: 'D Block', capacity: 60, wifiBSSID: '00:1A:2B:3C:7D:01', isActive: true },
+    { roomNumber: 'CE-102', building: 'D Block', capacity: 60, wifiBSSID: '00:1A:2B:3C:7D:02', isActive: true },
+    { roomNumber: 'CE-103', building: 'D Block', capacity: 60, wifiBSSID: '00:1A:2B:3C:7D:03', isActive: true },
+    { roomNumber: 'CE-Lab', building: 'D Block', capacity: 40, wifiBSSID: '00:1A:2B:3C:7D:04', isActive: true },
+    
+    // Common Areas
+    { roomNumber: 'Auditorium', building: 'Main Block', capacity: 500, wifiBSSID: '00:1A:2B:3C:8D:01', isActive: true },
+    { roomNumber: 'Seminar Hall', building: 'Main Block', capacity: 150, wifiBSSID: '00:1A:2B:3C:8D:02', isActive: true },
+    { roomNumber: 'Library', building: 'Main Block', capacity: 200, wifiBSSID: '00:1A:2B:3C:8D:03', isActive: true },
 ];
 
 function generateAttendanceRecords(students) {
@@ -408,6 +454,7 @@ async function seedData() {
         await Teacher.deleteMany({});
         await AttendanceRecord.deleteMany({});
         await Timetable.deleteMany({});
+        await Classroom.deleteMany({});
 
         console.log('👥 Adding students...');
         await StudentManagement.insertMany(students);
@@ -425,6 +472,10 @@ async function seedData() {
         console.log('📅 Adding timetables...');
         await Timetable.insertMany(timetables);
         console.log(`✅ Added ${timetables.length} timetables`);
+
+        console.log('🏫 Adding classrooms...');
+        await Classroom.insertMany(classrooms);
+        console.log(`✅ Added ${classrooms.length} classrooms`);
 
         console.log('\n========================================');
         console.log('✅ DATA SEEDING COMPLETED!');
