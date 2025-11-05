@@ -137,8 +137,9 @@ function setupEventListeners() {
     document.getElementById('addClassroomBtn').addEventListener('click', showAddClassroomModal);
     document.getElementById('bulkClassroomBtn').addEventListener('click', showBulkClassroomModal);
 
-    // Timetable
-    document.getElementById('loadTimetableBtn').addEventListener('click', loadTimetable);
+    // Timetable - Auto-load on selection change
+    document.getElementById('timetableSemester').addEventListener('change', autoLoadTimetable);
+    document.getElementById('timetableCourse').addEventListener('change', autoLoadTimetable);
     document.getElementById('createTimetableBtn').addEventListener('click', createNewTimetable);
 
     // Settings
@@ -221,8 +222,9 @@ async function loadDashboardData() {
         const teachersData = await teachersRes.json();
         const attendanceData = await attendanceRes.json();
 
-        const students = studentsData.students || [];
-        const teachers = teachersData.teachers || [];
+        // Update global arrays (don't use const to avoid shadowing)
+        students = studentsData.students || [];
+        teachers = teachersData.teachers || [];
         const records = attendanceData.records || [];
 
         // Basic stats
@@ -1163,26 +1165,58 @@ let clipboardData = null;
 let undoStack = [];
 let redoStack = [];
 let timetableHistory = [];
+let autoSaveTimeout = null;
+
+// Auto-load timetable when semester or course changes
+async function autoLoadTimetable() {
+    const semester = document.getElementById('timetableSemester').value;
+    const course = document.getElementById('timetableCourse').value;
+
+    if (!semester || !course) {
+        // Clear editor if incomplete selection
+        document.getElementById('timetableEditor').innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">Please select both semester and course to view timetable</div>';
+        return;
+    }
+
+    await loadTimetable();
+}
 
 async function loadTimetable() {
     const semester = document.getElementById('timetableSemester').value;
     const course = document.getElementById('timetableCourse').value;
 
     if (!semester || !course) {
-        showNotification('Please select semester and course', 'warning');
         return;
     }
 
     try {
-        const response = await fetch(`${SERVER_URL}/api/timetable/${semester}/${course}`);
-        const data = await response.json();
+        // Load timetable and classrooms in parallel
+        const [timetableRes, classroomsRes, teachersRes] = await Promise.all([
+            fetch(`${SERVER_URL}/api/timetable/${semester}/${course}`),
+            fetch(`${SERVER_URL}/api/classrooms`),
+            fetch(`${SERVER_URL}/api/teachers`)
+        ]);
 
-        if (data.success) {
-            currentTimetable = data.timetable;
+        const timetableData = await timetableRes.json();
+        const classroomsData = await classroomsRes.json();
+        const teachersData = await teachersRes.json();
+
+        // Update global arrays
+        classrooms = classroomsData.classrooms || [];
+        teachers = teachersData.teachers || [];
+
+        if (timetableData.success) {
+            currentTimetable = timetableData.timetable;
             saveToHistory();
             renderAdvancedTimetableEditor(currentTimetable);
         } else {
-            showNotification('No timetable found. Create a new one.', 'info');
+            // No timetable found - show empty state
+            document.getElementById('timetableEditor').innerHTML = `
+                <div style="text-align: center; padding: 40px;">
+                    <p style="color: var(--text-secondary); margin-bottom: 20px;">No timetable found for ${course} Semester ${semester}</p>
+                    <button class="btn btn-primary" onclick="createNewTimetable()">➕ Create New Timetable</button>
+                </div>
+            `;
         }
     } catch (error) {
         showNotification('Error loading timetable', 'error');
@@ -1371,7 +1405,7 @@ function renderAdvancedTimetableEditor(timetable) {
 
     // Quick Actions Bar
     html += '<div class="quick-actions-bar">';
-    html += '<button class="btn btn-primary" onclick="saveTimetable()">💾 Save Timetable</button>';
+    html += '<div style="color: var(--text-secondary); font-size: 14px; padding: 8px;">💾 Auto-saving enabled</div>';
     html += '<button class="btn btn-success" onclick="autoFillTimetable()">🤖 Auto Fill</button>';
     html += '<button class="btn btn-warning" onclick="validateTimetable()">✓ Validate</button>';
     html += '<button class="btn btn-secondary" onclick="printTimetable()">🖨️ Print</button>';
@@ -1456,6 +1490,11 @@ function editAdvancedCell(dayIdx, periodIdx) {
         `<option value="${t.name}" ${period.teacher === t.name ? 'selected' : ''}>${t.name} (${t.employeeId})</option>`
     ).join('');
 
+    // Generate classroom options
+    const classroomOptions = classrooms.map(c =>
+        `<option value="${c.roomNumber}" ${period.room === c.roomNumber ? 'selected' : ''}>${c.roomNumber} - ${c.building} (Cap: ${c.capacity})</option>`
+    ).join('');
+
     const modalBody = document.getElementById('modalBody');
     modalBody.innerHTML = `
         <h2>✏️ Edit Period</h2>
@@ -1483,13 +1522,16 @@ function editAdvancedCell(dayIdx, periodIdx) {
                 <small style="color: var(--text-secondary); font-size: 12px;">Only registered teachers can be assigned</small>
             </div>
             <div class="form-group">
-                <label>🏢 Room</label>
-                <input type="text" name="room" class="form-input" value="${period.room || ''}">
+                <label>🏢 Classroom</label>
+                <select name="room" class="form-select">
+                    <option value="">-- Select Classroom --</option>
+                    ${classroomOptions}
+                </select>
+                <small style="color: var(--text-secondary); font-size: 12px;">Only registered classrooms can be assigned</small>
             </div>
             <div class="form-group">
-                <label>🎨 Color (optional - only change if needed)</label>
+                <label>🎨 Color</label>
                 <input type="color" name="color" class="form-input" value="${period.color || '#1e3a5f'}">
-                <small style="color: var(--text-secondary); font-size: 12px;">⚠️ Color will only be saved if you click and change it</small>
             </div>
             <div class="form-group">
                 <label>
@@ -1530,6 +1572,9 @@ function editAdvancedCell(dayIdx, periodIdx) {
         closeModal();
         renderAdvancedTimetableEditor(currentTimetable);
         showNotification('Period updated successfully', 'success');
+        
+        // Trigger auto-save after edit
+        triggerAutoSave();
     });
 
     openModal();
@@ -1540,7 +1585,22 @@ function editTimetableCell(dayIdx, periodIdx) {
     editAdvancedCell(dayIdx, periodIdx);
 }
 
-async function saveTimetable() {
+// Auto-save function (silent, debounced)
+function triggerAutoSave() {
+    // Clear existing timeout
+    if (autoSaveTimeout) {
+        clearTimeout(autoSaveTimeout);
+    }
+    
+    // Set new timeout for 1 second after last change
+    autoSaveTimeout = setTimeout(() => {
+        saveTimetable(true); // true = silent mode
+    }, 1000);
+}
+
+async function saveTimetable(silent = false) {
+    if (!currentTimetable) return;
+    
     try {
         const response = await fetch(`${SERVER_URL}/api/timetable`, {
             method: 'POST',
@@ -1549,12 +1609,18 @@ async function saveTimetable() {
         });
 
         if (response.ok) {
-            showNotification('Timetable saved successfully', 'success');
+            if (!silent) {
+                showNotification('Timetable saved successfully', 'success');
+            }
         } else {
-            showNotification('Failed to save timetable', 'error');
+            if (!silent) {
+                showNotification('Failed to save timetable', 'error');
+            }
         }
     } catch (error) {
-        showNotification('Error: ' + error.message, 'error');
+        if (!silent) {
+            showNotification('Error: ' + error.message, 'error');
+        }
     }
 }
 
@@ -1590,6 +1656,7 @@ function cutSelected() {
         });
         renderAdvancedTimetableEditor(currentTimetable);
         showNotification('Cut successful', 'success');
+        triggerAutoSave();
     }
 }
 
@@ -1621,6 +1688,7 @@ function pasteToSelected() {
 
     renderAdvancedTimetableEditor(currentTimetable);
     showNotification('Paste successful', 'success');
+    triggerAutoSave();
 }
 
 // Bulk Actions
@@ -1682,6 +1750,7 @@ function showCopyDayDialog() {
         closeModal();
         renderAdvancedTimetableEditor(currentTimetable);
         showNotification(`Copied to ${toDays.length} day(s)`, 'success');
+        triggerAutoSave();
     });
 
     openModal();
@@ -1739,6 +1808,7 @@ function showFillDialog() {
         closeModal();
         renderAdvancedTimetableEditor(currentTimetable);
         showNotification('Cells filled successfully', 'success');
+        triggerAutoSave();
     });
 
     openModal();
@@ -1786,6 +1856,7 @@ function clearDay() {
         closeModal();
         renderAdvancedTimetableEditor(currentTimetable);
         showNotification('Day cleared', 'success');
+        triggerAutoSave();
     });
 
     openModal();
@@ -2845,6 +2916,7 @@ function deleteSelectedCells() {
 
     renderAdvancedTimetableEditor(currentTimetable);
     showNotification('Deleted selected cells', 'success');
+    triggerAutoSave();
 }
 
 // Subject Manager
@@ -2887,6 +2959,7 @@ function applySubjectToSelected(subject) {
     closeModal();
     renderAdvancedTimetableEditor(currentTimetable);
     showNotification(`Applied "${subject}" to ${selectedCells.length} cell(s)`, 'success');
+    triggerAutoSave();
 }
 
 // Teacher Assignment
@@ -2955,6 +3028,7 @@ function showTeacherAssign() {
         closeModal();
         renderAdvancedTimetableEditor(currentTimetable);
         showNotification(`Assigned "${teacher}" to ${selectedCells.length} cell(s)`, 'success');
+        triggerAutoSave();
     });
 
     openModal();
@@ -3000,6 +3074,7 @@ function applyColorToSelected(color) {
     closeModal();
     renderAdvancedTimetableEditor(currentTimetable);
     showNotification('Color applied', 'success');
+    triggerAutoSave();
 }
 
 // View Toggles
