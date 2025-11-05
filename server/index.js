@@ -327,6 +327,49 @@ app.post('/api/timetable', async (req, res) => {
     }
 });
 
+// PUT endpoint for updating timetable (used by mobile app)
+app.put('/api/timetable/:semester/:branch', async (req, res) => {
+    try {
+        const { semester, branch } = req.params;
+        const { timetable, periods } = req.body;
+
+        console.log(`📝 Updating timetable for ${branch} Semester ${semester}`);
+
+        if (mongoose.connection.readyState === 1) {
+            let existingTimetable = await Timetable.findOne({ semester, branch });
+            if (existingTimetable) {
+                existingTimetable.timetable = timetable;
+                if (periods) existingTimetable.periods = periods;
+                existingTimetable.lastUpdated = new Date();
+                await existingTimetable.save();
+                console.log('✅ Timetable updated successfully');
+                res.json({ success: true, timetable: existingTimetable });
+            } else {
+                // Create new timetable if doesn't exist
+                const newTimetable = new Timetable({ 
+                    semester, 
+                    branch, 
+                    periods: periods || [], 
+                    timetable 
+                });
+                await newTimetable.save();
+                console.log('✅ New timetable created');
+                res.json({ success: true, timetable: newTimetable });
+            }
+        } else {
+            const key = `${semester}_${branch}`;
+            timetableMemory[key] = { semester, branch, periods: periods || [], timetable, lastUpdated: new Date() };
+            res.json({ success: true, timetable: timetableMemory[key] });
+        }
+
+        // Notify all students
+        io.emit('timetable_updated', { semester, branch });
+    } catch (error) {
+        console.error('❌ Error updating timetable:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Teacher Schedule API
 app.get('/api/teacher-schedule/:teacherId/:day', async (req, res) => {
     try {
