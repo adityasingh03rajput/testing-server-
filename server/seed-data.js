@@ -1,8 +1,18 @@
+const path = require('path');
+const fs = require('fs');
 const mongoose = require('mongoose');
-const MONGO_URI = 'mongodb://localhost:27017/attendance_app';
 
+// Load environment variables
+if (fs.existsSync(path.join(__dirname, '..', '.env'))) {
+    require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+}
+
+const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/attendance_app';
+
+console.log('🔗 Connecting to MongoDB Atlas...');
 mongoose.connect(MONGO_URI).then(() => {
-    console.log('✅ Connected to MongoDB');
+    console.log('✅ Connected to MongoDB Atlas');
+    console.log('📍 Database:', mongoose.connection.name);
     seedData();
 }).catch(err => {
     console.log('❌ MongoDB connection error:', err);
