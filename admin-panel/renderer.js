@@ -1,8 +1,10 @@
 
 // Configuration
-// IMPORTANT: Use your server's IP address so mobile app can access photos
-// Change this to your actual server IP (check with ipconfig or ifconfig)
-let SERVER_URL = 'http://192.168.9.31:3000';
+// Server URL - can be changed in Settings
+// Priority: 1. Saved in localStorage, 2. Render URL, 3. Local IP
+let SERVER_URL = localStorage.getItem('serverUrl') || 
+                 'https://google-8j5x.onrender.com' || // Your Render URL
+                 'http://192.168.9.31:3000'; // Fallback to local
 
 // State
 let students = [];
