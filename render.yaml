@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: attendance-server
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: cd server && npm install
+    startCommand: cd server && npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 18.17.0
+      - key: MONGODB_URI
+        sync: false
+      - key: PORT
+        value: 3000
+    healthCheckPath: /api/health

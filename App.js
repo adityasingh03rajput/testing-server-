@@ -19,8 +19,8 @@ import CircularTimer from './CircularTimer';
 import { SunIcon, MoonIcon, LogoutIcon, RefreshIcon } from './Icons';
 import { initializeServerTime, getServerTime } from './ServerTime';
 
-const API_URL = 'http://192.168.9.31:3000/api/config';
-const SOCKET_URL = 'http://192.168.9.31:3000';
+const API_URL = 'https://google-8j5x.onrender.com/api/config';
+const SOCKET_URL = 'https://google-8j5x.onrender.com';
 const CACHE_KEY = '@timer_config';
 const ROLE_KEY = '@user_role';
 const STUDENT_ID_KEY = '@student_id';
