@@ -1487,8 +1487,9 @@ function editAdvancedCell(dayIdx, periodIdx) {
                 <input type="text" name="room" class="form-input" value="${period.room || ''}">
             </div>
             <div class="form-group">
-                <label>🎨 Color</label>
-                <input type="color" name="color" class="form-input" value="${period.color || '#ffffff'}">
+                <label>🎨 Color (optional - only change if needed)</label>
+                <input type="color" name="color" class="form-input" value="${period.color || '#1e3a5f'}">
+                <small style="color: var(--text-secondary); font-size: 12px;">⚠️ Color will only be saved if you click and change it</small>
             </div>
             <div class="form-group">
                 <label>
@@ -1502,6 +1503,13 @@ function editAdvancedCell(dayIdx, periodIdx) {
         </form>
     `;
 
+    // Track if color was changed
+    let colorChanged = false;
+    const originalColor = period.color || '';
+    document.querySelector('input[name="color"]').addEventListener('change', () => {
+        colorChanged = true;
+    });
+
     document.getElementById('periodForm').addEventListener('submit', (e) => {
         e.preventDefault();
         saveToHistory();
@@ -1509,7 +1517,14 @@ function editAdvancedCell(dayIdx, periodIdx) {
         period.subject = formData.get('subject');
         period.teacher = formData.get('teacher');
         period.room = formData.get('room');
-        period.color = formData.get('color');
+        
+        // Only update color if user explicitly changed it
+        if (colorChanged) {
+            const newColor = formData.get('color');
+            period.color = newColor;
+        }
+        // Otherwise, keep existing color (don't modify period.color at all)
+        
         period.isBreak = formData.has('isBreak');
 
         closeModal();
