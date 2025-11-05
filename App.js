@@ -2277,17 +2277,115 @@ export default function App() {
 
   // Render Students Screen (Teachers)
   if (activeTab === 'students' && selectedRole === 'teacher') {
+    const [currentClassInfo, setCurrentClassInfo] = React.useState(null);
+    const [filteredStudents, setFilteredStudents] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
+
+    React.useEffect(() => {
+      const fetchCurrentClassStudents = async () => {
+        try {
+          setLoading(true);
+          const response = await fetch(
+            `${SOCKET_URL}/api/teacher/current-class-students/${userData.employeeId}`
+          );
+          const data = await response.json();
+          
+          if (data.success && data.hasActiveClass) {
+            setCurrentClassInfo(data.currentClass);
+            setFilteredStudents(data.students);
+          } else {
+            setCurrentClassInfo(null);
+            setFilteredStudents([]);
+          }
+        } catch (error) {
+          console.error('Error fetching current class students:', error);
+          setFilteredStudents([]);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      fetchCurrentClassStudents();
+      
+      // Refresh every 2 minutes
+      const interval = setInterval(fetchCurrentClassStudents, 2 * 60 * 1000);
+      return () => clearInterval(interval);
+    }, [userData.employeeId]);
+
     return (
       <View style={{ flex: 1, backgroundColor: theme.background }}>
         <StatusBar style={theme.statusBar} />
         <ScrollView style={{ flex: 1 }}>
           <View style={{ padding: 20, paddingTop: 60, paddingBottom: 100 }}>
-            <Text style={{ fontSize: 28, fontWeight: 'bold', color: theme.text, marginBottom: 20 }}>
+            <Text style={{ fontSize: 28, fontWeight: 'bold', color: theme.text, marginBottom: 8 }}>
               Students
             </Text>
             
-            {/* Student List */}
-            {students.map((student, index) => {
+            {/* Current Class Info */}
+            {currentClassInfo && (
+              <View style={{
+                backgroundColor: theme.primary + '20',
+                padding: 16,
+                borderRadius: 12,
+                marginBottom: 20,
+                borderLeftWidth: 4,
+                borderLeftColor: theme.primary,
+              }}>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: theme.text, marginBottom: 8 }}>
+                  📚 Current Class
+                </Text>
+                <Text style={{ fontSize: 18, fontWeight: '600', color: theme.text, marginBottom: 4 }}>
+                  {currentClassInfo.subject}
+                </Text>
+                <Text style={{ fontSize: 14, color: theme.textSecondary, marginBottom: 2 }}>
+                  🎓 {currentClassInfo.branch} - Semester {currentClassInfo.semester}
+                </Text>
+                <Text style={{ fontSize: 14, color: theme.textSecondary, marginBottom: 2 }}>
+                  🏢 Room {currentClassInfo.room} (Capacity: {currentClassInfo.capacity})
+                </Text>
+                <Text style={{ fontSize: 14, color: theme.textSecondary }}>
+                  🕐 {currentClassInfo.startTime} - {currentClassInfo.endTime}
+                </Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: theme.primary, marginTop: 8 }}>
+                  👥 {filteredStudents.length} Students
+                </Text>
+              </View>
+            )}
+
+            {!currentClassInfo && !loading && (
+              <View style={{
+                backgroundColor: theme.cardBackground,
+                padding: 20,
+                borderRadius: 12,
+                marginBottom: 20,
+                alignItems: 'center',
+              }}>
+                <Text style={{ fontSize: 48, marginBottom: 12 }}>⏰</Text>
+                <Text style={{ fontSize: 16, fontWeight: '600', color: theme.text, marginBottom: 4 }}>
+                  No Active Class
+                </Text>
+                <Text style={{ fontSize: 14, color: theme.textSecondary, textAlign: 'center' }}>
+                  You don't have any class scheduled right now
+                </Text>
+              </View>
+            )}
+
+            {loading && (
+              <View style={{
+                backgroundColor: theme.cardBackground,
+                padding: 40,
+                borderRadius: 12,
+                alignItems: 'center',
+                marginBottom: 20,
+              }}>
+                <Text style={{ fontSize: 16, color: theme.textSecondary }}>
+                  Loading students...
+                </Text>
+              </View>
+            )}
+            
+            {/* Student List - Only showing current class students */}
+            {filteredStudents.map((student, index) => {
               const studentStatus = student.status || 'absent';
               const statusIcon = studentStatus === 'present' ? '✅' :
                 studentStatus === 'attending' ? '⏱️' : '❌';
@@ -2358,7 +2456,7 @@ export default function App() {
               );
             })}
 
-            {students.length === 0 && (
+            {filteredStudents.length === 0 && !loading && currentClassInfo && (
               <View style={{
                 backgroundColor: theme.cardBackground,
                 padding: 40,
@@ -2366,7 +2464,7 @@ export default function App() {
                 alignItems: 'center',
               }}>
                 <Text style={{ fontSize: 16, color: theme.textSecondary }}>
-                  No students online
+                  No students found for this class
                 </Text>
               </View>
             )}
