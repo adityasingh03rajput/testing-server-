@@ -430,6 +430,180 @@ app.get('/api/teacher-schedule/:teacherId/:day', async (req, res) => {
     }
 });
 
+// Get Teacher's Current Class Students (Role-based filtering)
+app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
+    try {
+        const { teacherId } = req.params;
+        
+        // Get current day and time
+        const now = new Date();
+        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const currentDay = days[now.getDay()];
+        const currentTime = now.getHours() * 60 + now.getMinutes(); // minutes since midnight
+        
+        console.log(`🔍 Finding current class for teacher: ${teacherId} at ${now.toLocaleTimeString()}`);
+        
+        // Find teacher
+        const teacher = await Teacher.findOne({
+            $or: [
+                { employeeId: teacherId },
+                { name: teacherId }
+            ]
+        });
+        
+        if (!teacher) {
+            return res.status(404).json({ 
+                success: false,
+                error: 'Teacher not found' 
+            });
+        }
+        
+        const teacherName = teacher.name;
+        console.log(`✅ Found teacher: ${teacherName}`);
+        
+        // Find all timetables where this teacher is assigned
+        const timetables = await Timetable.find({});
+        
+        // Find current period
+        let currentClass = null;
+        let matchedTimetable = null;
+        
+        for (const tt of timetables) {
+            const daySchedule = tt.timetable[currentDay];
+            if (!daySchedule) continue;
+            
+            for (let i = 0; i < daySchedule.length; i++) {
+                const period = daySchedule[i];
+                
+                // Check if this period is assigned to our teacher
+                if (period.teacher && 
+                    (period.teacher.toLowerCase() === teacherName.toLowerCase() ||
+                     period.teacher.toLowerCase().includes(teacherName.toLowerCase()))) {
+                    
+                    // Get period timing
+                    const periodInfo = tt.periods[i];
+                    if (!periodInfo) continue;
+                    
+                    const periodStart = timeToMinutes(periodInfo.startTime);
+                    const periodEnd = timeToMinutes(periodInfo.endTime);
+                    
+                    // Check if current time falls in this period
+                    if (currentTime >= periodStart && currentTime <= periodEnd) {
+                        currentClass = {
+                            subject: period.subject,
+                            semester: tt.semester,
+                            branch: tt.branch,
+                            period: period.period || (i + 1),
+                            room: period.room,
+                            startTime: periodInfo.startTime,
+                            endTime: periodInfo.endTime,
+                            isBreak: period.isBreak || false,
+                            day: currentDay
+                        };
+                        matchedTimetable = tt;
+                        console.log(`📚 Found current class: ${currentClass.subject} - ${currentClass.branch} Sem ${currentClass.semester}`);
+                        break;
+                    }
+                }
+            }
+            if (currentClass) break;
+        }
+        
+        // If no current class found
+        if (!currentClass) {
+            console.log('⏰ No active class right now');
+            
+            // Find next class today
+            let nextClass = null;
+            for (const tt of timetables) {
+                const daySchedule = tt.timetable[currentDay];
+                if (!daySchedule) continue;
+                
+                for (let i = 0; i < daySchedule.length; i++) {
+                    const period = daySchedule[i];
+                    if (period.teacher && 
+                        (period.teacher.toLowerCase() === teacherName.toLowerCase() ||
+                         period.teacher.toLowerCase().includes(teacherName.toLowerCase()))) {
+                        
+                        const periodInfo = tt.periods[i];
+                        if (!periodInfo) continue;
+                        
+                        const periodStart = timeToMinutes(periodInfo.startTime);
+                        if (periodStart > currentTime) {
+                            nextClass = {
+                                subject: period.subject,
+                                time: `${periodInfo.startTime} - ${periodInfo.endTime}`,
+                                semester: tt.semester,
+                                branch: tt.branch,
+                                room: period.room
+                            };
+                            break;
+                        }
+                    }
+                }
+                if (nextClass) break;
+            }
+            
+            return res.json({
+                success: true,
+                hasActiveClass: false,
+                message: 'No active class right now',
+                nextClass: nextClass,
+                teacherName: teacherName
+            });
+        }
+        
+        // If it's a break period
+        if (currentClass.isBreak) {
+            return res.json({
+                success: true,
+                hasActiveClass: false,
+                message: `${currentClass.subject} - Break time`,
+                currentClass: currentClass,
+                teacherName: teacherName
+            });
+        }
+        
+        // Get students for this class (semester + branch)
+        const students = await StudentManagement.find({
+            semester: currentClass.semester.toString(),
+            course: currentClass.branch
+        }).select('-password');
+        
+        console.log(`👥 Found ${students.length} students for ${currentClass.branch} Semester ${currentClass.semester}`);
+        
+        // Get classroom info
+        const classroom = await Classroom.findOne({ roomNumber: currentClass.room });
+        
+        res.json({
+            success: true,
+            hasActiveClass: true,
+            currentClass: {
+                ...currentClass,
+                capacity: classroom?.capacity || 60,
+                bssid: classroom?.bssid || null
+            },
+            students: students,
+            totalStudents: students.length,
+            teacherName: teacherName
+        });
+        
+    } catch (error) {
+        console.error('❌ Error in current-class-students:', error);
+        res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
+    }
+});
+
+// Helper function to convert time string to minutes
+function timeToMinutes(timeStr) {
+    if (!timeStr) return 0;
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+}
+
 // Helper function to create default timetable
 function createDefaultTimetable(semester, branch) {
     const periods = [];
