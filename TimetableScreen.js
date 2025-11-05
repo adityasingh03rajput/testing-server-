@@ -105,7 +105,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
     if (!canEdit) return;
     
     const dayKey = DAYS[dayIndex].toLowerCase();
-    const period = timetable.timetable[dayKey].find(p => p.number === periodNumber);
+    const period = timetable.timetable[dayKey].find(p => p.period === periodNumber);
     
     if (period) {
       setEditingCell({ dayIndex, periodNumber });
@@ -121,7 +121,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
     const dayKey = DAYS[dayIndex].toLowerCase();
     
     const updatedTimetable = { ...timetable };
-    const periodIndex = updatedTimetable.timetable[dayKey].findIndex(p => p.number === periodNumber);
+    const periodIndex = updatedTimetable.timetable[dayKey].findIndex(p => p.period === periodNumber);
     
     if (periodIndex !== -1) {
       updatedTimetable.timetable[dayKey][periodIndex] = {
