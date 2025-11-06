@@ -14,6 +14,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const http = require('http');
 const { Server } = require('socket.io');
+const axios = require('axios');
 
 // Cloudinary configuration
 const cloudinary = require('cloudinary').v2;
@@ -992,11 +993,21 @@ app.post('/api/verify-face', async (req, res) => {
         let referenceImageBase64 = '';
         try {
             const photoUrl = user.photoUrl;
-            if (photoUrl.includes('localhost') || photoUrl.includes('192.168')) {
+            
+            // Handle Cloudinary URLs
+            if (photoUrl.includes('cloudinary.com')) {
+                console.log('📥 Downloading reference photo from Cloudinary...');
+                const response = await axios.get(photoUrl, { responseType: 'arraybuffer' });
+                referenceImageBase64 = Buffer.from(response.data, 'binary').toString('base64');
+                console.log('✅ Reference photo downloaded from Cloudinary');
+            }
+            // Handle local file paths
+            else if (photoUrl.includes('localhost') || photoUrl.includes('192.168')) {
                 const filename = photoUrl.split('/uploads/')[1];
                 const filepath = path.join(__dirname, 'uploads', filename);
                 if (fs.existsSync(filepath)) {
                     referenceImageBase64 = fs.readFileSync(filepath, 'base64');
+                    console.log('✅ Reference photo loaded from local filesystem');
                 } else {
                     console.log('❌ Reference photo file not found');
                     return res.json({
@@ -1007,13 +1018,31 @@ app.post('/api/verify-face', async (req, res) => {
                     });
                 }
             }
+            // Handle other URLs (generic HTTP/HTTPS)
+            else if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) {
+                console.log('📥 Downloading reference photo from URL...');
+                const response = await axios.get(photoUrl, { responseType: 'arraybuffer' });
+                referenceImageBase64 = Buffer.from(response.data, 'binary').toString('base64');
+                console.log('✅ Reference photo downloaded from URL');
+            }
+            
+            // Validate that we got the image
+            if (!referenceImageBase64) {
+                console.log('❌ Failed to load reference photo from:', photoUrl);
+                return res.json({
+                    success: false,
+                    match: false,
+                    confidence: 0,
+                    message: 'Could not load reference photo. Please re-upload your photo in admin panel.'
+                });
+            }
         } catch (error) {
             console.log('❌ Error loading reference photo:', error);
             return res.status(500).json({
                 success: false,
                 match: false,
                 confidence: 0,
-                message: 'Error loading reference photo'
+                message: 'Error loading reference photo: ' + error.message
             });
         }
 
