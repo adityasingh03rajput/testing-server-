@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@tensorflow/tfjs": "^4.22.0",
+    "axios": "^1.13.2",
     "canvas": "^3.2.0",
+    "cloudinary": "^2.8.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.18.2",

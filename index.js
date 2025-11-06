@@ -14,6 +14,15 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const http = require('http');
 const { Server } = require('socket.io');
+const axios = require('axios');
+
+// Cloudinary configuration
+const cloudinary = require('cloudinary').v2;
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 const app = express();
 const server = http.createServer(app);
@@ -319,6 +328,49 @@ app.post('/api/timetable', async (req, res) => {
     }
 });
 
+// PUT endpoint for updating timetable (used by mobile app)
+app.put('/api/timetable/:semester/:branch', async (req, res) => {
+    try {
+        const { semester, branch } = req.params;
+        const { timetable, periods } = req.body;
+
+        console.log(`📝 Updating timetable for ${branch} Semester ${semester}`);
+
+        if (mongoose.connection.readyState === 1) {
+            let existingTimetable = await Timetable.findOne({ semester, branch });
+            if (existingTimetable) {
+                existingTimetable.timetable = timetable;
+                if (periods) existingTimetable.periods = periods;
+                existingTimetable.lastUpdated = new Date();
+                await existingTimetable.save();
+                console.log('✅ Timetable updated successfully');
+                res.json({ success: true, timetable: existingTimetable });
+            } else {
+                // Create new timetable if doesn't exist
+                const newTimetable = new Timetable({ 
+                    semester, 
+                    branch, 
+                    periods: periods || [], 
+                    timetable 
+                });
+                await newTimetable.save();
+                console.log('✅ New timetable created');
+                res.json({ success: true, timetable: newTimetable });
+            }
+        } else {
+            const key = `${semester}_${branch}`;
+            timetableMemory[key] = { semester, branch, periods: periods || [], timetable, lastUpdated: new Date() };
+            res.json({ success: true, timetable: timetableMemory[key] });
+        }
+
+        // Notify all students
+        io.emit('timetable_updated', { semester, branch });
+    } catch (error) {
+        console.error('❌ Error updating timetable:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Teacher Schedule API
 app.get('/api/teacher-schedule/:teacherId/:day', async (req, res) => {
     try {
@@ -378,6 +430,180 @@ app.get('/api/teacher-schedule/:teacherId/:day', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+
+// Get Teacher's Current Class Students (Role-based filtering)
+app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
+    try {
+        const { teacherId } = req.params;
+        
+        // Get current day and time
+        const now = new Date();
+        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const currentDay = days[now.getDay()];
+        const currentTime = now.getHours() * 60 + now.getMinutes(); // minutes since midnight
+        
+        console.log(`🔍 Finding current class for teacher: ${teacherId} at ${now.toLocaleTimeString()}`);
+        
+        // Find teacher
+        const teacher = await Teacher.findOne({
+            $or: [
+                { employeeId: teacherId },
+                { name: teacherId }
+            ]
+        });
+        
+        if (!teacher) {
+            return res.status(404).json({ 
+                success: false,
+                error: 'Teacher not found' 
+            });
+        }
+        
+        const teacherName = teacher.name;
+        console.log(`✅ Found teacher: ${teacherName}`);
+        
+        // Find all timetables where this teacher is assigned
+        const timetables = await Timetable.find({});
+        
+        // Find current period
+        let currentClass = null;
+        let matchedTimetable = null;
+        
+        for (const tt of timetables) {
+            const daySchedule = tt.timetable[currentDay];
+            if (!daySchedule) continue;
+            
+            for (let i = 0; i < daySchedule.length; i++) {
+                const period = daySchedule[i];
+                
+                // Check if this period is assigned to our teacher
+                if (period.teacher && 
+                    (period.teacher.toLowerCase() === teacherName.toLowerCase() ||
+                     period.teacher.toLowerCase().includes(teacherName.toLowerCase()))) {
+                    
+                    // Get period timing
+                    const periodInfo = tt.periods[i];
+                    if (!periodInfo) continue;
+                    
+                    const periodStart = timeToMinutes(periodInfo.startTime);
+                    const periodEnd = timeToMinutes(periodInfo.endTime);
+                    
+                    // Check if current time falls in this period
+                    if (currentTime >= periodStart && currentTime <= periodEnd) {
+                        currentClass = {
+                            subject: period.subject,
+                            semester: tt.semester,
+                            branch: tt.branch,
+                            period: period.period || (i + 1),
+                            room: period.room,
+                            startTime: periodInfo.startTime,
+                            endTime: periodInfo.endTime,
+                            isBreak: period.isBreak || false,
+                            day: currentDay
+                        };
+                        matchedTimetable = tt;
+                        console.log(`📚 Found current class: ${currentClass.subject} - ${currentClass.branch} Sem ${currentClass.semester}`);
+                        break;
+                    }
+                }
+            }
+            if (currentClass) break;
+        }
+        
+        // If no current class found
+        if (!currentClass) {
+            console.log('⏰ No active class right now');
+            
+            // Find next class today
+            let nextClass = null;
+            for (const tt of timetables) {
+                const daySchedule = tt.timetable[currentDay];
+                if (!daySchedule) continue;
+                
+                for (let i = 0; i < daySchedule.length; i++) {
+                    const period = daySchedule[i];
+                    if (period.teacher && 
+                        (period.teacher.toLowerCase() === teacherName.toLowerCase() ||
+                         period.teacher.toLowerCase().includes(teacherName.toLowerCase()))) {
+                        
+                        const periodInfo = tt.periods[i];
+                        if (!periodInfo) continue;
+                        
+                        const periodStart = timeToMinutes(periodInfo.startTime);
+                        if (periodStart > currentTime) {
+                            nextClass = {
+                                subject: period.subject,
+                                time: `${periodInfo.startTime} - ${periodInfo.endTime}`,
+                                semester: tt.semester,
+                                branch: tt.branch,
+                                room: period.room
+                            };
+                            break;
+                        }
+                    }
+                }
+                if (nextClass) break;
+            }
+            
+            return res.json({
+                success: true,
+                hasActiveClass: false,
+                message: 'No active class right now',
+                nextClass: nextClass,
+                teacherName: teacherName
+            });
+        }
+        
+        // If it's a break period
+        if (currentClass.isBreak) {
+            return res.json({
+                success: true,
+                hasActiveClass: false,
+                message: `${currentClass.subject} - Break time`,
+                currentClass: currentClass,
+                teacherName: teacherName
+            });
+        }
+        
+        // Get students for this class (semester + branch)
+        const students = await StudentManagement.find({
+            semester: currentClass.semester.toString(),
+            course: currentClass.branch
+        }).select('-password');
+        
+        console.log(`👥 Found ${students.length} students for ${currentClass.branch} Semester ${currentClass.semester}`);
+        
+        // Get classroom info
+        const classroom = await Classroom.findOne({ roomNumber: currentClass.room });
+        
+        res.json({
+            success: true,
+            hasActiveClass: true,
+            currentClass: {
+                ...currentClass,
+                capacity: classroom?.capacity || 60,
+                bssid: classroom?.bssid || null
+            },
+            students: students,
+            totalStudents: students.length,
+            teacherName: teacherName
+        });
+        
+    } catch (error) {
+        console.error('❌ Error in current-class-students:', error);
+        res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
+    }
+});
+
+// Helper function to convert time string to minutes
+function timeToMinutes(timeStr) {
+    if (!timeStr) return 0;
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+}
 
 // Helper function to create default timetable
 function createDefaultTimetable(semester, branch) {
@@ -767,11 +993,21 @@ app.post('/api/verify-face', async (req, res) => {
         let referenceImageBase64 = '';
         try {
             const photoUrl = user.photoUrl;
-            if (photoUrl.includes('localhost') || photoUrl.includes('192.168')) {
+            
+            // Handle Cloudinary URLs
+            if (photoUrl.includes('cloudinary.com')) {
+                console.log('📥 Downloading reference photo from Cloudinary...');
+                const response = await axios.get(photoUrl, { responseType: 'arraybuffer' });
+                referenceImageBase64 = Buffer.from(response.data, 'binary').toString('base64');
+                console.log('✅ Reference photo downloaded from Cloudinary');
+            }
+            // Handle local file paths
+            else if (photoUrl.includes('localhost') || photoUrl.includes('192.168')) {
                 const filename = photoUrl.split('/uploads/')[1];
                 const filepath = path.join(__dirname, 'uploads', filename);
                 if (fs.existsSync(filepath)) {
                     referenceImageBase64 = fs.readFileSync(filepath, 'base64');
+                    console.log('✅ Reference photo loaded from local filesystem');
                 } else {
                     console.log('❌ Reference photo file not found');
                     return res.json({
@@ -782,13 +1018,31 @@ app.post('/api/verify-face', async (req, res) => {
                     });
                 }
             }
+            // Handle other URLs (generic HTTP/HTTPS)
+            else if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) {
+                console.log('📥 Downloading reference photo from URL...');
+                const response = await axios.get(photoUrl, { responseType: 'arraybuffer' });
+                referenceImageBase64 = Buffer.from(response.data, 'binary').toString('base64');
+                console.log('✅ Reference photo downloaded from URL');
+            }
+            
+            // Validate that we got the image
+            if (!referenceImageBase64) {
+                console.log('❌ Failed to load reference photo from:', photoUrl);
+                return res.json({
+                    success: false,
+                    match: false,
+                    confidence: 0,
+                    message: 'Could not load reference photo. Please re-upload your photo in admin panel.'
+                });
+            }
         } catch (error) {
             console.log('❌ Error loading reference photo:', error);
             return res.status(500).json({
                 success: false,
                 match: false,
                 confidence: 0,
-                message: 'Error loading reference photo'
+                message: 'Error loading reference photo: ' + error.message
             });
         }
 
@@ -1099,24 +1353,26 @@ app.post('/api/upload-photo', async (req, res) => {
             console.log('⚠️  Face detection models not loaded, skipping validation');
         }
 
-        const buffer = Buffer.from(base64Data, 'base64');
-
-        // Generate filename with sanitized id (limit length)
+        // Upload to Cloudinary
         const sanitizedId = String(id).replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
-        const timestamp = Date.now();
-        const filename = `${type}_${sanitizedId}_${timestamp}.jpg`;
-        const filepath = path.join(uploadsDir, filename);
+        const publicId = `attendance/${type}_${sanitizedId}_${Date.now()}`;
+        
+        console.log('☁️  Uploading to Cloudinary...');
+        const uploadResult = await cloudinary.uploader.upload(`data:image/jpeg;base64,${base64Data}`, {
+            public_id: publicId,
+            folder: 'attendance',
+            resource_type: 'image'
+        });
 
-        // Save file to disk
-        fs.writeFileSync(filepath, buffer);
-        console.log(`✅ Photo saved: ${filename}`);
-
-        // Use environment-aware URL (works for both local and Render)
-        const baseUrl = process.env.RENDER_EXTERNAL_URL || 
-                       process.env.BASE_URL || 
-                       'http://192.168.9.31:3000';
-        const photoUrl = `${baseUrl}/uploads/${filename}`;
-        res.json({ success: true, photoUrl, filename, message: 'Photo uploaded successfully with face detected!' });
+        console.log(`✅ Photo uploaded to Cloudinary: ${uploadResult.public_id}`);
+        
+        const photoUrl = uploadResult.secure_url;
+        res.json({ 
+            success: true, 
+            photoUrl, 
+            filename: uploadResult.public_id,
+            message: 'Photo uploaded successfully with face detected!' 
+        });
     } catch (error) {
         console.error('❌ Error uploading photo:', error);
         res.status(500).json({ success: false, error: error.message });
