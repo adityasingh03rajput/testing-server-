@@ -994,8 +994,14 @@ app.post('/api/verify-face', async (req, res) => {
         try {
             const photoUrl = user.photoUrl;
             
+            // Handle base64 data URIs (stored in database)
+            if (photoUrl.startsWith('data:image')) {
+                console.log('📥 Loading reference photo from database (base64)...');
+                referenceImageBase64 = photoUrl.replace(/^data:image\/\w+;base64,/, '');
+                console.log('✅ Reference photo loaded from database');
+            }
             // Handle Cloudinary URLs
-            if (photoUrl.includes('cloudinary.com')) {
+            else if (photoUrl.includes('cloudinary.com')) {
                 console.log('📥 Downloading reference photo from Cloudinary...');
                 const response = await axios.get(photoUrl, { responseType: 'arraybuffer' });
                 referenceImageBase64 = Buffer.from(response.data, 'binary').toString('base64');
@@ -1353,24 +1359,17 @@ app.post('/api/upload-photo', async (req, res) => {
             console.log('⚠️  Face detection models not loaded, skipping validation');
         }
 
-        // Upload to Cloudinary
-        const sanitizedId = String(id).replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
-        const publicId = `attendance/${type}_${sanitizedId}_${Date.now()}`;
+        // Store as base64 data URI (no external storage needed)
+        console.log('💾 Storing photo as base64 in database...');
         
-        console.log('☁️  Uploading to Cloudinary...');
-        const uploadResult = await cloudinary.uploader.upload(`data:image/jpeg;base64,${base64Data}`, {
-            public_id: publicId,
-            folder: 'attendance',
-            resource_type: 'image'
-        });
-
-        console.log(`✅ Photo uploaded to Cloudinary: ${uploadResult.public_id}`);
+        const photoUrl = `data:image/jpeg;base64,${base64Data}`;
         
-        const photoUrl = uploadResult.secure_url;
+        console.log(`✅ Photo prepared for database storage (${base64Data.length} bytes)`);
+        
         res.json({ 
             success: true, 
             photoUrl, 
-            filename: uploadResult.public_id,
+            filename: `${type}_${id}_${Date.now()}`,
             message: 'Photo uploaded successfully with face detected!' 
         });
     } catch (error) {
