@@ -2,9 +2,9 @@
 // Configuration
 // Server URL - can be changed in Settings
 // Priority: 1. Saved in localStorage, 2. Render URL, 3. Local IP
-let SERVER_URL = localStorage.getItem('serverUrl') || 
-                 'https://google-8j5x.onrender.com' || // Your Render URL
-                 'http://192.168.9.31:3000'; // Fallback to local
+let SERVER_URL = localStorage.getItem('serverUrl') ||
+    'https://google-8j5x.onrender.com' || // Your Render URL
+    'http://192.168.9.31:3000'; // Fallback to local
 
 // State
 let students = [];
@@ -142,6 +142,11 @@ function setupEventListeners() {
     document.getElementById('timetableCourse').addEventListener('change', autoLoadTimetable);
     document.getElementById('createTimetableBtn').addEventListener('click', createNewTimetable);
 
+    // Period Management
+    document.getElementById('addPeriodBtn').addEventListener('click', addNewPeriodSlot);
+    document.getElementById('savePeriodsBtn').addEventListener('click', savePeriodsConfig);
+    document.getElementById('resetPeriodsBtn').addEventListener('click', resetPeriodsToDefault);
+
     // Settings
     document.getElementById('saveServerBtn').addEventListener('click', saveServerSettings);
 
@@ -174,6 +179,7 @@ function switchSection(sectionName) {
         case 'teachers': loadTeachers(); break;
         case 'classrooms': loadClassrooms(); break;
         case 'calendar': loadCalendar(); break;
+        case 'periods': loadPeriods(); break;
         case 'dashboard':
             loadDashboardData();
             setTimeout(() => initCursorTracking(), 300);
@@ -1559,20 +1565,20 @@ function editAdvancedCell(dayIdx, periodIdx) {
         period.subject = formData.get('subject');
         period.teacher = formData.get('teacher');
         period.room = formData.get('room');
-        
+
         // Only update color if user explicitly changed it
         if (colorChanged) {
             const newColor = formData.get('color');
             period.color = newColor;
         }
         // Otherwise, keep existing color (don't modify period.color at all)
-        
+
         period.isBreak = formData.has('isBreak');
 
         closeModal();
         renderAdvancedTimetableEditor(currentTimetable);
         showNotification('Period updated successfully', 'success');
-        
+
         // Trigger auto-save after edit
         triggerAutoSave();
     });
@@ -1591,7 +1597,7 @@ function triggerAutoSave() {
     if (autoSaveTimeout) {
         clearTimeout(autoSaveTimeout);
     }
-    
+
     // Set new timeout for 1 second after last change
     autoSaveTimeout = setTimeout(() => {
         saveTimetable(true); // true = silent mode
@@ -1600,7 +1606,7 @@ function triggerAutoSave() {
 
 async function saveTimetable(silent = false) {
     if (!currentTimetable) return;
-    
+
     try {
         const response = await fetch(`${SERVER_URL}/api/timetable`, {
             method: 'POST',
@@ -3889,7 +3895,7 @@ function getDefaultHolidays() {
         { date: new Date(year, 0, 26), name: 'Republic Day', type: 'holiday', color: '#ff6b6b', description: 'National Holiday' },
         { date: new Date(year, 7, 15), name: 'Independence Day', type: 'holiday', color: '#ff6b6b', description: 'National Holiday' },
         { date: new Date(year, 9, 2), name: 'Gandhi Jayanti', type: 'holiday', color: '#ff6b6b', description: 'National Holiday' },
-        
+
         // Religious Holidays (2025 dates - update yearly)
         { date: new Date(year, 2, 14), name: 'Holi', type: 'holiday', color: '#e74c3c', description: 'Festival of Colors' },
         { date: new Date(year, 2, 29), name: 'Good Friday', type: 'holiday', color: '#9b59b6', description: 'Christian Holiday' },
@@ -3905,7 +3911,7 @@ function getDefaultHolidays() {
         { date: new Date(year, 9, 20), name: 'Diwali', type: 'holiday', color: '#f39c12', description: 'Festival of Lights' },
         { date: new Date(year, 10, 5), name: 'Guru Nanak Jayanti', type: 'holiday', color: '#3498db', description: 'Sikh Festival' },
         { date: new Date(year, 11, 25), name: 'Christmas', type: 'holiday', color: '#e74c3c', description: 'Christian Holiday' },
-        
+
         // Academic Events
         { date: new Date(year, 0, 1), name: 'New Year', type: 'event', color: '#9b59b6', description: 'New Year Celebration' },
         { date: new Date(year, 1, 5), name: 'Semester Start', type: 'event', color: '#3498db', description: 'Even Semester Begins' },
@@ -3916,33 +3922,33 @@ function getDefaultHolidays() {
 function renderCalendar() {
     const calendar = document.getElementById('adminCalendar');
     const monthYear = document.getElementById('calendarMonthYear');
-    
+
     const year = currentCalendarDate.getFullYear();
     const month = currentCalendarDate.getMonth();
-    
+
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
         'July', 'August', 'September', 'October', 'November', 'December'];
-    
+
     monthYear.textContent = `${monthNames[month]} ${year}`;
-    
+
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     const daysInMonth = lastDay.getDate();
     const startingDayOfWeek = firstDay.getDay();
-    
+
     let html = '<div class="calendar-grid">';
-    
+
     // Day headers
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     days.forEach(day => {
         html += `<div class="calendar-day-header">${day}</div>`;
     });
-    
+
     // Empty cells before month starts
     for (let i = 0; i < startingDayOfWeek; i++) {
         html += '<div class="calendar-cell empty"></div>';
     }
-    
+
     // Days of month
     for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(year, month, day);
@@ -3950,7 +3956,7 @@ function renderCalendar() {
         const today = new Date().toDateString() === dateStr;
         const holiday = holidays.find(h => new Date(h.date).toDateString() === dateStr);
         const isSunday = date.getDay() === 0;
-        
+
         html += `<div class="calendar-cell ${today ? 'today' : ''} ${holiday ? 'has-event' : ''} ${isSunday ? 'sunday' : ''}" 
                       onclick="selectDate('${dateStr}')"
                       style="${holiday ? `border-left: 4px solid ${holiday.color}` : ''}">
@@ -3958,24 +3964,24 @@ function renderCalendar() {
             ${holiday ? `<div class="calendar-event" style="background: ${holiday.color}">${holiday.name}</div>` : ''}
         </div>`;
     }
-    
+
     html += '</div>';
     calendar.innerHTML = html;
 }
 
 function renderHolidaysList() {
     const list = document.getElementById('holidaysList');
-    
+
     // Sort holidays by date
     const sortedHolidays = [...holidays].sort((a, b) => new Date(a.date) - new Date(b.date));
-    
+
     let html = '';
     sortedHolidays.forEach((holiday, index) => {
         const date = new Date(holiday.date);
         // Use Indian date format: DD MMM YYYY
         const dateStr = date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
         const dayName = date.toLocaleDateString('en-IN', { weekday: 'short' });
-        
+
         html += `
             <div class="holiday-item" style="border-left: 4px solid ${holiday.color}">
                 <div class="holiday-info">
@@ -3990,11 +3996,11 @@ function renderHolidaysList() {
             </div>
         `;
     });
-    
+
     if (sortedHolidays.length === 0) {
         html = '<div class="no-holidays">No holidays added yet. Click "Add Holiday" to get started.</div>';
     }
-    
+
     list.innerHTML = html;
 }
 
@@ -4011,7 +4017,7 @@ function nextMonth() {
 function selectDate(dateStr) {
     const date = new Date(dateStr);
     const holiday = holidays.find(h => new Date(h.date).toDateString() === dateStr);
-    
+
     if (holiday) {
         showHolidayDetails(holiday);
     } else {
@@ -4026,7 +4032,7 @@ document.getElementById('addHolidayBtn').addEventListener('click', () => {
 function showAddHolidayModal(date = new Date()) {
     const modalBody = document.getElementById('modalBody');
     const dateStr = date.toISOString().split('T')[0];
-    
+
     modalBody.innerHTML = `
         <h2>➕ Add Holiday/Event</h2>
         <form id="holidayForm">
@@ -4063,14 +4069,14 @@ function showAddHolidayModal(date = new Date()) {
             </div>
         </form>
     `;
-    
+
     document.getElementById('holidayForm').addEventListener('submit', handleAddHoliday);
     openModal();
 }
 
 async function handleAddHoliday(e) {
     e.preventDefault();
-    
+
     const holiday = {
         date: new Date(document.getElementById('holidayDate').value),
         name: document.getElementById('holidayName').value,
@@ -4078,14 +4084,14 @@ async function handleAddHoliday(e) {
         color: document.getElementById('holidayColor').value,
         description: document.getElementById('holidayDescription').value
     };
-    
+
     try {
         const response = await fetch(`${SERVER_URL}/api/holidays`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(holiday)
         });
-        
+
         if (response.ok) {
             holidays.push(holiday);
             renderCalendar();
@@ -4108,7 +4114,7 @@ function editHoliday(index) {
     const holiday = holidays[index];
     const modalBody = document.getElementById('modalBody');
     const dateStr = new Date(holiday.date).toISOString().split('T')[0];
-    
+
     modalBody.innerHTML = `
         <h2>✏️ Edit Holiday/Event</h2>
         <form id="editHolidayForm">
@@ -4142,7 +4148,7 @@ function editHoliday(index) {
             </div>
         </form>
     `;
-    
+
     document.getElementById('editHolidayForm').addEventListener('submit', (e) => {
         e.preventDefault();
         saveHolidayEdit(index);
@@ -4158,7 +4164,7 @@ async function saveHolidayEdit(index) {
         color: document.getElementById('editHolidayColor').value,
         description: document.getElementById('editHolidayDescription').value
     };
-    
+
     try {
         await fetch(`${SERVER_URL}/api/holidays/${index}`, {
             method: 'PUT',
@@ -4168,7 +4174,7 @@ async function saveHolidayEdit(index) {
     } catch (error) {
         localStorage.setItem('holidays', JSON.stringify(holidays));
     }
-    
+
     renderCalendar();
     renderHolidaysList();
     closeModal();
@@ -4177,13 +4183,13 @@ async function saveHolidayEdit(index) {
 
 async function deleteHoliday(index) {
     if (!confirm('Are you sure you want to delete this holiday?')) return;
-    
+
     try {
         await fetch(`${SERVER_URL}/api/holidays/${index}`, { method: 'DELETE' });
     } catch (error) {
         console.log('Error deleting holiday:', error);
     }
-    
+
     holidays.splice(index, 1);
     localStorage.setItem('holidays', JSON.stringify(holidays));
     renderCalendar();
@@ -4196,7 +4202,7 @@ function showHolidayDetails(holiday) {
     const date = new Date(holiday.date);
     // Use Indian date format
     const dateStr = date.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    
+
     modalBody.innerHTML = `
         <div class="holiday-details">
             <div class="holiday-icon" style="background: ${holiday.color}">
@@ -4291,4 +4297,236 @@ function bulkImportHolidays() {
 
 function processHolidayCSV() {
     showNotification('CSV import feature coming soon!', 'info');
+}
+
+
+// ==================== PERIOD MANAGEMENT ====================
+
+let currentPeriods = [];
+
+async function loadPeriods() {
+    try {
+        // Fetch a sample timetable to get current periods
+        const response = await fetch(`${SERVER_URL}/api/timetable/1/CSE`);
+        const data = await response.json();
+
+        if (data.success && data.timetable && data.timetable.periods) {
+            currentPeriods = data.timetable.periods;
+        } else {
+            // Default periods if none exist
+            currentPeriods = getDefaultPeriods();
+        }
+
+        renderPeriods();
+        updatePeriodStats();
+    } catch (error) {
+        console.error('Error loading periods:', error);
+        showNotification('Failed to load periods', 'error');
+        currentPeriods = getDefaultPeriods();
+        renderPeriods();
+    }
+}
+
+function getDefaultPeriods() {
+    return [
+        { number: 1, startTime: '09:40', endTime: '10:40' },
+        { number: 2, startTime: '10:40', endTime: '11:40' },
+        { number: 3, startTime: '11:40', endTime: '12:10' },
+        { number: 4, startTime: '12:10', endTime: '13:10' },
+        { number: 5, startTime: '13:10', endTime: '14:10' },
+        { number: 6, startTime: '14:10', endTime: '14:20' },
+        { number: 7, startTime: '14:20', endTime: '15:30' },
+        { number: 8, startTime: '15:30', endTime: '16:10' }
+    ];
+}
+
+function renderPeriods() {
+    const periodsList = document.getElementById('periodsList');
+
+    periodsList.innerHTML = currentPeriods.map((period, index) => {
+        const duration = calculateDuration(period.startTime, period.endTime);
+
+        return `
+            <div class="period-item" data-index="${index}">
+                <div class="period-number">${period.number}</div>
+                
+                <div class="period-time-group">
+                    <label>Start Time</label>
+                    <input type="time" 
+                           class="period-time-input" 
+                           value="${period.startTime}" 
+                           onchange="updatePeriodTime(${index}, 'startTime', this.value)">
+                </div>
+                
+                <div class="period-time-group">
+                    <label>End Time</label>
+                    <input type="time" 
+                           class="period-time-input" 
+                           value="${period.endTime}" 
+                           onchange="updatePeriodTime(${index}, 'endTime', this.value)">
+                </div>
+                
+                <div class="period-duration">
+                    Duration
+                    <strong>${duration} min</strong>
+                </div>
+                
+                <div class="period-actions-cell">
+                    <button class="period-btn period-btn-delete" onclick="deletePeriod(${index})">
+                        🗑️ Delete
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    updatePeriodStats();
+}
+
+function calculateDuration(startTime, endTime) {
+    const [startHour, startMin] = startTime.split(':').map(Number);
+    const [endHour, endMin] = endTime.split(':').map(Number);
+
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+
+    return endMinutes - startMinutes;
+}
+
+function updatePeriodTime(index, field, value) {
+    currentPeriods[index][field] = value;
+    renderPeriods();
+}
+
+function addNewPeriodSlot() {
+    const lastPeriod = currentPeriods[currentPeriods.length - 1];
+    const newNumber = currentPeriods.length + 1;
+
+    // Default: start where last period ended, 60 min duration
+    let startTime = lastPeriod ? lastPeriod.endTime : '16:10';
+    let endTime = addMinutesToTime(startTime, 60);
+
+    currentPeriods.push({
+        number: newNumber,
+        startTime: startTime,
+        endTime: endTime
+    });
+
+    renderPeriods();
+    showNotification('Period added. Don\'t forget to save!', 'success');
+}
+
+function deletePeriod(index) {
+    if (currentPeriods.length <= 1) {
+        showNotification('Cannot delete the last period', 'error');
+        return;
+    }
+
+    if (confirm(`Delete Period ${currentPeriods[index].number}?`)) {
+        currentPeriods.splice(index, 1);
+
+        // Renumber periods
+        currentPeriods.forEach((period, idx) => {
+            period.number = idx + 1;
+        });
+
+        renderPeriods();
+        showNotification('Period deleted. Don\'t forget to save!', 'warning');
+    }
+}
+
+function addMinutesToTime(timeStr, minutes) {
+    const [hours, mins] = timeStr.split(':').map(Number);
+    let totalMinutes = hours * 60 + mins + minutes;
+
+    const newHours = Math.floor(totalMinutes / 60) % 24;
+    const newMins = totalMinutes % 60;
+
+    return `${String(newHours).padStart(2, '0')}:${String(newMins).padStart(2, '0')}`;
+}
+
+function updatePeriodStats() {
+    document.getElementById('totalPeriodsCount').textContent = currentPeriods.length;
+
+    if (currentPeriods.length > 0) {
+        const firstPeriod = currentPeriods[0];
+        const lastPeriod = currentPeriods[currentPeriods.length - 1];
+        document.getElementById('classDuration').textContent =
+            `${firstPeriod.startTime} - ${lastPeriod.endTime}`;
+    }
+}
+
+async function savePeriodsConfig() {
+    if (currentPeriods.length === 0) {
+        showNotification('Cannot save empty period configuration', 'error');
+        return;
+    }
+
+    // Validate periods
+    for (let i = 0; i < currentPeriods.length; i++) {
+        const period = currentPeriods[i];
+        const duration = calculateDuration(period.startTime, period.endTime);
+
+        if (duration <= 0) {
+            showNotification(`Period ${period.number}: End time must be after start time`, 'error');
+            return;
+        }
+    }
+
+    const confirmMsg = `This will update periods for ALL timetables across all semesters and branches.\n\n` +
+        `Total Periods: ${currentPeriods.length}\n` +
+        `Duration: ${currentPeriods[0].startTime} - ${currentPeriods[currentPeriods.length - 1].endTime}\n\n` +
+        `Continue?`;
+
+    if (!confirm(confirmMsg)) {
+        return;
+    }
+
+    try {
+        showNotification('Updating all timetables...', 'info');
+
+        console.log('Sending periods update to:', `${SERVER_URL}/api/periods/update-all`);
+        console.log('Periods data:', currentPeriods);
+
+        const response = await fetch(`${SERVER_URL}/api/periods/update-all`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ periods: currentPeriods })
+        });
+
+        console.log('Response status:', response.status);
+        console.log('Response headers:', response.headers);
+
+        // Check if response is JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            const text = await response.text();
+            console.error('Server returned non-JSON response:', text);
+            showNotification('Server error: Expected JSON but got ' + contentType, 'error');
+            return;
+        }
+
+        const data = await response.json();
+        console.log('Response data:', data);
+
+        if (response.ok && data.success) {
+            showNotification(`✅ Successfully updated ${data.updatedCount} timetables!`, 'success');
+            loadPeriods(); // Reload to confirm
+        } else {
+            showNotification('Failed to update periods: ' + (data.error || data.message || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        console.error('Error saving periods:', error);
+        showNotification('Error: ' + error.message, 'error');
+    }
+}
+
+async function resetPeriodsToDefault() {
+    if (!confirm('Reset all periods to default configuration? This will affect ALL timetables.')) {
+        return;
+    }
+
+    currentPeriods = getDefaultPeriods();
+    renderPeriods();
+    showNotification('Periods reset to default. Click "Save" to apply changes.', 'warning');
 }
