@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, Modal
 } from 'react-native';
@@ -13,18 +13,18 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
   const [editRoom, setEditRoom] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Get days dynamically from timetable in proper week order
-  const getDaysFromTimetable = () => {
+  // Get days dynamically from timetable in proper week order (recalculates when timetable changes)
+  const DAYS = useMemo(() => {
     if (!timetable?.timetable) {
       return ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     }
     const dayOrder = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    return Object.keys(timetable.timetable)
+    const days = Object.keys(timetable.timetable)
       .sort((a, b) => dayOrder.indexOf(a.toLowerCase()) - dayOrder.indexOf(b.toLowerCase()))
       .map(day => day.charAt(0).toUpperCase() + day.slice(1));
-  };
-
-  const DAYS = getDaysFromTimetable();
+    console.log('📅 DAYS recalculated:', days);
+    return days;
+  }, [timetable]);
 
   // Get current day index based on available days
   const getCurrentDayIndex = () => {
