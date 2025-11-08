@@ -111,12 +111,16 @@ const timetableSchema = new mongoose.Schema({
         endTime: String
     }],
     timetable: {
-        monday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        tuesday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        wednesday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        thursday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        friday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        saturday: [{ period: Number, subject: String, room: String, isBreak: Boolean }]
+        type: Map,
+        of: [{
+            period: Number,
+            subject: String,
+            room: String,
+            teacher: String,
+            isBreak: Boolean,
+            color: String
+        }],
+        default: {}
     },
     lastUpdated: { type: Date, default: Date.now }
 });
