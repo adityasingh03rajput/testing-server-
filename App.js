@@ -803,8 +803,11 @@ export default function App() {
     if (!timetable || !timetable.timetable) return null;
 
     const schedule = {};
-    // Get days dynamically from timetable
-    const dayKeys = Object.keys(timetable.timetable);
+    // Get days dynamically from timetable in proper week order
+    const dayOrder = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKeys = Object.keys(timetable.timetable).sort((a, b) => 
+      dayOrder.indexOf(a.toLowerCase()) - dayOrder.indexOf(b.toLowerCase())
+    );
 
     dayKeys.forEach((dayKey) => {
       const dayName = dayKey.charAt(0).toUpperCase() + dayKey.slice(1);

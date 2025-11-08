@@ -13,14 +13,15 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
   const [editRoom, setEditRoom] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Get days dynamically from timetable
+  // Get days dynamically from timetable in proper week order
   const getDaysFromTimetable = () => {
     if (!timetable?.timetable) {
       return ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     }
-    return Object.keys(timetable.timetable).map(day =>
-      day.charAt(0).toUpperCase() + day.slice(1)
-    );
+    const dayOrder = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    return Object.keys(timetable.timetable)
+      .sort((a, b) => dayOrder.indexOf(a.toLowerCase()) - dayOrder.indexOf(b.toLowerCase()))
+      .map(day => day.charAt(0).toUpperCase() + day.slice(1));
   };
 
   const DAYS = getDaysFromTimetable();
