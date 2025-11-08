@@ -190,12 +190,14 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
   // Get periods from timetable data or use defaults
   const getPeriods = () => {
     if (timetable && timetable.periods && timetable.periods.length > 0) {
+      console.log('✅ Using timetable periods:', timetable.periods.length);
       return timetable.periods.map(p => ({
         number: p.number,
         time: `${p.startTime} - ${p.endTime}`
       }));
     }
     // Fallback periods
+    console.log('⚠️ Using fallback periods (timetable not loaded yet)');
     return [
       { number: 1, time: '09:40 - 10:40' },
       { number: 2, time: '10:40 - 11:40' },
