@@ -1299,8 +1299,11 @@ function redo() {
 function renderAdvancedTimetableEditor(timetable) {
     const editor = document.getElementById('timetableEditor');
     
-    // Get days dynamically from timetable
-    const dayKeys = Object.keys(timetable.timetable);
+    // Get days dynamically from timetable and sort them in proper week order
+    const dayOrder = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKeys = Object.keys(timetable.timetable).sort((a, b) => {
+        return dayOrder.indexOf(a.toLowerCase()) - dayOrder.indexOf(b.toLowerCase());
+    });
     const days = dayKeys.map(key => key.charAt(0).toUpperCase() + key.slice(1));
 
     let html = '';
