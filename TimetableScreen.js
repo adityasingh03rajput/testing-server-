@@ -5,8 +5,6 @@ import {
 import { BookIcon, CalendarIcon, CoffeeIcon, LocationIcon } from './Icons';
 import { getServerTime } from './ServerTime';
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
 export default function TimetableScreen({ theme, semester, branch, socketUrl, canEdit = false, isTeacher = false }) {
   const [timetable, setTimetable] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -15,24 +13,48 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
   const [editRoom, setEditRoom] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Get current day (0 = Monday, 5 = Saturday, Sunday defaults to Monday)
+  // Get days dynamically from timetable
+  const getDaysFromTimetable = () => {
+    if (!timetable?.timetable) {
+      return ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    }
+    return Object.keys(timetable.timetable).map(day =>
+      day.charAt(0).toUpperCase() + day.slice(1)
+    );
+  };
+
+  const DAYS = getDaysFromTimetable();
+
+  // Get current day index based on available days
   const getCurrentDayIndex = () => {
     try {
-      const day = getServerTime().nowDate().getDay();
-      if (day === 0) return 0; // Sunday -> Monday
-      return day - 1; // Monday = 0, Saturday = 5
+      const dayOfWeek = getServerTime().nowDate().getDay();
+      const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const currentDayName = dayNames[dayOfWeek];
+
+      // Find index in available days
+      const dayKeys = timetable?.timetable ? Object.keys(timetable.timetable) : [];
+      const index = dayKeys.indexOf(currentDayName);
+
+      // If current day not in timetable, default to first available day
+      return index >= 0 ? index : 0;
     } catch {
-      const day = new Date().getDay();
-      if (day === 0) return 0;
-      return day - 1;
+      return 0;
     }
   };
 
-  const [currentDay, setCurrentDay] = useState(getCurrentDayIndex());
+  const [currentDay, setCurrentDay] = useState(0);
 
   useEffect(() => {
     fetchTimetable();
   }, [semester, branch]);
+
+  // Update current day when timetable loads
+  useEffect(() => {
+    if (timetable) {
+      setCurrentDay(getCurrentDayIndex());
+    }
+  }, [timetable]);
 
   // Force refresh when screen is focused
   useEffect(() => {

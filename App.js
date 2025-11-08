@@ -798,17 +798,18 @@ export default function App() {
     setAttendanceStats(null);
   };
 
-  // Convert timetable format for CircularTimer
+  // Convert timetable format for CircularTimer (supports dynamic days)
   const convertTimetableFormat = (timetable) => {
     if (!timetable || !timetable.timetable) return null;
 
     const schedule = {};
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    // Get days dynamically from timetable
+    const dayKeys = Object.keys(timetable.timetable);
 
-    dayKeys.forEach((dayKey, index) => {
+    dayKeys.forEach((dayKey) => {
+      const dayName = dayKey.charAt(0).toUpperCase() + dayKey.slice(1);
       if (timetable.timetable[dayKey]) {
-        schedule[days[index]] = timetable.timetable[dayKey].map(period => ({
+        schedule[dayName] = timetable.timetable[dayKey].map(period => ({
           subject: period.subject,
           room: period.room,
           time: timetable.periods && timetable.periods[period.period - 1]
@@ -819,7 +820,7 @@ export default function App() {
       }
     });
 
-    console.log('Converted timetable schedule:', schedule);
+    console.log('Converted timetable schedule (dynamic days):', schedule);
 
     return { ...timetable, schedule };
   };
@@ -835,11 +836,24 @@ export default function App() {
         const convertedTimetable = convertTimetableFormat(data.timetable);
         setTimetable(convertedTimetable);
         console.log('Timetable set successfully');
+        console.log('Periods count:', data.timetable.periods?.length);
       }
     } catch (error) {
       console.log('Error fetching timetable:', error);
     }
   };
+
+  // Auto-refresh timetable every 60 seconds to get period updates
+  useEffect(() => {
+    if (selectedRole === 'student' && semester && branch && !showLogin) {
+      const refreshInterval = setInterval(() => {
+        console.log('Auto-refreshing timetable...');
+        fetchTimetable(semester, branch);
+      }, 60000); // Refresh every 60 seconds
+
+      return () => clearInterval(refreshInterval);
+    }
+  }, [selectedRole, semester, branch, showLogin]);
 
   const saveTimetable = async (updatedTimetable) => {
     try {
@@ -1400,8 +1414,9 @@ export default function App() {
 
   // Timetable Modal (for teachers only)
   if (selectedRole === 'teacher' && showTimetable && timetable) {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const daysFull = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    // Get days dynamically from timetable
+    const daysFull = Object.keys(timetable.timetable);
+    const days = daysFull.map(day => day.substring(0, 3).charAt(0).toUpperCase() + day.substring(1, 3));
     const isTeacher = selectedRole === 'teacher';
     const canEdit = isTeacher && (userData?.canEditTimetable || false);
 
