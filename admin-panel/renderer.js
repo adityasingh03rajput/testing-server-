@@ -3486,8 +3486,140 @@ function showConflictCheck() {
 
 // Auto Fill
 function autoFillTimetable() {
-    showNotification('Auto-fill feature coming soon!', 'info');
-    // TODO: Implement AI-based auto-fill
+    if (!currentTimetable) {
+        showNotification('No timetable loaded', 'error');
+        return;
+    }
+
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>🤖 Auto Fill Timetable</h2>
+        <p>Automatically fill empty periods with subjects</p>
+        <form id="autoFillForm">
+            <div class="form-group">
+                <label>Fill Mode:</label>
+                <select name="mode" class="form-select" required>
+                    <option value="repeat">Repeat Pattern (Mon → Other Days)</option>
+                    <option value="subjects">Fill with Subject List</option>
+                    <option value="random">Random Distribution</option>
+                </select>
+            </div>
+            
+            <div class="form-group" id="subjectListGroup" style="display: none;">
+                <label>Subjects (one per line):</label>
+                <textarea name="subjects" class="form-input" rows="6" placeholder="Mathematics&#10;Physics&#10;Chemistry&#10;English&#10;Computer Science"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="skipBreaks" checked>
+                    Skip break periods
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="overwrite">
+                    Overwrite existing entries
+                </label>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Auto Fill</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    `;
+
+    // Show/hide subject list based on mode
+    document.querySelector('select[name="mode"]').addEventListener('change', (e) => {
+        document.getElementById('subjectListGroup').style.display = 
+            e.target.value === 'subjects' ? 'block' : 'none';
+    });
+
+    document.getElementById('autoFillForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        saveToHistory();
+
+        const formData = new FormData(e.target);
+        const mode = formData.get('mode');
+        const skipBreaks = formData.get('skipBreaks') === 'on';
+        const overwrite = formData.get('overwrite') === 'on';
+        const subjectList = formData.get('subjects')?.split('\n').filter(s => s.trim()) || [];
+
+        const dayKeys = Object.keys(currentTimetable.timetable);
+        let filledCount = 0;
+
+        if (mode === 'repeat') {
+            // Copy Monday's schedule to other days
+            const mondaySchedule = currentTimetable.timetable['monday'] || currentTimetable.timetable[dayKeys[0]];
+            if (!mondaySchedule) {
+                showNotification('No source day found to copy from', 'error');
+                return;
+            }
+
+            dayKeys.forEach(day => {
+                if (day === 'monday' || day === dayKeys[0]) return;
+                
+                currentTimetable.timetable[day].forEach((period, idx) => {
+                    if (skipBreaks && period.isBreak) return;
+                    if (!overwrite && period.subject) return;
+
+                    const sourcePeriod = mondaySchedule[idx];
+                    if (sourcePeriod && !sourcePeriod.isBreak) {
+                        period.subject = sourcePeriod.subject;
+                        period.teacher = sourcePeriod.teacher;
+                        period.room = sourcePeriod.room;
+                        period.color = sourcePeriod.color;
+                        filledCount++;
+                    }
+                });
+            });
+        } else if (mode === 'subjects') {
+            if (subjectList.length === 0) {
+                showNotification('Please enter at least one subject', 'error');
+                return;
+            }
+
+            let subjectIndex = 0;
+            dayKeys.forEach(day => {
+                currentTimetable.timetable[day].forEach(period => {
+                    if (skipBreaks && period.isBreak) return;
+                    if (!overwrite && period.subject) return;
+
+                    period.subject = subjectList[subjectIndex % subjectList.length];
+                    period.teacher = '';
+                    period.room = '';
+                    subjectIndex++;
+                    filledCount++;
+                });
+            });
+        } else if (mode === 'random') {
+            const commonSubjects = [
+                'Mathematics', 'Physics', 'Chemistry', 'English', 
+                'Computer Science', 'Biology', 'History', 'Geography'
+            ];
+
+            dayKeys.forEach(day => {
+                currentTimetable.timetable[day].forEach(period => {
+                    if (skipBreaks && period.isBreak) return;
+                    if (!overwrite && period.subject) return;
+
+                    period.subject = commonSubjects[Math.floor(Math.random() * commonSubjects.length)];
+                    period.teacher = '';
+                    period.room = '';
+                    filledCount++;
+                });
+            });
+        }
+
+        closeModal();
+        renderAdvancedTimetableEditor(currentTimetable);
+        showNotification(`Auto-filled ${filledCount} periods successfully!`, 'success');
+        triggerAutoSave();
+    });
+
+    openModal();
 }
 
 // Validate
