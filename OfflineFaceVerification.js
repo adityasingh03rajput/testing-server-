@@ -7,7 +7,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
  * Server handles all verification logic
  */
 
-const API_URL = 'http://192.168.9.31:3000';
+const API_URL = 'https://google-8j5x.onrender.com';
 
 // Main verification function - sends to server without saving
 export const verifyFaceOffline = async (capturedImageUri, referenceImageUri, userId) => {
