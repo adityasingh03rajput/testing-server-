@@ -84,24 +84,29 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
     console.log('Fetching timetable for:', semester, branch);
     setLoading(true);
     try {
-      const url = `${socketUrl}/api/timetable/${semester}/${branch}`;
+      const url = `${socketUrl}/api/timetable/${semester}/${branch}?t=${Date.now()}`;
       console.log('Fetching from:', url);
 
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        cache: 'no-cache',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
       const data = await response.json();
 
       console.log('Timetable data received:', data);
 
       if (data.success && data.timetable) {
-        // Log first subject of each day to verify data structure
+        // Log all days to verify data structure
         const tt = data.timetable.timetable;
         if (tt) {
-          console.log('📅 Timetable first subjects:');
-          console.log('  Monday:', tt.monday?.[0]?.subject);
-          console.log('  Tuesday:', tt.tuesday?.[0]?.subject);
-          console.log('  Wednesday:', tt.wednesday?.[0]?.subject);
-          console.log('  Thursday:', tt.thursday?.[0]?.subject);
-          console.log('  Friday:', tt.friday?.[0]?.subject);
+          const allDays = Object.keys(tt);
+          console.log('📅 Days in timetable:', allDays);
+          console.log('📅 Has Sunday:', allDays.includes('sunday') ? 'YES ✅' : 'NO ❌');
+          allDays.forEach(day => {
+            console.log(`  ${day}:`, tt[day]?.[0]?.subject || 'empty');
+          });
         }
 
         setTimetable(data.timetable);
