@@ -1970,8 +1970,11 @@ function addNewDay() {
 
         closeModal();
         renderAdvancedTimetableEditor(currentTimetable);
-        showNotification(`${newDay.charAt(0).toUpperCase() + newDay.slice(1)} added successfully`, 'success');
-        triggerAutoSave();
+        
+        // Save immediately to server
+        saveTimetable(false).then(() => {
+            showNotification(`${newDay.charAt(0).toUpperCase() + newDay.slice(1)} added and saved successfully`, 'success');
+        });
     });
 
     openModal();
@@ -2023,8 +2026,11 @@ function removeDay() {
 
         closeModal();
         renderAdvancedTimetableEditor(currentTimetable);
-        showNotification(`${dayToRemove.charAt(0).toUpperCase() + dayToRemove.slice(1)} removed successfully`, 'success');
-        triggerAutoSave();
+        
+        // Save immediately to server
+        saveTimetable(false).then(() => {
+            showNotification(`${dayToRemove.charAt(0).toUpperCase() + dayToRemove.slice(1)} removed and saved successfully`, 'success');
+        });
     });
 
     openModal();
