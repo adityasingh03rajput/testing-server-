@@ -68,7 +68,7 @@ export default function FaceVerificationScreen({
         // Get user's photo URL from server
         setVerificationMessage('Loading reference photo...');
         try {
-          const response = await fetch(`http://192.168.9.31:3000/api/students`);
+          const response = await fetch(`https://google-8j5x.onrender.com/api/students`);
           const data = await response.json();
 
           if (data.success && data.students) {
