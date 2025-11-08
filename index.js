@@ -371,6 +371,99 @@ app.put('/api/timetable/:semester/:branch', async (req, res) => {
     }
 });
 
+// Update periods for ALL timetables
+app.post('/api/periods/update-all', async (req, res) => {
+    try {
+        const { periods } = req.body;
+
+        if (!periods || !Array.isArray(periods) || periods.length === 0) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Invalid periods data' 
+            });
+        }
+
+        console.log(`📝 Updating periods for ALL timetables (${periods.length} periods)`);
+
+        if (mongoose.connection.readyState === 1) {
+            // Update all timetables in database
+            const result = await Timetable.updateMany(
+                {}, // Match all timetables
+                { 
+                    $set: { 
+                        periods: periods,
+                        lastUpdated: new Date()
+                    } 
+                }
+            );
+
+            console.log(`✅ Updated ${result.modifiedCount} timetables`);
+
+            // Also update each timetable's day schedules to match new period count
+            const allTimetables = await Timetable.find({});
+            
+            for (const tt of allTimetables) {
+                const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+                let needsUpdate = false;
+
+                days.forEach(day => {
+                    if (tt.timetable[day]) {
+                        const currentLength = tt.timetable[day].length;
+                        const newLength = periods.length;
+
+                        if (currentLength < newLength) {
+                            // Add new empty periods
+                            for (let i = currentLength; i < newLength; i++) {
+                                tt.timetable[day].push({
+                                    period: i + 1,
+                                    subject: '',
+                                    room: '',
+                                    isBreak: false
+                                });
+                            }
+                            needsUpdate = true;
+                        } else if (currentLength > newLength) {
+                            // Remove extra periods
+                            tt.timetable[day] = tt.timetable[day].slice(0, newLength);
+                            needsUpdate = true;
+                        }
+                    }
+                });
+
+                if (needsUpdate) {
+                    await tt.save();
+                }
+            }
+
+            res.json({ 
+                success: true, 
+                updatedCount: result.modifiedCount,
+                message: `Updated ${result.modifiedCount} timetables with ${periods.length} periods`
+            });
+
+            // Notify all connected clients
+            io.emit('periods_updated', { periods });
+        } else {
+            // Update in-memory timetables
+            let count = 0;
+            Object.keys(timetableMemory).forEach(key => {
+                timetableMemory[key].periods = periods;
+                timetableMemory[key].lastUpdated = new Date();
+                count++;
+            });
+
+            res.json({ 
+                success: true, 
+                updatedCount: count,
+                message: `Updated ${count} timetables (in-memory)`
+            });
+        }
+    } catch (error) {
+        console.error('❌ Error updating periods:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Teacher Schedule API
 app.get('/api/teacher-schedule/:teacherId/:day', async (req, res) => {
     try {
