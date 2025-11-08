@@ -1298,8 +1298,10 @@ function redo() {
 
 function renderAdvancedTimetableEditor(timetable) {
     const editor = document.getElementById('timetableEditor');
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    
+    // Get days dynamically from timetable
+    const dayKeys = Object.keys(timetable.timetable);
+    const days = dayKeys.map(key => key.charAt(0).toUpperCase() + key.slice(1));
 
     let html = '';
 
@@ -1324,6 +1326,12 @@ function renderAdvancedTimetableEditor(timetable) {
     html += '<button class="tool-btn" onclick="showCopyDayDialog()">📅 Copy Day</button>';
     html += '<button class="tool-btn" onclick="showFillDialog()">🎨 Fill Cells</button>';
     html += '<button class="tool-btn" onclick="clearDay()">🗑️ Clear Day</button>';
+    html += '</div>';
+
+    html += '<div class="toolbar-section">';
+    html += '<h3>📆 Day Management</h3>';
+    html += '<button class="tool-btn" onclick="addNewDay()">➕ Add Day</button>';
+    html += '<button class="tool-btn" onclick="removeDay()">➖ Remove Day</button>';
     html += '</div>';
 
     html += '<div class="toolbar-section">';
@@ -1360,8 +1368,8 @@ function renderAdvancedTimetableEditor(timetable) {
     html += '<div class="timetable-info-advanced">';
     html += `<div class="info-item"><strong>Course:</strong> ${timetable.branch}</div>`;
     html += `<div class="info-item"><strong>Semester:</strong> ${timetable.semester}</div>`;
-    html += `<div class="info-item"><strong>Days:</strong> 6 (Mon-Sat)</div>`;
-    html += `<div class="info-item"><strong>Periods:</strong> 8 per day</div>`;
+    html += `<div class="info-item"><strong>Days:</strong> ${dayKeys.length} (${days.join(', ')})</div>`;
+    html += `<div class="info-item"><strong>Periods:</strong> ${timetable.periods.length} per day</div>`;
     html += `<div class="info-item"><strong>Selected:</strong> <span id="selectedCount">0</span> cells</div>`;
     html += '</div>';
 
@@ -1862,6 +1870,160 @@ function clearDay() {
         closeModal();
         renderAdvancedTimetableEditor(currentTimetable);
         showNotification('Day cleared', 'success');
+        triggerAutoSave();
+    });
+
+    openModal();
+}
+
+// Day Management Functions
+function addNewDay() {
+    if (!currentTimetable) {
+        showNotification('No timetable loaded', 'error');
+        return;
+    }
+
+    const modalBody = document.getElementById('modalBody');
+    const availableDays = [
+        { key: 'sunday', name: 'Sunday' },
+        { key: 'monday', name: 'Monday' },
+        { key: 'tuesday', name: 'Tuesday' },
+        { key: 'wednesday', name: 'Wednesday' },
+        { key: 'thursday', name: 'Thursday' },
+        { key: 'friday', name: 'Friday' },
+        { key: 'saturday', name: 'Saturday' }
+    ];
+
+    // Find days not in timetable
+    const existingDays = Object.keys(currentTimetable.timetable);
+    const missingDays = availableDays.filter(day => !existingDays.includes(day.key));
+
+    if (missingDays.length === 0) {
+        showNotification('All days are already in the timetable', 'info');
+        return;
+    }
+
+    modalBody.innerHTML = `
+        <h2>➕ Add New Day</h2>
+        <p>Select a day to add to the timetable:</p>
+        <form id="addDayForm">
+            <div class="form-group">
+                <label>Day:</label>
+                <select name="day" class="form-select" required>
+                    ${missingDays.map(day => `<option value="${day.key}">${day.name}</option>`).join('')}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="copyFromDay" id="copyFromDay">
+                    Copy schedule from existing day
+                </label>
+            </div>
+            <div class="form-group" id="copyFromDayGroup" style="display: none;">
+                <label>Copy from:</label>
+                <select name="sourceDay" class="form-select">
+                    ${existingDays.map(day => `<option value="${day}">${day.charAt(0).toUpperCase() + day.slice(1)}</option>`).join('')}
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Add Day</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    `;
+
+    // Toggle copy from day option
+    document.getElementById('copyFromDay').addEventListener('change', (e) => {
+        document.getElementById('copyFromDayGroup').style.display = e.target.checked ? 'block' : 'none';
+    });
+
+    document.getElementById('addDayForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        saveToHistory();
+        
+        const formData = new FormData(e.target);
+        const newDay = formData.get('day');
+        const copyFromDay = formData.get('copyFromDay') === 'on';
+        const sourceDay = formData.get('sourceDay');
+
+        // Create empty schedule for the new day
+        const numPeriods = currentTimetable.periods.length;
+        const newSchedule = [];
+
+        if (copyFromDay && sourceDay && currentTimetable.timetable[sourceDay]) {
+            // Copy from existing day
+            newSchedule.push(...JSON.parse(JSON.stringify(currentTimetable.timetable[sourceDay])));
+        } else {
+            // Create empty schedule
+            for (let i = 0; i < numPeriods; i++) {
+                newSchedule.push({
+                    period: i + 1,
+                    subject: '',
+                    room: '',
+                    teacher: '',
+                    isBreak: false
+                });
+            }
+        }
+
+        currentTimetable.timetable[newDay] = newSchedule;
+
+        closeModal();
+        renderAdvancedTimetableEditor(currentTimetable);
+        showNotification(`${newDay.charAt(0).toUpperCase() + newDay.slice(1)} added successfully`, 'success');
+        triggerAutoSave();
+    });
+
+    openModal();
+}
+
+function removeDay() {
+    if (!currentTimetable) {
+        showNotification('No timetable loaded', 'error');
+        return;
+    }
+
+    const modalBody = document.getElementById('modalBody');
+    const existingDays = Object.keys(currentTimetable.timetable);
+
+    if (existingDays.length <= 1) {
+        showNotification('Cannot remove the last day', 'error');
+        return;
+    }
+
+    modalBody.innerHTML = `
+        <h2>➖ Remove Day</h2>
+        <p style="color: var(--warning); margin-bottom: 15px;">⚠️ Warning: This will permanently delete all classes for the selected day!</p>
+        <form id="removeDayForm">
+            <div class="form-group">
+                <label>Select day to remove:</label>
+                <select name="day" class="form-select" required>
+                    ${existingDays.map(day => `<option value="${day}">${day.charAt(0).toUpperCase() + day.slice(1)}</option>`).join('')}
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-danger">Remove Day</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById('removeDayForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        const formData = new FormData(e.target);
+        const dayToRemove = formData.get('day');
+
+        if (!confirm(`Are you sure you want to remove ${dayToRemove.charAt(0).toUpperCase() + dayToRemove.slice(1)}? This cannot be undone.`)) {
+            return;
+        }
+
+        saveToHistory();
+        delete currentTimetable.timetable[dayToRemove];
+
+        closeModal();
+        renderAdvancedTimetableEditor(currentTimetable);
+        showNotification(`${dayToRemove.charAt(0).toUpperCase() + dayToRemove.slice(1)} removed successfully`, 'success');
         triggerAutoSave();
     });
 
