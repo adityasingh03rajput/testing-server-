@@ -111,15 +111,7 @@ const timetableSchema = new mongoose.Schema({
         endTime: String
     }],
     timetable: {
-        type: Map,
-        of: [{
-            period: Number,
-            subject: String,
-            room: String,
-            teacher: String,
-            isBreak: Boolean,
-            color: String
-        }],
+        type: mongoose.Schema.Types.Mixed,
         default: {}
     },
     lastUpdated: { type: Date, default: Date.now }
