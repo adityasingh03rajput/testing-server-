@@ -712,7 +712,7 @@ function createDefaultTimetable(semester, branch) {
         });
     }
 
-    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const timetable = {};
     days.forEach(day => {
         timetable[day] = periods.map(p => ({
