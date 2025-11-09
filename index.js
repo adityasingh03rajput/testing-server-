@@ -89,7 +89,7 @@ app.use('/uploads', express.static(uploadsDir));
 // MongoDB Connection
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/attendance_app';
 mongoose.connect(MONGO_URI, {
-    serverSelectionTimeoutMS: 5000,
+    serverSelectionTimeoutMS: 30000, // Increased to 30 seconds for Render
     socketTimeoutMS: 45000,
 }).then(() => {
     console.log('✅ Connected to MongoDB Atlas');

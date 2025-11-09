@@ -6,7 +6,7 @@ const os = require('os');
 function getServerIPs() {
     const interfaces = os.networkInterfaces();
     const ips = [];
-    
+
     for (const name of Object.keys(interfaces)) {
         for (const iface of interfaces[name]) {
             // Skip internal (loopback) and non-IPv4 addresses
@@ -15,7 +15,7 @@ function getServerIPs() {
             }
         }
     }
-    
+
     return ips;
 }
 
@@ -89,7 +89,7 @@ app.use('/uploads', express.static(uploadsDir));
 // MongoDB Connection
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/attendance_app';
 mongoose.connect(MONGO_URI, {
-    serverSelectionTimeoutMS: 5000,
+    serverSelectionTimeoutMS: 30000, // Increased to 30 seconds for Render
     socketTimeoutMS: 45000,
 }).then(() => {
     console.log('✅ Connected to MongoDB Atlas');
@@ -367,11 +367,11 @@ app.put('/api/timetable/:semester/:branch', async (req, res) => {
                 res.json({ success: true, timetable: existingTimetable });
             } else {
                 // Create new timetable if doesn't exist
-                const newTimetable = new Timetable({ 
-                    semester, 
-                    branch, 
-                    periods: periods || [], 
-                    timetable 
+                const newTimetable = new Timetable({
+                    semester,
+                    branch,
+                    periods: periods || [],
+                    timetable
                 });
                 await newTimetable.save();
                 console.log('✅ New timetable created');
@@ -397,9 +397,9 @@ app.post('/api/periods/update-all', async (req, res) => {
         const { periods } = req.body;
 
         if (!periods || !Array.isArray(periods) || periods.length === 0) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Invalid periods data' 
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid periods data'
             });
         }
 
@@ -409,11 +409,11 @@ app.post('/api/periods/update-all', async (req, res) => {
             // Update all timetables in database
             const result = await Timetable.updateMany(
                 {}, // Match all timetables
-                { 
-                    $set: { 
+                {
+                    $set: {
                         periods: periods,
                         lastUpdated: new Date()
-                    } 
+                    }
                 }
             );
 
@@ -421,7 +421,7 @@ app.post('/api/periods/update-all', async (req, res) => {
 
             // Also update each timetable's day schedules to match new period count
             const allTimetables = await Timetable.find({});
-            
+
             for (const tt of allTimetables) {
                 const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
                 let needsUpdate = false;
@@ -455,8 +455,8 @@ app.post('/api/periods/update-all', async (req, res) => {
                 }
             }
 
-            res.json({ 
-                success: true, 
+            res.json({
+                success: true,
                 updatedCount: result.modifiedCount,
                 message: `Updated ${result.modifiedCount} timetables with ${periods.length} periods`
             });
@@ -472,8 +472,8 @@ app.post('/api/periods/update-all', async (req, res) => {
                 count++;
             });
 
-            res.json({ 
-                success: true, 
+            res.json({
+                success: true,
                 updatedCount: count,
                 message: `Updated ${count} timetables (in-memory)`
             });
@@ -548,15 +548,15 @@ app.get('/api/teacher-schedule/:teacherId/:day', async (req, res) => {
 app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
     try {
         const { teacherId } = req.params;
-        
+
         // Get current day and time
         const now = new Date();
         const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
         const currentDay = days[now.getDay()];
         const currentTime = now.getHours() * 60 + now.getMinutes(); // minutes since midnight
-        
+
         console.log(`🔍 Finding current class for teacher: ${teacherId} at ${now.toLocaleTimeString()}`);
-        
+
         // Find teacher
         const teacher = await Teacher.findOne({
             $or: [
@@ -564,43 +564,43 @@ app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
                 { name: teacherId }
             ]
         });
-        
+
         if (!teacher) {
-            return res.status(404).json({ 
+            return res.status(404).json({
                 success: false,
-                error: 'Teacher not found' 
+                error: 'Teacher not found'
             });
         }
-        
+
         const teacherName = teacher.name;
         console.log(`✅ Found teacher: ${teacherName}`);
-        
+
         // Find all timetables where this teacher is assigned
         const timetables = await Timetable.find({});
-        
+
         // Find current period
         let currentClass = null;
         let matchedTimetable = null;
-        
+
         for (const tt of timetables) {
             const daySchedule = tt.timetable[currentDay];
             if (!daySchedule) continue;
-            
+
             for (let i = 0; i < daySchedule.length; i++) {
                 const period = daySchedule[i];
-                
+
                 // Check if this period is assigned to our teacher
-                if (period.teacher && 
+                if (period.teacher &&
                     (period.teacher.toLowerCase() === teacherName.toLowerCase() ||
-                     period.teacher.toLowerCase().includes(teacherName.toLowerCase()))) {
-                    
+                        period.teacher.toLowerCase().includes(teacherName.toLowerCase()))) {
+
                     // Get period timing
                     const periodInfo = tt.periods[i];
                     if (!periodInfo) continue;
-                    
+
                     const periodStart = timeToMinutes(periodInfo.startTime);
                     const periodEnd = timeToMinutes(periodInfo.endTime);
-                    
+
                     // Check if current time falls in this period
                     if (currentTime >= periodStart && currentTime <= periodEnd) {
                         currentClass = {
@@ -622,26 +622,26 @@ app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
             }
             if (currentClass) break;
         }
-        
+
         // If no current class found
         if (!currentClass) {
             console.log('⏰ No active class right now');
-            
+
             // Find next class today
             let nextClass = null;
             for (const tt of timetables) {
                 const daySchedule = tt.timetable[currentDay];
                 if (!daySchedule) continue;
-                
+
                 for (let i = 0; i < daySchedule.length; i++) {
                     const period = daySchedule[i];
-                    if (period.teacher && 
+                    if (period.teacher &&
                         (period.teacher.toLowerCase() === teacherName.toLowerCase() ||
-                         period.teacher.toLowerCase().includes(teacherName.toLowerCase()))) {
-                        
+                            period.teacher.toLowerCase().includes(teacherName.toLowerCase()))) {
+
                         const periodInfo = tt.periods[i];
                         if (!periodInfo) continue;
-                        
+
                         const periodStart = timeToMinutes(periodInfo.startTime);
                         if (periodStart > currentTime) {
                             nextClass = {
@@ -657,7 +657,7 @@ app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
                 }
                 if (nextClass) break;
             }
-            
+
             return res.json({
                 success: true,
                 hasActiveClass: false,
@@ -666,7 +666,7 @@ app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
                 teacherName: teacherName
             });
         }
-        
+
         // If it's a break period
         if (currentClass.isBreak) {
             return res.json({
@@ -677,18 +677,18 @@ app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
                 teacherName: teacherName
             });
         }
-        
+
         // Get students for this class (semester + branch)
         const students = await StudentManagement.find({
             semester: currentClass.semester.toString(),
             course: currentClass.branch
         }).select('-password');
-        
+
         console.log(`👥 Found ${students.length} students for ${currentClass.branch} Semester ${currentClass.semester}`);
-        
+
         // Get classroom info
         const classroom = await Classroom.findOne({ roomNumber: currentClass.room });
-        
+
         res.json({
             success: true,
             hasActiveClass: true,
@@ -701,12 +701,12 @@ app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
             totalStudents: students.length,
             teacherName: teacherName
         });
-        
+
     } catch (error) {
         console.error('❌ Error in current-class-students:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             success: false,
-            error: error.message 
+            error: error.message
         });
     }
 });
@@ -1106,7 +1106,7 @@ app.post('/api/verify-face', async (req, res) => {
         let referenceImageBase64 = '';
         try {
             const photoUrl = user.photoUrl;
-            
+
             // Handle base64 data URIs (stored in database)
             if (photoUrl.startsWith('data:image')) {
                 console.log('📥 Loading reference photo from database (base64)...');
@@ -1144,7 +1144,7 @@ app.post('/api/verify-face', async (req, res) => {
                 referenceImageBase64 = Buffer.from(response.data, 'binary').toString('base64');
                 console.log('✅ Reference photo downloaded from URL');
             }
-            
+
             // Validate that we got the image
             if (!referenceImageBase64) {
                 console.log('❌ Failed to load reference photo from:', photoUrl);
@@ -1474,16 +1474,16 @@ app.post('/api/upload-photo', async (req, res) => {
 
         // Store as base64 data URI (no external storage needed)
         console.log('💾 Storing photo as base64 in database...');
-        
+
         const photoUrl = `data:image/jpeg;base64,${base64Data}`;
-        
+
         console.log(`✅ Photo prepared for database storage (${base64Data.length} bytes)`);
-        
-        res.json({ 
-            success: true, 
-            photoUrl, 
+
+        res.json({
+            success: true,
+            photoUrl,
             filename: `${type}_${id}_${Date.now()}`,
-            message: 'Photo uploaded successfully with face detected!' 
+            message: 'Photo uploaded successfully with face detected!'
         });
     } catch (error) {
         console.error('❌ Error uploading photo:', error);
@@ -1955,7 +1955,7 @@ server.listen(PORT, '0.0.0.0', async () => {
     console.log(`⏰ Time Sync: http://localhost:${PORT}/api/time`);
     console.log(`💾 Database: ${mongoose.connection.readyState === 1 ? 'MongoDB Atlas' : 'In-Memory'}`);
     console.log('========================================');
-    
+
     // Display server IP addresses
     console.log('🌐 Server Network Information:');
     const localIPs = getServerIPs();
@@ -1966,7 +1966,7 @@ server.listen(PORT, '0.0.0.0', async () => {
     } else {
         console.log('   📍 No external network interfaces found');
     }
-    
+
     // Get public IP (for Render/cloud deployments)
     try {
         const response = await axios.get('https://api.ipify.org?format=json', { timeout: 3000 });
@@ -1975,6 +1975,6 @@ server.listen(PORT, '0.0.0.0', async () => {
     } catch (error) {
         console.log('   ⚠️  Could not fetch public IP (this is normal for local development)');
     }
-    
+
     console.log('========================================');
 });
