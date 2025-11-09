@@ -314,14 +314,9 @@ export default function App() {
     }
   }, [selectedRole, semester, branch, showLogin]);
 
-  // Check if today is a leave day (Sunday or no classes)
+  // Check if today is a leave day (no classes scheduled)
   const isLeaveDay = () => {
     try {
-      const serverTime = getServerTime();
-      const today = serverTime.nowDate().getDay();
-      // Sunday = 0
-      if (today === 0) return true;
-
       // Check if there are any classes today
       if (!timetable?.schedule?.[currentDay]) return false;
       const schedule = timetable.schedule[currentDay];
@@ -811,6 +806,7 @@ export default function App() {
 
     dayKeys.forEach((dayKey) => {
       const dayName = dayKey.charAt(0).toUpperCase() + dayKey.slice(1);
+      console.log(`🔍 Processing day: ${dayKey} → ${dayName}`);
       if (timetable.timetable[dayKey]) {
         schedule[dayName] = timetable.timetable[dayKey].map(period => ({
           subject: period.subject,
@@ -820,10 +816,12 @@ export default function App() {
             : '',
           isBreak: period.isBreak
         }));
+        console.log(`✅ ${dayName} schedule created with ${schedule[dayName].length} periods`);
       }
     });
 
     console.log('Converted timetable schedule (dynamic days):', schedule);
+    console.log('Schedule keys:', Object.keys(schedule));
 
     return { ...timetable, schedule };
   };
@@ -2629,6 +2627,12 @@ export default function App() {
         </View>
 
         {/* Circular Timer */}
+        {(() => {
+          console.log('🎯 Passing to CircularTimer - currentDay:', currentDay);
+          console.log('🎯 Timetable schedule keys:', timetable?.schedule ? Object.keys(timetable.schedule) : 'no schedule');
+          console.log('🎯 Schedule for currentDay:', timetable?.schedule?.[currentDay]);
+          return null;
+        })()}
         <CircularTimer
           theme={theme}
           initialTime={(config?.studentScreen?.timer?.duration || 120) - timeLeft}
