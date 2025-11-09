@@ -1,5 +1,24 @@
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+
+// Function to get server IP addresses
+function getServerIPs() {
+    const interfaces = os.networkInterfaces();
+    const ips = [];
+    
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            // Skip internal (loopback) and non-IPv4 addresses
+            if (iface.family === 'IPv4' && !iface.internal) {
+                ips.push({ interface: name, ip: iface.address });
+            }
+        }
+    }
+    
+    return ips;
+}
+
 // Load environment variables
 // On Render, variables are set in dashboard (no .env file needed)
 // For local development, load from .env file
@@ -1924,7 +1943,7 @@ app.delete('/api/classrooms/:id', async (req, res) => {
 // ==================== START SERVER ====================
 // All routes must be registered before starting the server
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', async () => {
     console.log('========================================');
     console.log('🚀 Attendance SDUI Server Running');
     console.log('========================================');
@@ -1935,5 +1954,27 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`🔍 Face Verify: http://localhost:${PORT}/api/verify-face`);
     console.log(`⏰ Time Sync: http://localhost:${PORT}/api/time`);
     console.log(`💾 Database: ${mongoose.connection.readyState === 1 ? 'MongoDB Atlas' : 'In-Memory'}`);
+    console.log('========================================');
+    
+    // Display server IP addresses
+    console.log('🌐 Server Network Information:');
+    const localIPs = getServerIPs();
+    if (localIPs.length > 0) {
+        localIPs.forEach(({ interface: iface, ip }) => {
+            console.log(`   📍 ${iface}: ${ip}`);
+        });
+    } else {
+        console.log('   📍 No external network interfaces found');
+    }
+    
+    // Get public IP (for Render/cloud deployments)
+    try {
+        const response = await axios.get('https://api.ipify.org?format=json', { timeout: 3000 });
+        console.log(`   🌍 Public IP: ${response.data.ip}`);
+        console.log('   ℹ️  Add this IP to MongoDB Atlas whitelist!');
+    } catch (error) {
+        console.log('   ⚠️  Could not fetch public IP (this is normal for local development)');
+    }
+    
     console.log('========================================');
 });
