@@ -111,6 +111,7 @@ const timetableSchema = new mongoose.Schema({
         endTime: String
     }],
     timetable: {
+        sunday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
         monday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
         tuesday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
         wednesday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
@@ -714,7 +715,7 @@ function createDefaultTimetable(semester, branch) {
         });
     }
 
-    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const timetable = {};
     days.forEach(day => {
         timetable[day] = periods.map(p => ({

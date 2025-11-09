@@ -1250,7 +1250,7 @@ function createNewTimetable() {
         { number: 8, startTime: '15:30', endTime: '16:10' }
     ];
 
-    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const timetable = {};
     days.forEach(day => {
         timetable[day] = periods.map(p => ({
@@ -1499,7 +1499,7 @@ function selectRange(start, end) {
 }
 
 function editAdvancedCell(dayIdx, periodIdx) {
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
 
     // Generate teacher options
@@ -1648,7 +1648,7 @@ function copySelected() {
         return;
     }
 
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     clipboardData = selectedCells.map(({ dayIdx, periodIdx }) => {
         const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
         return JSON.parse(JSON.stringify(period));
@@ -1661,7 +1661,7 @@ function cutSelected() {
     copySelected();
     if (clipboardData) {
         saveToHistory();
-        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
         selectedCells.forEach(({ dayIdx, periodIdx }) => {
             const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
             if (!period.isBreak) {
@@ -1689,7 +1689,7 @@ function pasteToSelected() {
     }
 
     saveToHistory();
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
     selectedCells.forEach(({ dayIdx, periodIdx }, index) => {
         const sourceData = clipboardData[index % clipboardData.length];
@@ -1755,7 +1755,7 @@ function showCopyDayDialog() {
         }
 
         saveToHistory();
-        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
         const sourceDay = currentTimetable.timetable[dayKeys[fromDay]];
 
         toDays.forEach(toDay => {
@@ -1810,7 +1810,7 @@ function showFillDialog() {
         e.preventDefault();
         saveToHistory();
         const formData = new FormData(e.target);
-        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
         selectedCells.forEach(({ dayIdx, periodIdx }) => {
             const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
@@ -1859,7 +1859,7 @@ function clearDay() {
         saveToHistory();
         const formData = new FormData(e.target);
         const dayIdx = parseInt(formData.get('day'));
-        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
         currentTimetable.timetable[dayKeys[dayIdx]].forEach(period => {
             if (!period.isBreak) {
@@ -2737,8 +2737,8 @@ function printTimetable() {
     }
 
     const printWindow = window.open('', '_blank');
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
     let html = `
         <html>
@@ -3079,7 +3079,7 @@ function initKeyboardShortcuts() {
 
 function deleteSelectedCells() {
     saveToHistory();
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
     selectedCells.forEach(({ dayIdx, periodIdx }) => {
         const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
@@ -3124,7 +3124,7 @@ function applySubjectToSelected(subject) {
     }
 
     saveToHistory();
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
     selectedCells.forEach(({ dayIdx, periodIdx }) => {
         const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
@@ -3193,7 +3193,7 @@ function showTeacherAssign() {
             return;
         }
 
-        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
         selectedCells.forEach(({ dayIdx, periodIdx }) => {
             const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
@@ -3239,7 +3239,7 @@ function applyColorToSelected(color) {
     }
 
     saveToHistory();
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
     selectedCells.forEach(({ dayIdx, periodIdx }) => {
         const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
@@ -3430,8 +3430,8 @@ function duplicateTimetable() {
 // Conflict Check
 function showConflictCheck() {
     const conflicts = [];
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
     // Check for teacher conflicts (same teacher, same time, different days)
     const teacherSchedule = {};
@@ -3628,7 +3628,7 @@ function autoFillTimetable() {
 // Validate
 function validateTimetable() {
     let issues = [];
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
     dayKeys.forEach(dayKey => {
         currentTimetable.timetable[dayKey].forEach((period, idx) => {
@@ -3702,7 +3702,7 @@ function pasteSingleCell(dayIdx, periodIdx) {
 
 function clearSingleCell(dayIdx, periodIdx) {
     saveToHistory();
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
 
     if (!period.isBreak) {
@@ -3831,7 +3831,7 @@ function savePeriodEdit(index) {
     };
 
     // Update break status in all days
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     dayKeys.forEach(day => {
         if (currentTimetable.timetable[day][index]) {
             currentTimetable.timetable[day][index].isBreak = isBreak;
@@ -3910,7 +3910,7 @@ function saveNewPeriod() {
     });
 
     // Add period slot to all days
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     dayKeys.forEach(day => {
         currentTimetable.timetable[day].push({
             period: periodNumber,
@@ -3943,7 +3943,7 @@ function deletePeriod(index) {
     currentTimetable.periods.splice(index, 1);
 
     // Remove period from all days
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     dayKeys.forEach(day => {
         currentTimetable.timetable[day].splice(index, 1);
     });
@@ -3971,7 +3971,7 @@ function movePeriodUp(index) {
         [currentTimetable.periods[index - 1], currentTimetable.periods[index]];
 
     // Swap in all days
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     dayKeys.forEach(day => {
         [currentTimetable.timetable[day][index], currentTimetable.timetable[day][index - 1]] =
             [currentTimetable.timetable[day][index - 1], currentTimetable.timetable[day][index]];
@@ -4000,7 +4000,7 @@ function movePeriodDown(index) {
         [currentTimetable.periods[index + 1], currentTimetable.periods[index]];
 
     // Swap in all days
-    const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     dayKeys.forEach(day => {
         [currentTimetable.timetable[day][index], currentTimetable.timetable[day][index + 1]] =
             [currentTimetable.timetable[day][index + 1], currentTimetable.timetable[day][index]];
@@ -4064,7 +4064,7 @@ function editPeriodTime(index, currentStart, currentEnd) {
         currentTimetable.periods[index].endTime = newEnd;
 
         // Update break status
-        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
         dayKeys.forEach(day => {
             if (currentTimetable.timetable[day][index]) {
                 currentTimetable.timetable[day][index].isBreak = isBreak;
@@ -4133,7 +4133,7 @@ function addNewPeriodInline() {
             endTime
         });
 
-        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
         dayKeys.forEach(day => {
             currentTimetable.timetable[day].push({
                 period: newPeriodNumber,

@@ -16,7 +16,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
   // Get days dynamically from timetable in proper week order (recalculates when timetable changes)
   const DAYS = useMemo(() => {
     if (!timetable?.timetable) {
-      return ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     }
     const dayOrder = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const days = Object.keys(timetable.timetable)
@@ -96,6 +96,8 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
       const data = await response.json();
 
       console.log('Timetable data received:', data);
+      console.log('Raw timetable object keys:', data.timetable ? Object.keys(data.timetable) : 'null');
+      console.log('Raw timetable.timetable keys:', data.timetable?.timetable ? Object.keys(data.timetable.timetable) : 'null');
 
       if (data.success && data.timetable) {
         // Log all days to verify data structure
