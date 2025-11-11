@@ -42,6 +42,10 @@
                     <span class="icon">📆</span>
                     <span>Calendar</span>
                 </button>
+                <button class="nav-item" data-section="periods">
+                    <span class="icon">⏰</span>
+                    <span>Period Settings</span>
+                </button>
                 <button class="nav-item" data-section="settings">
                     <span class="icon">⚙️</span>
                     <span>Settings</span>
@@ -365,6 +369,42 @@
                                 <!-- Classroom rows will be added here -->
                             </tbody>
                         </table>
+                    </div>
+                </section>
+
+                <!-- Period Settings Section -->
+                <section id="periods-section" class="section">
+                    <div class="section-header">
+                        <h2 class="section-title">Period Configuration</h2>
+                        <div class="action-buttons">
+                            <button class="btn btn-secondary" id="resetPeriodsBtn">🔄 Reset to Default</button>
+                            <button class="btn btn-primary" id="addPeriodBtn">➕ Add Period</button>
+                        </div>
+                    </div>
+
+                    <div class="period-info-card">
+                        <h3>⏰ Manage Class Periods</h3>
+                        <p>Configure the number of periods and their timings. Changes will apply to all timetables across all semesters and branches.</p>
+                        <div class="period-stats">
+                            <div class="stat-item">
+                                <span class="stat-label">Total Periods:</span>
+                                <span class="stat-value" id="totalPeriodsCount">8</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Class Duration:</span>
+                                <span class="stat-value" id="classDuration">09:40 - 16:10</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="periods-container">
+                        <div class="periods-list" id="periodsList">
+                            <!-- Periods will be loaded here -->
+                        </div>
+                    </div>
+
+                    <div class="period-actions">
+                        <button class="btn btn-success btn-large" id="savePeriodsBtn">💾 Save & Apply to All Timetables</button>
                     </div>
                 </section>
 

@@ -1047,7 +1047,8 @@ app.post('/api/verify-face', async (req, res) => {
             });
         }
 
-        // Find user's profile photo - use StudentManagement model (not Student)
+        // SECURITY: Fetch reference photo from database (not from client)
+        // This prevents tampering with the reference photo
         console.log('🔍 Looking for user with ID:', userId);
         let user;
 
