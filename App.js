@@ -314,6 +314,20 @@ export default function App() {
     }
   }, [selectedRole, semester, branch, showLogin]);
 
+  // Force refetch if current day is missing from timetable (handles old timetables without Sunday)
+  useEffect(() => {
+    if (timetable?.schedule && currentDay) {
+      if (!timetable.schedule[currentDay]) {
+        console.warn(`⚠️ Current day "${currentDay}" not found in timetable!`);
+        console.warn('  Available days:', Object.keys(timetable.schedule).join(', '));
+        console.warn('  Force refetching timetable...');
+        if (semester && branch) {
+          fetchTimetable(semester, branch);
+        }
+      }
+    }
+  }, [currentDay, timetable?.schedule]);
+
   // Check if today is a leave day (no classes scheduled)
   const isLeaveDay = () => {
     try {
@@ -822,25 +836,48 @@ export default function App() {
 
     console.log('Converted timetable schedule (dynamic days):', schedule);
     console.log('Schedule keys:', Object.keys(schedule));
-
-    return { ...timetable, schedule };
+    
+    const result = { ...timetable, schedule };
+    console.log('🎯 Returning timetable with schedule:', {
+      hasSchedule: !!result.schedule,
+      scheduleKeys: Object.keys(result.schedule),
+      sundayExists: 'Sunday' in result.schedule,
+      sundayLength: result.schedule.Sunday?.length
+    });
+    
+    return result;
   };
 
   const fetchTimetable = async (sem, br) => {
     try {
-      console.log('Fetching timetable for:', sem, br);
-      const response = await fetch(`${SOCKET_URL}/api/timetable/${sem}/${br}`);
-      console.log('Response status:', response.status);
+      console.log('🔄 Fetching timetable for:', sem, br);
+      const response = await fetch(`${SOCKET_URL}/api/timetable/${sem}/${br}?cacheBust=${Date.now()}`);
+      console.log('✅ Response status:', response.status);
       const data = await response.json();
-      console.log('Timetable data:', data);
+      
+      const rawDays = data.timetable?.timetable ? Object.keys(data.timetable.timetable) : [];
+      console.log('📥 RAW days from server:', rawDays.join(', '));
+      console.log('🔍 Sunday in raw data?', rawDays.includes('sunday') ? 'YES ✅' : 'NO ❌');
+      
       if (data.success) {
         const convertedTimetable = convertTimetableFormat(data.timetable);
+        const convertedDays = convertedTimetable?.schedule ? Object.keys(convertedTimetable.schedule) : [];
+        console.log('📤 Converted schedule days:', convertedDays.join(', '));
+        console.log('🔍 Sunday in converted?', convertedDays.includes('Sunday') ? 'YES ✅' : 'NO ❌');
+        
+        // Validate that all 7 days are present
+        const expectedDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const missingDays = expectedDays.filter(day => !convertedDays.includes(day));
+        if (missingDays.length > 0) {
+          console.warn('⚠️ WARNING: Timetable is missing days:', missingDays.join(', '));
+          console.warn('  This might be an old timetable. Consider clearing app data.');
+        }
+        
         setTimetable(convertedTimetable);
-        console.log('Timetable set successfully');
-        console.log('Periods count:', data.timetable.periods?.length);
+        console.log('✅ Timetable set successfully');
       }
     } catch (error) {
-      console.log('Error fetching timetable:', error);
+      console.log('❌ Error fetching timetable:', error);
     }
   };
 
@@ -2629,8 +2666,17 @@ export default function App() {
         {/* Circular Timer */}
         {(() => {
           console.log('🎯 Passing to CircularTimer - currentDay:', currentDay);
+          console.log('🎯 currentDay type:', typeof currentDay);
+          console.log('🎯 Timetable exists:', !!timetable);
+          console.log('🎯 Timetable.schedule exists:', !!timetable?.schedule);
           console.log('🎯 Timetable schedule keys:', timetable?.schedule ? Object.keys(timetable.schedule) : 'no schedule');
           console.log('🎯 Schedule for currentDay:', timetable?.schedule?.[currentDay]);
+          console.log('🎯 Schedule[currentDay] length:', timetable?.schedule?.[currentDay]?.length);
+          if (timetable?.schedule) {
+            Object.keys(timetable.schedule).forEach(key => {
+              console.log(`  - Schedule["${key}"] has ${timetable.schedule[key]?.length} periods`);
+            });
+          }
           return null;
         })()}
         <CircularTimer

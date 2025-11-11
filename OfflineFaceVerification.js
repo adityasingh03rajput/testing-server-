@@ -3,13 +3,15 @@ import * as ImageManipulator from 'expo-image-manipulator';
 
 /**
  * Server-Side Face Verification
- * Images are sent to server and NOT saved locally
- * Server handles all verification logic
+ * Only sends captured photo to server
+ * Server fetches reference photo from database and compares
+ * This ensures reference photo cannot be tampered with
  */
 
 const API_URL = 'https://google-8j5x.onrender.com';
 
-// Main verification function - sends to server without saving
+// Main verification function - sends captured photo to server
+// referenceImageUri is not used (kept for backward compatibility)
 export const verifyFaceOffline = async (capturedImageUri, referenceImageUri, userId) => {
     try {
         console.log('🔍 Starting server-side face verification...');

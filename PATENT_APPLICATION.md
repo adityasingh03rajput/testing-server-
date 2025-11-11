@@ -946,7 +946,382 @@ Assume user U is verified as present in Room R at Time T, but U is actually in R
 
 **Conclusion:** All possible attack vectors fail. User must be physically present in Room R to be verified. QED.
 
+---
 
+### Verification Flow Chart
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    VERIFICATION FLOW DIAGRAM                    │
+└─────────────────────────────────────────────────────────────────┘
+
+START: Authority Initiates Verification
+│
+├─→ [1] Server Generates Session
+│   ├─ Session ID (UUID-128)
+│   ├─ Timestamp (Unix epoch)
+│   ├─ Location ID
+│   └─ Expiry (60 seconds)
+│
+├─→ [2] Encode Ultrasonic Pattern
+│   ├─ FSK Modulation (18-22 kHz)
+│   ├─ Embed Session ID
+│   ├─ Embed Location ID
+│   ├─ Embed Timestamp
+│   └─ Add CRC-16 Checksum
+│
+├─→ [3] Authority Emits Signal
+│   └─ Ultrasonic broadcast (3 seconds)
+│
+├─→ [4] Client Devices Detect Signal
+│   ├─ Microphone sampling (44.1 kHz)
+│   ├─ FFT analysis
+│   └─ Decode FSK pattern
+│
+├─→ [5] Multi-Factor Verification
+│   │
+│   ├─→ [5a] LAYER 1: Biometric
+│   │   ├─ Capture face image
+│   │   ├─ Extract 128-D descriptor
+│   │   ├─ Compare with stored
+│   │   ├─ Liveness detection
+│   │   └─ Result: PASS/FAIL
+│   │
+│   ├─→ [5b] LAYER 2: Network
+│   │   ├─ Query WiFi interface
+│   │   ├─ Extract BSSID
+│   │   ├─ Compare with authorized
+│   │   └─ Result: PASS/FAIL
+│   │
+│   └─→ [5c] LAYER 3: Ultrasonic
+│       ├─ Verify Session ID
+│       ├─ Verify Location ID
+│       ├─ Verify Timestamp
+│       ├─ Measure signal strength
+│       └─ Result: PASS/FAIL
+│
+├─→ [6] Submit Verification Proof
+│   ├─ User ID
+│   ├─ Session ID
+│   ├─ Timestamp
+│   ├─ Biometric confidence
+│   ├─ BSSID detected
+│   ├─ Signal strength
+│   └─ Device signature
+│
+├─→ [7] Server Validation
+│   ├─ Check session active
+│   ├─ Verify user expected
+│   ├─ Validate timestamp
+│   ├─ Verify BSSID match
+│   ├─ Check biometric confidence
+│   ├─ Detect anomalies
+│   └─ Decision: APPROVE/REJECT/FLAG
+│
+├─→ [8] If APPROVED → Relay Node
+│   ├─ Device emits ultrasonic
+│   ├─ Signal cascades to Wave 2
+│   └─ Repeat steps 4-7
+│
+├─→ [9] If REJECTED → Mark Absent
+│   ├─ Log failure reason
+│   ├─ Notify teacher
+│   └─ Notify parent
+│
+└─→ [10] If FLAGGED → Manual Review
+    ├─ Suspicion score calculated
+    ├─ Alert teacher
+    └─ Require manual verification
+
+END: Attendance Record Generated
+```
+
+---
+
+### Alternative Verification Modes (Fallback Hierarchy)
+
+**Primary Mode: Ultrasonic Mesh (Preferred)**
+- Accuracy: 99%
+- Range: 5-10 meters
+- Wall penetration: <5%
+- Battery impact: Low
+- Hardware: Standard smartphone
+
+**Secondary Mode: Bluetooth Low Energy (BLE) Beacon**
+- Accuracy: 85%
+- Range: 10-30 meters
+- Wall penetration: 30-50%
+- Battery impact: Very low
+- Hardware: Optional BLE beacon
+- Use case: Backup when ultrasonic fails
+
+**Tertiary Mode: WiFi BSSID + GPS Fusion**
+- Accuracy: 70%
+- Range: Building-level
+- Wall penetration: 100%
+- Battery impact: Medium
+- Hardware: Standard smartphone
+- Use case: Emergency fallback
+
+**Verification Priority Logic:**
+```
+IF ultrasonic_detected AND signal_strength > threshold:
+    USE ultrasonic_verification (Primary)
+ELSE IF ble_beacon_detected AND rssi > threshold:
+    USE ble_verification (Secondary)
+ELSE IF wifi_bssid_match AND gps_within_geofence:
+    USE wifi_gps_fusion (Tertiary)
+    FLAG for_manual_review
+ELSE:
+    REJECT verification
+    MARK absent
+```
+
+**Why This Hierarchy is Powerful:**
+1. Confuses competitors (multiple verification paths)
+2. Increases coverage (handles edge cases)
+3. Provides graceful degradation
+4. Future-proof (can add more modes)
+5. Patent covers ALL verification modes
+
+---
+
+### Suspicion Score Algorithm
+
+**Formula:**
+```
+Suspicion_Score = W1 × delay_time 
+                + W2 × wifi_drop_frequency 
+                + W3 × camera_absence_duration
+                + W4 × verification_fail_count
+                + W5 × distance_anomaly
+                + W6 × timing_inconsistency
+                + W7 × peer_correlation
+
+Where:
+W1-W7 = Weights (machine learning optimized)
+```
+
+**Detailed Calculation:**
+
+```python
+def calculate_suspicion_score(user_data):
+    score = 0
+    
+    # Factor 1: Verification Delay
+    # Normal: <10 seconds, Suspicious: >30 seconds
+    delay = user_data.verification_time - user_data.notification_time
+    if delay > 30:
+        score += 25 * (delay / 60)  # Max 25 points
+    
+    # Factor 2: WiFi Drop Frequency
+    # Normal: 0-1 drops/hour, Suspicious: >3 drops/hour
+    wifi_drops = user_data.wifi_disconnections_per_hour
+    if wifi_drops > 3:
+        score += 20 * (wifi_drops / 10)  # Max 20 points
+    
+    # Factor 3: Camera Absence Duration
+    # Normal: Always visible, Suspicious: >5 min absent
+    camera_absence = user_data.minutes_not_in_camera
+    if camera_absence > 5:
+        score += 15 * (camera_absence / 30)  # Max 15 points
+    
+    # Factor 4: Verification Fail Count
+    # Normal: 0 fails, Suspicious: >2 fails
+    fail_count = user_data.verification_failures_today
+    if fail_count > 0:
+        score += 15 * fail_count  # 15 points per failure
+    
+    # Factor 5: Distance Anomaly
+    # Normal: <8 meters, Suspicious: >12 meters
+    distance = estimate_distance(user_data.signal_strength)
+    if distance > 12:
+        score += 10 * (distance / 20)  # Max 10 points
+    
+    # Factor 6: Timing Inconsistency
+    # Check if verification times are suspiciously consistent
+    timing_variance = calculate_variance(user_data.verification_times)
+    if timing_variance < 2:  # Too consistent = bot
+        score += 10
+    
+    # Factor 7: Peer Correlation
+    # Check if user always fails when specific peers fail
+    peer_correlation = calculate_correlation(user_data, peer_data)
+    if peer_correlation > 0.8:
+        score += 5
+    
+    return min(score, 100)  # Cap at 100
+
+# Thresholds:
+# 0-20: Normal (Green)
+# 21-50: Suspicious (Yellow) - Monitor closely
+# 51-75: High Risk (Orange) - Flag for review
+# 76-100: Critical (Red) - Auto-mark absent
+```
+
+**Example Scenarios:**
+
+**Scenario A: Legitimate Student**
+```
+delay_time = 8 seconds → 0 points
+wifi_drops = 1/hour → 0 points
+camera_absence = 0 minutes → 0 points
+fail_count = 0 → 0 points
+distance = 6 meters → 0 points
+timing_variance = 15 seconds → 0 points
+peer_correlation = 0.2 → 0 points
+─────────────────────────────────
+Suspicion Score = 0 (GREEN - Normal)
+```
+
+**Scenario B: Proxy Attempt**
+```
+delay_time = 45 seconds → 18.75 points
+wifi_drops = 5/hour → 10 points
+camera_absence = 15 minutes → 7.5 points
+fail_count = 2 → 30 points
+distance = 15 meters → 7.5 points
+timing_variance = 1 second → 10 points
+peer_correlation = 0.9 → 5 points
+─────────────────────────────────
+Suspicion Score = 88.75 (RED - Critical)
+Action: Auto-mark absent + Alert teacher
+```
+
+---
+
+### Random Ring Trigger Conditions
+
+**Manual Trigger (Teacher-Initiated):**
+```
+Teacher presses "Random Ring" button
+├─ Immediate execution
+├─ Teacher selects:
+│  ├─ Number of students (10-50%)
+│  ├─ Specific students (optional)
+│  └─ Verification window (60-180 seconds)
+└─ System executes verification cascade
+```
+
+**AI Behavioral Trigger (Automatic):**
+```
+Machine Learning Model Monitors:
+├─ Attendance patterns
+├─ Time of day
+├─ Day of week
+├─ Historical proxy attempts
+├─ Suspicion scores
+└─ Environmental factors
+
+Trigger Conditions:
+IF (time == high_risk_period) AND (suspicion_score_avg > 30):
+    TRIGGER random_ring
+    SELECT students WITH suspicion_score > 40
+    NOTIFY teacher: "AI detected suspicious pattern"
+
+High-Risk Periods:
+├─ After lunch break (1:30 PM - 2:00 PM)
+├─ Last period of day (3:30 PM - 4:00 PM)
+├─ Monday mornings (9:00 AM - 10:00 AM)
+├─ Friday afternoons (2:00 PM onwards)
+└─ After long holidays
+
+Behavioral Patterns Detected:
+├─ Sudden drop in verification success rate
+├─ Cluster of students failing together
+├─ Unusual WiFi drop patterns
+├─ Consistent late verifications
+└─ Correlation with specific teachers/subjects
+```
+
+---
+
+### Hardware Integration Placeholder Clause
+
+**Future Hardware Compatibility:**
+
+This system may optionally be integrated with wearable devices, proximity sensors, or specialized hardware including but not limited to:
+
+1. **Wearable Devices:**
+   - Smartwatches (Apple Watch, Samsung Galaxy Watch)
+   - Fitness bands (Fitbit, Mi Band)
+   - Smart rings
+   - Biometric wristbands
+
+2. **Proximity Sensors:**
+   - RFID readers
+   - NFC tags
+   - Bluetooth beacons
+   - UWB (Ultra-Wideband) anchors
+
+3. **Environmental Sensors:**
+   - Temperature sensors
+   - Motion detectors
+   - Pressure sensors
+   - Light sensors
+
+4. **Biometric Hardware:**
+   - Fingerprint scanners
+   - Iris scanners
+   - Voice recognition devices
+   - Gait analysis sensors
+
+5. **Communication Devices:**
+   - LoRa modules
+   - Zigbee devices
+   - 5G modules
+   - Satellite communication
+
+**Integration Method:**
+Any such hardware device may serve as:
+- Signal emitter (replacing smartphone speaker)
+- Signal detector (replacing smartphone microphone)
+- Biometric capture device (replacing smartphone camera)
+- Network authentication device (replacing WiFi interface)
+- Relay node (replacing smartphone relay function)
+
+**Legal Protection:**
+This clause reserves the right to integrate with ANY present or future hardware technology that can perform equivalent functions of signal emission, detection, biometric capture, network authentication, or relay propagation, regardless of the specific technology, protocol, or manufacturer.
+
+---
+
+### Comprehensive Infringement Protection Clause
+
+**CRITICAL LEGAL PROTECTION:**
+
+Any attempt to replicate, imitate, or circumvent this system's workflow, verification logic, presence validation method, or cascading propagation mechanism by:
+
+1. **Altering the signal medium** (using visible light, radio waves, magnetic fields, or any other carrier instead of ultrasonic sound)
+
+2. **Modifying the verification sequence** (changing the order of biometric, network, and proximity checks)
+
+3. **Adjusting signal parameters** (using different frequencies, modulation schemes, or encoding methods)
+
+4. **Changing threshold values** (modifying acceptance criteria, timeout durations, or confidence scores)
+
+5. **Substituting verification factors** (replacing face recognition with fingerprint, WiFi with Bluetooth, etc.)
+
+6. **Implementing alternative cascading methods** (using different relay authorization logic, wave propagation patterns, or mesh formation algorithms)
+
+7. **Employing different anomaly detection** (using alternative suspicion scoring, pattern recognition, or flagging mechanisms)
+
+8. **Utilizing varied hardware** (implementing on different devices, platforms, or architectures)
+
+9. **Applying to different domains** (adapting for corporate, government, healthcare, or other sectors beyond education)
+
+10. **Combining with additional technologies** (integrating with AI, blockchain, IoT, or other emerging technologies)
+
+**SHALL STILL CONSTITUTE INFRINGEMENT** of this invention if the fundamental concept of multi-layered cascading verification for unforgeable physical presence proof is maintained.
+
+**Core Protected Concept:**
+The essence of this invention is the combination of:
+- Identity verification (WHO)
+- Location verification (WHERE)
+- Proximity verification (NEAR WHOM)
+- Temporal verification (WHEN)
+- Cascading peer validation (CONFIRMED BY PEERS)
+
+Any system that implements this five-factor verification paradigm, regardless of specific implementation details, falls within the scope of this patent.
 
 ---
 

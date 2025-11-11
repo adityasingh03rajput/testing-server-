@@ -78,13 +78,29 @@ export default function CircularTimer({
 
   // Generate segments from timetable
   useEffect(() => {
-    console.log('CircularTimer - Current Day:', currentDay);
-    console.log('CircularTimer - Timetable:', timetable);
-    console.log('CircularTimer - Schedule for day:', timetable?.schedule?.[currentDay]);
+    console.log('🔄 CircularTimer useEffect triggered');
+    console.log('  - Current Day:', currentDay);
+    console.log('  - Current Day type:', typeof currentDay);
+    console.log('  - Timetable exists:', !!timetable);
+    console.log('  - Timetable.schedule exists:', !!timetable?.schedule);
+    
+    // If timetable hasn't loaded yet, don't set DEFAULT_SEGMENTS
+    // Keep waiting for the timetable to load
+    if (!timetable || !timetable.schedule) {
+      console.log('⏳ Waiting for timetable to load... (not setting defaults)');
+      return;
+    }
+    
+    if (timetable.schedule) {
+      console.log('  - Schedule keys:', Object.keys(timetable.schedule));
+      console.log('  - Looking for key:', currentDay);
+      console.log('  - Key exists:', currentDay in timetable.schedule);
+    }
+    console.log('  - Schedule for day:', timetable.schedule[currentDay]);
 
-    if (timetable?.schedule?.[currentDay]) {
+    if (timetable.schedule[currentDay]) {
       const schedule = timetable.schedule[currentDay];
-      console.log('CircularTimer - Found schedule:', schedule);
+      console.log('✅ CircularTimer - Found schedule with', schedule.length, 'periods');
       if (Array.isArray(schedule) && schedule.length > 0) {
         const angleStep = 360 / schedule.length;
 
@@ -207,7 +223,10 @@ export default function CircularTimer({
         console.log('CircularTimer - Schedule is not an array or empty');
       }
     } else {
-      console.log('CircularTimer - No schedule found for current day, using defaults');
+      console.log('⚠️ CircularTimer - No schedule found for current day:', currentDay);
+      console.log('  Available days:', timetable.schedule ? Object.keys(timetable.schedule) : 'none');
+      console.log('  This might be an old timetable without Sunday support!');
+      console.log('  Using DEFAULT_SEGMENTS as fallback');
       setSegments(DEFAULT_SEGMENTS);
     }
   }, [timetable, currentDay]);

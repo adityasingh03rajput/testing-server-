@@ -20,7 +20,7 @@ export default function FaceVerificationScreen({
   const [cachedPhoto, setCachedPhoto] = useState(null);
   const [countdown, setCountdown] = useState(0);
   const cameraRef = useRef(null);
-  
+
   // Animation values
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -65,42 +65,38 @@ export default function FaceVerificationScreen({
           return;
         }
 
-        // Get user's photo URL from server
-        setVerificationMessage('Loading reference photo...');
+        // Check if user has reference photo on server
+        setVerificationMessage('Checking reference photo...');
         try {
-          const response = await fetch(`https://google-8j5x.onrender.com/api/students`);
+          console.log('🔍 Verifying reference photo exists for:', userId);
+
+          const response = await fetch(
+            `https://google-8j5x.onrender.com/api/student-management?enrollmentNo=${userId}`
+          );
+
           const data = await response.json();
 
-          if (data.success && data.students) {
-            // Try to find by enrollmentNo first, then by _id
-            const student = data.students.find(s => 
-              s.enrollmentNo === userId || s._id === userId
-            );
-            if (student) {
-              if (student.photoUrl) {
-                setCachedPhoto(student.photoUrl);
-                console.log('✅ Got photo URL:', student.photoUrl);
-              } else {
-                console.log('⚠️ Student found but no photo URL:', student);
-                setVerificationMessage('❌ No reference photo found. Please upload your photo in the admin panel first.');
-                setIsInitializing(false);
-                return;
-              }
+          if (data.success && data.student) {
+            if (data.student.photoUrl) {
+              console.log('✅ Reference photo exists on server');
+              // We don't need to download it - server will use it during verification
+              setCachedPhoto('server'); // Just a flag to indicate photo exists
+              setVerificationMessage('Ready! Position your face');
             } else {
-              console.log('⚠️ Student not found with ID:', userId);
-              setVerificationMessage('❌ Student not found. Please check your enrollment number.');
+              console.log('⚠️ No reference photo found');
+              setVerificationMessage('❌ No reference photo found. Please upload your photo in the admin panel first.');
               setIsInitializing(false);
               return;
             }
           } else {
-            console.log('⚠️ Invalid response from server:', data);
-            setVerificationMessage('❌ Could not load student data from server');
+            console.log('⚠️ Student not found:', userId);
+            setVerificationMessage('❌ Student not found. Please check your enrollment number.');
             setIsInitializing(false);
             return;
           }
         } catch (error) {
-          console.log('❌ Error loading reference photo:', error);
-          setVerificationMessage('❌ Network error. Could not load reference photo.');
+          console.log('❌ Error checking reference photo:', error);
+          setVerificationMessage('❌ Network error. Please check your connection.');
           setIsInitializing(false);
           return;
         }
@@ -141,11 +137,13 @@ export default function FaceVerificationScreen({
         base64: false,
       });
 
-      setVerificationMessage('Verifying...');
+      setVerificationMessage('Verifying with server...');
 
+      // Server-side verification - only send captured photo and userId
       const { verifyFaceOffline } = require('./OfflineFaceVerification');
-      const result = await verifyFaceOffline(photo.uri, cachedPhoto, userId);
+      const result = await verifyFaceOffline(photo.uri, null, userId);
 
+      // Clean up captured photo
       try {
         await FileSystem.deleteAsync(photo.uri, { idempotent: true });
       } catch (err) {
@@ -153,13 +151,13 @@ export default function FaceVerificationScreen({
       }
 
       if (result.success && result.match) {
-        setVerificationMessage(`Verified! ${result.confidence}%`);
+        setVerificationMessage(`✅ Verified! ${result.confidence}%`);
         setTimeout(() => {
           onVerificationSuccess(result);
         }, 1000);
       } else {
         const message = result.message || 'Face does not match';
-        setVerificationMessage(message);
+        setVerificationMessage(`❌ ${message}`);
         setTimeout(() => {
           setIsVerifying(false);
           setVerificationMessage('Ready! Position your face');
@@ -168,7 +166,7 @@ export default function FaceVerificationScreen({
       }
     } catch (error) {
       console.error('Error during verification:', error);
-      setVerificationMessage('Verification error. Try again.');
+      setVerificationMessage('❌ Verification error. Try again.');
       setIsVerifying(false);
     }
   };
@@ -220,17 +218,17 @@ export default function FaceVerificationScreen({
             {/* Gradient Overlay */}
             <View style={styles.gradientOverlay}>
               {/* Animated Face Frame */}
-              <Animated.View 
+              <Animated.View
                 style={[
-                  styles.faceFrame, 
-                  { 
+                  styles.faceFrame,
+                  {
                     transform: [{ scale: isVerifying ? 1 : pulseAnim }],
                     borderColor: isVerifying ? '#00ff88' : '#fff',
                     shadowColor: isVerifying ? '#00ff88' : '#fff',
                   }
-                ]} 
+                ]}
               />
-              
+
               {/* Countdown */}
               {countdown > 0 && (
                 <View style={styles.countdownContainer}>
@@ -249,19 +247,7 @@ export default function FaceVerificationScreen({
           </CameraView>
         </View>
 
-        {/* Reference Photo Badge */}
-        {cachedPhoto && (
-          <View style={styles.referenceBadge}>
-            <Image
-              source={{ uri: cachedPhoto }}
-              style={styles.referenceImage}
-              resizeMode="cover"
-            />
-            <View style={styles.referenceBadgeOverlay}>
-              <Text style={styles.referenceBadgeText}>Reference</Text>
-            </View>
-          </View>
-        )}
+        {/* Reference photo is securely stored on server - not displayed here */}
       </View>
 
       {/* Status Card */}
@@ -289,7 +275,7 @@ export default function FaceVerificationScreen({
           disabled={isInitializing || isVerifying || !cachedPhoto}
           style={[
             styles.verifyButton,
-            { 
+            {
               backgroundColor: (!isInitializing && !isVerifying && cachedPhoto) ? theme.primary : '#666',
               opacity: (!isInitializing && !isVerifying && cachedPhoto) ? 1 : 0.5,
             }
