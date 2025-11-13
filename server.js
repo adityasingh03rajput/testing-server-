@@ -1179,14 +1179,10 @@ app.post('/api/verify-face', async (req, res) => {
             });
         }
 
-        // Use face-api.js for verification with caching
-        console.log('🤖 Using OPTIMIZED face-api.js...');
+        // Use face-api.js for verification
+        console.log('🤖 Using face-api.js for verification...');
 
-        const result = await faceApiService.compareFaces(
-            capturedImage, 
-            referenceImageBase64,
-            user.enrollmentNo // Pass enrollmentNo for caching
-        );
+        const result = await faceApiService.compareFaces(capturedImage, referenceImageBase64);
         const verificationTime = Date.now() - startTime;
 
         if (!result.success) {
@@ -2130,36 +2126,6 @@ server.listen(PORT, '0.0.0.0', async () => {
     console.log(`🔍 Face Verify: http://localhost:${PORT}/api/verify-face`);
     console.log(`⏰ Time Sync: http://localhost:${PORT}/api/time`);
     console.log(`💾 Database: ${mongoose.connection.readyState === 1 ? 'MongoDB Atlas' : 'In-Memory'}`);
-    console.log('========================================');
-
-    // 🚀 PRE-CACHE FACE DESCRIPTORS FOR FASTER VERIFICATION
-    if (mongoose.connection.readyState === 1) {
-        try {
-            console.log('🔄 Pre-caching student face descriptors...');
-            const students = await StudentManagement.find({ photoUrl: { $exists: true, $ne: '' } });
-            if (students.length > 0) {
-                await faceApiService.preloadDescriptors(students);
-                console.log(`✅ ${students.length} descriptors cached - verification will be 10x faster!`);
-            }
-        } catch (err) {
-            console.log('⚠️ Could not pre-cache descriptors:', err.message);
-        }
-    }
-    console.log('========================================');
-
-    // 🚀 PRE-CACHE FACE DESCRIPTORS FOR FASTER VERIFICATION
-    if (mongoose.connection.readyState === 1) {
-        try {
-            console.log('🔄 Pre-caching student face descriptors...');
-            const students = await StudentManagement.find({ photoUrl: { $exists: true, $ne: '' } });
-            if (students.length > 0) {
-                await faceApiService.preloadDescriptors(students);
-                console.log(`✅ ${students.length} descriptors cached - verification will be 10x faster!`);
-            }
-        } catch (err) {
-            console.log('⚠️ Could not pre-cache descriptors:', err.message);
-        }
-    }
     console.log('========================================');
 
     // Display server IP addresses
