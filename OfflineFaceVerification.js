@@ -1,48 +1,50 @@
+/**
+ * Face Verification Service
+ * Server-side face verification with optimized performance
+ */
+
 import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
 
-/**
- * SERVER-SIDE FACE VERIFICATION (Optimized)
- * 
- * Security Measures:
- * 1. All verification happens on server (secure)
- * 2. Only sends compressed image (reduced bandwidth)
- * 3. Server fetches reference photo from database
- * 4. No client-side models needed (faster app startup)
- */
-
 const API_URL = 'https://google-8j5x.onrender.com';
 
-// Initialize - no-op for server-side verification
+/**
+ * Initialize face verification (no-op for server-side)
+ */
 export const initializeFaceAPI = async () => {
-    console.log('✅ Using server-side face verification');
+    console.log('✅ Face verification ready (server-side)');
     return true;
 };
 
-// Main verification function - SERVER-SIDE (Optimized)
+/**
+ * Verify face against server
+ * @param {string} capturedImageUri - URI of captured photo
+ * @param {string} _referenceImageUri - Not used (server fetches from DB)
+ * @param {string} userId - User ID or enrollment number
+ * @returns {Promise<Object>} Verification result
+ */
 export const verifyFaceOffline = async (capturedImageUri, _referenceImageUri, userId) => {
     try {
-        console.log('🔍 Starting server-side face verification...');
-        console.log('User ID:', userId);
+        console.log('🔍 Starting face verification for:', userId);
 
-        // Compress image to reduce upload size (640px width, 70% quality)
+        // Compress image (640px width, 70% quality = ~50KB)
         const compressed = await ImageManipulator.manipulateAsync(
             capturedImageUri,
             [{ resize: { width: 640 } }],
             { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
         );
 
-        // Read compressed image as base64
+        // Read as base64
         const capturedBase64 = await FileSystem.readAsStringAsync(compressed.uri, {
             encoding: FileSystem.EncodingType.Base64,
         });
 
-        console.log('📤 Sending to server (size:', Math.round(capturedBase64.length / 1024), 'KB)');
+        console.log(`📤 Uploading ${Math.round(capturedBase64.length / 1024)}KB to server`);
 
-        // Delete temporary compressed file
+        // Clean up temp file
         await FileSystem.deleteAsync(compressed.uri, { idempotent: true });
 
-        // Send to server for verification
+        // Send to server
         const response = await fetch(`${API_URL}/api/verify-face`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -57,7 +59,7 @@ export const verifyFaceOffline = async (capturedImageUri, _referenceImageUri, us
         }
 
         const result = await response.json();
-        console.log('✅ Server response:', result.message);
+        console.log('✅ Verification complete:', result.match ? 'MATCH' : 'NO MATCH');
 
         return {
             success: result.success,
@@ -71,10 +73,12 @@ export const verifyFaceOffline = async (capturedImageUri, _referenceImageUri, us
             success: false,
             match: false,
             confidence: 0,
-            message: 'Verification error: ' + error.message
+            message: 'Verification failed: ' + error.message
         };
     }
 };
 
-// Check if models are loaded (always true for server-side)
+/**
+ * Check if models are loaded (always true for server-side)
+ */
 export const areModelsLoaded = () => true;

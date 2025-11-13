@@ -65,28 +65,9 @@ export default function FaceVerificationScreen({
           return;
         }
 
-        // Download face descriptor for client-side verification
-        setVerificationMessage('Downloading face data...');
-        try {
-          console.log('📥 Downloading face descriptor for:', userId);
-
-          const { downloadFaceDescriptor } = require('./OfflineFaceVerification');
-          const downloaded = await downloadFaceDescriptor(userId);
-
-          if (downloaded) {
-            console.log('✅ Face descriptor downloaded and cached');
-            setCachedPhoto('cached'); // Descriptor is cached
-            setVerificationMessage('Ready! Position your face');
-          } else {
-            console.log('⚠️ Could not download face descriptor');
-            setVerificationMessage('⚠️ No face data found. Upload photo in admin panel first.');
-            setCachedPhoto(null);
-          }
-        } catch (error) {
-          console.log('❌ Error downloading face descriptor:', error);
-          setVerificationMessage('⚠️ Could not download face data. Check connection.');
-          setCachedPhoto(null);
-        }
+        // Server-side verification - no need to download descriptor
+        setVerificationMessage('Ready! Position your face');
+        setCachedPhoto('ready'); // Server will handle verification
 
         setIsInitializing(false);
       } catch (error) {

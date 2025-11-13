@@ -18,6 +18,7 @@ import LanyardCard from './LanyardCard';
 import CircularTimer from './CircularTimer';
 import { SunIcon, MoonIcon, LogoutIcon, RefreshIcon } from './Icons';
 import { initializeServerTime, getServerTime } from './ServerTime';
+import FloatingBrandButton from './FloatingBrandButton';
 
 const API_URL = 'https://google-8j5x.onrender.com/api/config';
 const SOCKET_URL = 'https://google-8j5x.onrender.com';
@@ -30,6 +31,7 @@ const BRANCH_KEY = '@user_branch';
 const USER_DATA_KEY = '@user_data';
 const LOGIN_ID_KEY = '@login_id';
 const THEME_KEY = '@app_theme';
+const DAILY_VERIFICATION_KEY = '@daily_verification';
 
 // Theme colors
 const THEMES = {
@@ -102,7 +104,7 @@ export default function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [students, setStudents] = useState([]);
   const [semester, setSemester] = useState('1');
-  const [branch, setBranch] = useState('CSE');
+  const [branch, setBranch] = useState('letsbunk enters');
 
   // Teacher-specific timetable states
   const [showTimetable, setShowTimetable] = useState(false);
@@ -279,6 +281,11 @@ export default function App() {
           setIsFaceVerified(false);
           setIsRunning(false);
           lastDate = currentDate;
+          
+          // Clear saved verification state
+          AsyncStorage.removeItem(DAILY_VERIFICATION_KEY).catch(err => 
+            console.log('Error clearing verification:', err)
+          );
         }
       } catch (error) {
         console.warn('⚠️ Server time not available, using device time');
@@ -294,6 +301,11 @@ export default function App() {
           setIsFaceVerified(false);
           setIsRunning(false);
           lastDate = currentDate;
+          
+          // Clear saved verification state
+          AsyncStorage.removeItem(DAILY_VERIFICATION_KEY).catch(err => 
+            console.log('Error clearing verification:', err)
+          );
         }
       }
     };
@@ -655,11 +667,12 @@ export default function App() {
   const loadConfig = async () => {
     try {
       // Load all data in parallel for better performance
-      const [savedTheme, cachedUserData, cachedLoginId, cachedConfig] = await Promise.all([
+      const [savedTheme, cachedUserData, cachedLoginId, cachedConfig, dailyVerification] = await Promise.all([
         AsyncStorage.getItem(THEME_KEY),
         AsyncStorage.getItem(USER_DATA_KEY),
         AsyncStorage.getItem(LOGIN_ID_KEY),
-        AsyncStorage.getItem(CACHE_KEY)
+        AsyncStorage.getItem(CACHE_KEY),
+        AsyncStorage.getItem(DAILY_VERIFICATION_KEY)
       ]);
 
       // Load theme preference
@@ -682,6 +695,37 @@ export default function App() {
             setStudentId(userData.enrollmentNo || userData._id);
             setSemester(userData.semester);
             setBranch(userData.course);
+
+            // Check if face verification is still valid for today
+            if (dailyVerification) {
+              try {
+                const verificationData = JSON.parse(dailyVerification);
+                const serverTime = getServerTime();
+                const today = new Date(serverTime.now()).toDateString();
+                
+                // If verified today and same student, restore verification state
+                if (verificationData.date === today && 
+                    verificationData.verified && 
+                    verificationData.studentId === (userData.enrollmentNo || userData._id)) {
+                  console.log('✅ Restoring verification state from today');
+                  setIsFaceVerified(true);
+                  setVerifiedToday(true);
+                  
+                  // Auto-start timer
+                  setTimeout(() => {
+                    setIsRunning(true);
+                    console.log('▶️ Timer auto-started from saved verification');
+                  }, 1000);
+                } else {
+                  // Verification expired or different student
+                  console.log('🔄 Verification expired or different student');
+                  await AsyncStorage.removeItem(DAILY_VERIFICATION_KEY);
+                }
+              } catch (parseError) {
+                console.log('Error parsing verification data:', parseError);
+                await AsyncStorage.removeItem(DAILY_VERIFICATION_KEY);
+              }
+            }
           } else if (userData.role === 'teacher') {
             setSemester(userData.semester || '1');
             setBranch(userData.department);
@@ -1080,6 +1124,22 @@ export default function App() {
     setVerifiedToday(true); // Mark as verified for the entire day
     setShowFaceVerification(false);
 
+    // Save verification state with today's date
+    try {
+      const serverTime = getServerTime();
+      const today = new Date(serverTime.now()).toDateString();
+      const verificationData = {
+        date: today,
+        verified: true,
+        studentId: studentId,
+        timestamp: serverTime.now()
+      };
+      await AsyncStorage.setItem(DAILY_VERIFICATION_KEY, JSON.stringify(verificationData));
+      console.log('💾 Saved daily verification state');
+    } catch (error) {
+      console.log('Error saving verification state:', error);
+    }
+
     // Mark verification for current class
     if (currentClassInfo) {
       try {
@@ -1100,7 +1160,7 @@ export default function App() {
       console.log('Error activating keep awake:', error);
     }
 
-    // Auto-start timer after verification
+    // Auto-start timer after verification and keep it running
     setTimeout(() => {
       setIsRunning(true);
       updateTimerOnServer(timeLeft, true);
@@ -1659,7 +1719,8 @@ export default function App() {
         STUDENT_NAME_KEY,
         STUDENT_ID_KEY,
         USER_DATA_KEY,
-        LOGIN_ID_KEY
+        LOGIN_ID_KEY,
+        DAILY_VERIFICATION_KEY
       ]);
     } catch (error) {
       console.log('Error clearing storage:', error);
@@ -1743,13 +1804,10 @@ export default function App() {
                   {userData?.department || ''} Department
                 </Text>
               </View>
-              <TouchableOpacity onPress={toggleTheme} style={{ padding: 8, marginRight: 8 }}>
+              <TouchableOpacity onPress={toggleTheme} style={{ padding: 8 }}>
                 <Text style={{ fontSize: 20 }}>
                   {themeMode === 'system' ? '🔄' : isDarkTheme ? '☀️' : '🌙'}
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleLogout} style={{ padding: 8 }}>
-                <Text style={{ fontSize: 20 }}>🚪</Text>
               </TouchableOpacity>
             </View>
 
@@ -2219,24 +2277,7 @@ export default function App() {
 
                   {/* Actions */}
                   <View style={{ padding: 20 }}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setShowProfile(false);
-                        setTimeout(() => handleLogout(), 300);
-                      }}
-                      activeOpacity={0.8}
-                      style={{
-                        backgroundColor: isDarkTheme ? '#ff4444' : '#dc2626',
-                        paddingVertical: 15,
-                        paddingHorizontal: 30,
-                        borderRadius: 12,
-                        alignItems: 'center',
-                      }}
-                    >
-                      <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: 'bold' }}>
-                        🚪 Logout
-                      </Text>
-                    </TouchableOpacity>
+
                   </View>
                 </ScrollView>
               </Animated.View>
@@ -2560,59 +2601,64 @@ export default function App() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <StatusBar style={theme.statusBar} />
-      {/* Profile Picture - Shows Lanyard */}
-      <View style={{ position: 'absolute', top: 50, left: 20, zIndex: 10 }}>
-        <TouchableOpacity onPress={() => setShowLanyard(true)} activeOpacity={0.8}>
-          <View style={{
-            width: 50,
-            height: 50,
-            borderRadius: 25,
-            backgroundColor: theme.primary,
-            justifyContent: 'center',
-            alignItems: 'center',
-            borderWidth: 2,
-            borderColor: theme.border,
-            overflow: 'hidden',
-          }}>
-            {userData?.photoUrl ? (
-              <Image
-                source={{ uri: userData.photoUrl }}
-                style={{ width: '100%', height: '100%' }}
-                resizeMode="cover"
-                onError={(e) => {
-                  console.log('❌ Failed to load student photo:', userData.photoUrl);
-                  console.log('Error:', e.nativeEvent.error);
-                }}
-                onLoad={() => console.log('✅ Student photo loaded:', userData.photoUrl)}
-              />
-            ) : (
-              <Text style={{ fontSize: 20, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
-                {getInitials(studentName || 'Student')}
-              </Text>
-            )}
-          </View>
-        </TouchableOpacity>
-      </View>
-      <View style={{ position: 'absolute', top: 50, right: 20, zIndex: 10, flexDirection: 'row', gap: 10 }}>
-        <TouchableOpacity onPress={toggleTheme} style={[styles.iconButton, { backgroundColor: '#fbbf24' }]}>
-          {themeMode === 'system' ? (
-            <RefreshIcon size={20} color="#fff" />
-          ) : isDarkTheme ? (
-            <SunIcon size={20} color="#fff" />
-          ) : (
-            <MoonIcon size={20} color="#fff" />
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleLogout} style={[styles.iconButton, { backgroundColor: '#ef4444' }]}>
-          <LogoutIcon size={20} color="#fff" />
-        </TouchableOpacity>
-      </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingTop: 120, paddingBottom: 110, paddingHorizontal: 20, alignItems: 'center' }}
+        contentContainerStyle={{ paddingTop: 20, paddingBottom: 110, paddingHorizontal: 20, alignItems: 'center' }}
         showsVerticalScrollIndicator={false}
         style={{ flex: 1 }}
       >
+        {/* Header with Profile and Theme Toggle */}
+        <View style={{ 
+          width: '100%', 
+          flexDirection: 'row', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          marginBottom: 20,
+          paddingTop: 30,
+        }}>
+          {/* Profile Picture - Shows Lanyard */}
+          <TouchableOpacity onPress={() => setShowLanyard(true)} activeOpacity={0.8}>
+            <View style={{
+              width: 50,
+              height: 50,
+              borderRadius: 25,
+              backgroundColor: theme.primary,
+              justifyContent: 'center',
+              alignItems: 'center',
+              borderWidth: 2,
+              borderColor: theme.border,
+              overflow: 'hidden',
+            }}>
+              {userData?.photoUrl ? (
+                <Image
+                  source={{ uri: userData.photoUrl }}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode="cover"
+                  onError={(e) => {
+                    console.log('❌ Failed to load student photo:', userData.photoUrl);
+                    console.log('Error:', e.nativeEvent.error);
+                  }}
+                  onLoad={() => console.log('✅ Student photo loaded:', userData.photoUrl)}
+                />
+              ) : (
+                <Text style={{ fontSize: 20, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
+                  {getInitials(studentName || 'Student')}
+                </Text>
+              )}
+            </View>
+          </TouchableOpacity>
+
+          {/* Theme Toggle */}
+          <TouchableOpacity onPress={toggleTheme} style={[styles.iconButton, { backgroundColor: '#fbbf24' }]}>
+            {themeMode === 'system' ? (
+              <RefreshIcon size={20} color="#fff" />
+            ) : isDarkTheme ? (
+              <SunIcon size={20} color="#fff" />
+            ) : (
+              <MoonIcon size={20} color="#fff" />
+            )}
+          </TouchableOpacity>
+        </View>
 
         {/* Title */}
         <Text style={{
@@ -2900,39 +2946,7 @@ export default function App() {
           );
         })()}
 
-        {/* Quick Stats */}
-        <View style={{
-          marginTop: 5,
-          width: '100%',
-          maxWidth: 400,
-          backgroundColor: theme.cardBackground,
-          borderRadius: 12,
-          padding: 14,
-          borderWidth: 2,
-          borderColor: theme.border,
-        }}>
-          <Text style={{ color: theme.primary, fontSize: 14, fontWeight: 'bold', marginBottom: 10 }}>
-            📊 Session Info
-          </Text>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 7 }}>
-            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>Total Duration:</Text>
-            <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600' }}>
-              {formatTime(config?.studentScreen?.timer?.duration || 120)}
-            </Text>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 7 }}>
-            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>Time Remaining:</Text>
-            <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600' }}>
-              {formatTime(timeLeft)}
-            </Text>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>Progress:</Text>
-            <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600' }}>
-              {Math.round(((config?.studentScreen?.timer?.duration || 120) - timeLeft) / (config?.studentScreen?.timer?.duration || 120) * 100)}%
-            </Text>
-          </View>
-        </View>
+
       </ScrollView>
 
       {/* Profile Modal */}
@@ -3031,24 +3045,7 @@ export default function App() {
 
                 {/* Actions */}
                 <View style={{ padding: 20 }}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setShowProfile(false);
-                      setTimeout(() => handleLogout(), 300);
-                    }}
-                    activeOpacity={0.8}
-                    style={{
-                      backgroundColor: isDarkTheme ? '#ff4444' : '#dc2626',
-                      paddingVertical: 15,
-                      paddingHorizontal: 30,
-                      borderRadius: 12,
-                      alignItems: 'center',
-                    }}
-                  >
-                    <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: 'bold' }}>
-                      🚪 Logout
-                    </Text>
-                  </TouchableOpacity>
+
                 </View>
               </ScrollView>
             </Animated.View>
@@ -3085,6 +3082,11 @@ export default function App() {
           setTimeout(() => setShowProfile(true), 300);
         }}
       />
+
+      {/* Floating Brand Button - Only on Home tab */}
+      {activeTab === 'home' && (
+        <FloatingBrandButton theme={{ ...theme, isDark: isDarkTheme }} />
+      )}
 
       {/* Bottom Navigation */}
       <BottomNavigation
