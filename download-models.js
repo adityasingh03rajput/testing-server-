@@ -16,9 +16,9 @@ const MODELS = [
     'tiny_face_detector_model-weights_manifest.json',
     'tiny_face_detector_model-shard1',
     
-    // Face Landmark 68 (full model - more accurate)
-    'face_landmark_68_model-weights_manifest.json',
-    'face_landmark_68_model-shard1',
+    // Face Landmark 68 Tiny (lightweight)
+    'face_landmark_68_tiny_model-weights_manifest.json',
+    'face_landmark_68_tiny_model-shard1',
     
     // Face Recognition - Face descriptors
     'face_recognition_model-weights_manifest.json',
