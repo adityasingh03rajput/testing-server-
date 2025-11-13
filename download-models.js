@@ -9,6 +9,7 @@ const path = require('path');
 
 const MODEL_BASE_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/';
 const MODEL_DIR = path.join(__dirname, 'models');
+const SERVER_MODEL_DIR = path.join(__dirname, 'server', 'models');
 
 const MODELS = [
     // Tiny Face Detector (lightweight and fast)
@@ -25,20 +26,25 @@ const MODELS = [
     'face_recognition_model-shard2'
 ];
 
-// Create models directory
+// Create models directories
 if (!fs.existsSync(MODEL_DIR)) {
     fs.mkdirSync(MODEL_DIR, { recursive: true });
     console.log('📁 Created models directory');
 }
+if (!fs.existsSync(SERVER_MODEL_DIR)) {
+    fs.mkdirSync(SERVER_MODEL_DIR, { recursive: true });
+    console.log('📁 Created server/models directory');
+}
 
-// Download a single file
+// Download a single file to both directories
 function downloadFile(filename) {
     return new Promise((resolve, reject) => {
         const url = MODEL_BASE_URL + filename;
         const filepath = path.join(MODEL_DIR, filename);
+        const serverFilepath = path.join(SERVER_MODEL_DIR, filename);
 
-        // Check if file already exists
-        if (fs.existsSync(filepath)) {
+        // Check if file already exists in server/models
+        if (fs.existsSync(serverFilepath)) {
             console.log(`✅ ${filename} (already exists)`);
             resolve();
             return;
@@ -58,7 +64,10 @@ function downloadFile(filename) {
 
             file.on('finish', () => {
                 file.close();
-                console.log(`✅ ${filename}`);
+                
+                // Copy to server/models directory
+                fs.copyFileSync(filepath, serverFilepath);
+                console.log(`✅ ${filename} (saved to both directories)`);
                 resolve();
             });
         }).on('error', (err) => {
