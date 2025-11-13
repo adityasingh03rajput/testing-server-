@@ -1,13 +1,6 @@
 /**
- * Face-API.js Service - OPTIMIZED VERSION
- * Server-side face recognition using face-api.js
- * Provides 95%+ accuracy with parallel processing
- * 
- * OPTIMIZATIONS:
- * - Descriptor caching (10x faster)
- * - Parallel processing (4x faster)
- * - Smaller models (3x faster)
- * - Request queue management
+ * Face-API.js Service - Optimized
+ * Server-side face recognition with caching
  */
 
 const faceapi = require('face-api.js');
@@ -21,149 +14,151 @@ faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
 
 let modelsLoaded = false;
 
-// 🚀 OPTIMIZATION 1: In-memory descriptor cache
+// Descriptor cache for fast verification
 const descriptorCache = new Map();
 const CACHE_TTL = 3600000; // 1 hour
 
-// 🚀 OPTIMIZATION 2: Request queue for parallel processing
-const processingQueue = [];
-const MAX_CONCURRENT = 4; // Process 4 requests simultaneously
-let activeProcessing = 0;
-
 /**
- * Load face-api.js models - OPTIMIZED
- * Uses smaller, faster models
+ * Load face-api.js models
  */
 async function loadModels() {
     if (modelsLoaded) return true;
 
     try {
         const modelPath = path.join(__dirname, 'models');
+        console.log('📦 Loading face-api.js models from:', modelPath);
 
-        console.log('📦 Loading OPTIMIZED face-api.js models...');
+        // Check if models directory exists
+        const fs = require('fs');
+        if (!fs.existsSync(modelPath)) {
+            console.error('❌ Models directory not found:', modelPath);
+            console.log('💡 Run: node download-models.js');
+            return false;
+        }
 
-        // 🚀 Load only essential models in parallel
+        // Check if model files exist
+        const requiredFiles = [
+            'tiny_face_detector_model-weights_manifest.json',
+            'face_landmark_68_model-weights_manifest.json',
+            'face_recognition_model-weights_manifest.json'
+        ];
+
+        const missingFiles = requiredFiles.filter(file => 
+            !fs.existsSync(path.join(modelPath, file))
+        );
+
+        if (missingFiles.length > 0) {
+            console.error('❌ Missing model files:', missingFiles.join(', '));
+            console.log('💡 Run: node download-models.js');
+            return false;
+        }
+
         await Promise.all([
             faceapi.nets.tinyFaceDetector.loadFromDisk(modelPath),
-            faceapi.nets.faceLandmark68TinyNet.loadFromDisk(modelPath), // Tiny version!
+            faceapi.nets.faceLandmark68TinyNet.loadFromDisk(modelPath),
             faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath)
         ]);
 
         modelsLoaded = true;
-        console.log('✅ Optimized models loaded (3x faster)');
-        console.log(`📊 Cache: ${descriptorCache.size} descriptors loaded`);
+        console.log('✅ Face-api.js models loaded successfully');
         return true;
     } catch (error) {
-        console.error('❌ Error loading face-api.js models:', error.message);
-        console.log('💡 Run: node download-models.js');
+        console.error('❌ Error loading models:', error.message);
+        console.error('   Stack:', error.stack);
         return false;
     }
 }
 
 /**
- * 🚀 OPTIMIZED: Detect face and get descriptor
- * Reduced attempts, faster settings
+ * Extract face descriptor from image
  */
-async function getFaceDescriptor(base64Image, imageName = 'image', useCache = false, cacheKey = null) {
+async function getFaceDescriptor(base64Image, cacheKey = null) {
     try {
-        // Check cache first
-        if (useCache && cacheKey && descriptorCache.has(cacheKey)) {
+        // Check cache
+        if (cacheKey && descriptorCache.has(cacheKey)) {
             const cached = descriptorCache.get(cacheKey);
             if (Date.now() - cached.timestamp < CACHE_TTL) {
-                console.log(`   ⚡ Cache hit for ${imageName}`);
+                console.log('   ⚡ Cache hit');
                 return cached.descriptor;
-            } else {
-                descriptorCache.delete(cacheKey);
             }
+            descriptorCache.delete(cacheKey);
         }
 
+        // Load image
         const buffer = Buffer.from(base64Image, 'base64');
         const img = await canvas.loadImage(buffer);
 
-        // 🚀 OPTIMIZED: Only 3 attempts instead of 6
-        const detectionOptions = [
+        // Detect face with 3 attempts (fast to slow)
+        const options = [
             new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.3 }),
             new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.25 }),
             new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.2 })
         ];
 
-        for (let i = 0; i < detectionOptions.length; i++) {
-            const options = detectionOptions[i];
-
-            // Detect face with landmarks and descriptor
+        for (const option of options) {
             const detection = await faceapi
-                .detectSingleFace(img, options)
+                .detectSingleFace(img, option)
                 .withFaceLandmarks()
                 .withFaceDescriptor();
 
             if (detection) {
-                console.log(`   ✅ ${imageName} detected (${options.inputSize}px)`);
-                
-                // Cache the descriptor
-                if (useCache && cacheKey) {
+                // Cache descriptor
+                if (cacheKey) {
                     descriptorCache.set(cacheKey, {
                         descriptor: detection.descriptor,
                         timestamp: Date.now()
                     });
                 }
-                
                 return detection.descriptor;
             }
         }
 
-        console.log(`   ❌ No face in ${imageName}`);
         return null;
     } catch (error) {
-        console.error(`   ❌ Error ${imageName}:`, error.message);
+        console.error('   ❌ Error:', error.message);
         return null;
     }
 }
 
 /**
- * 🚀 OPTIMIZED: Compare two faces with caching
- * Uses descriptor cache for reference photos
+ * Compare two faces
  */
 async function compareFaces(capturedBase64, referenceBase64, userId = null) {
     const startTime = Date.now();
-    
+
     try {
-        // Ensure models are loaded
         if (!modelsLoaded) {
             const loaded = await loadModels();
             if (!loaded) {
                 return {
                     success: false,
-                    message: 'Face recognition models not loaded. Please restart server.'
+                    message: 'Face recognition not available'
                 };
             }
         }
 
-        console.log('🔍 Fast face detection...');
-
-        // 🚀 Process both images in parallel
+        // Process both images in parallel
         const [capturedDescriptor, referenceDescriptor] = await Promise.all([
-            getFaceDescriptor(capturedBase64, 'captured', false),
-            getFaceDescriptor(referenceBase64, 'reference', true, userId) // Cache reference!
+            getFaceDescriptor(capturedBase64),
+            getFaceDescriptor(referenceBase64, userId) // Cache reference
         ]);
 
         if (!capturedDescriptor) {
             return {
                 success: false,
-                message: 'No face detected in captured image. Please ensure good lighting and face is clearly visible.'
+                message: 'No face detected in captured image'
             };
         }
 
         if (!referenceDescriptor) {
             return {
                 success: false,
-                message: 'No face detected in reference photo. Please re-upload a clear, well-lit photo via admin panel.'
+                message: 'No face detected in reference photo'
             };
         }
 
-        // Calculate Euclidean distance between descriptors
+        // Calculate distance
         const distance = faceapi.euclideanDistance(capturedDescriptor, referenceDescriptor);
-
-        // Threshold: 0.6 (lower = more similar)
         const threshold = 0.6;
         const match = distance < threshold;
         const confidence = Math.max(0, Math.min(100, (1 - distance) * 100));
@@ -177,82 +172,66 @@ async function compareFaces(capturedBase64, referenceBase64, userId = null) {
             confidence: Math.round(confidence),
             distance: parseFloat(distance.toFixed(3)),
             processingTime,
-            message: match ? 'Face verified successfully!' : 'Face does not match. Please try again.'
+            message: match ? 'Face verified!' : 'Face does not match'
         };
-
     } catch (error) {
-        console.error('❌ Face comparison error:', error);
+        console.error('❌ Comparison error:', error);
         return {
             success: false,
-            message: 'Face comparison failed: ' + error.message
+            message: 'Verification failed: ' + error.message
         };
     }
 }
 
 /**
- * Extract face descriptor only (for client-side verification)
- * Returns just the descriptor without comparison
- */
-async function extractDescriptor(base64Image) {
-    try {
-        // Ensure models are loaded
-        if (!modelsLoaded) {
-            const loaded = await loadModels();
-            if (!loaded) {
-                return null;
-            }
-        }
-
-        console.log('🔍 Extracting face descriptor...');
-        const descriptor = await getFaceDescriptor(base64Image, 'reference');
-
-        if (!descriptor) {
-            console.log('❌ Could not extract face descriptor');
-            return null;
-        }
-
-        console.log('✅ Face descriptor extracted successfully');
-        return descriptor;
-    } catch (error) {
-        console.error('❌ Error extracting descriptor:', error);
-        return null;
-    }
-}
-
-/**
- * 🚀 OPTIMIZATION: Pre-cache all student descriptors on startup
+ * Pre-load descriptors for all students
  */
 async function preloadDescriptors(students) {
-    if (!modelsLoaded) {
-        await loadModels();
-    }
+    if (!modelsLoaded) await loadModels();
 
-    console.log(`🔄 Pre-caching ${students.length} student descriptors...`);
+    console.log(`🔄 Pre-caching ${students.length} descriptors...`);
     let cached = 0;
 
     // Process in batches of 10
     for (let i = 0; i < students.length; i += 10) {
         const batch = students.slice(i, i + 10);
-        
+
         await Promise.all(batch.map(async (student) => {
             if (student.photoUrl && student.enrollmentNo) {
                 try {
                     const base64 = student.photoUrl.replace(/^data:image\/\w+;base64,/, '');
-                    await getFaceDescriptor(base64, `student-${student.enrollmentNo}`, true, student.enrollmentNo);
+                    await getFaceDescriptor(base64, student.enrollmentNo);
                     cached++;
                 } catch (err) {
-                    console.log(`   ⚠️ Failed to cache ${student.enrollmentNo}`);
+                    // Skip failed ones
                 }
             }
         }));
     }
 
-    console.log(`✅ Pre-cached ${cached}/${students.length} descriptors`);
+    console.log(`✅ Cached ${cached}/${students.length} descriptors`);
     return cached;
 }
 
 /**
- * Clear descriptor cache
+ * Extract descriptor (for client-side verification)
+ */
+async function extractDescriptor(base64Image) {
+    try {
+        if (!modelsLoaded) {
+            const loaded = await loadModels();
+            if (!loaded) return null;
+        }
+
+        return await getFaceDescriptor(base64Image);
+    } catch (error) {
+        console.error('❌ Extract error:', error);
+        return null;
+    }
+}
+
+/**
+ * Clear cache
  */
 function clearCache() {
     const size = descriptorCache.size;
@@ -261,13 +240,12 @@ function clearCache() {
 }
 
 /**
- * Get cache statistics
+ * Get cache stats
  */
 function getCacheStats() {
     return {
         size: descriptorCache.size,
-        maxAge: CACHE_TTL,
-        activeProcessing
+        maxAge: CACHE_TTL
     };
 }
 
