@@ -55,7 +55,7 @@ async function loadModels() {
 
         await Promise.all([
             faceapi.nets.tinyFaceDetector.loadFromDisk(modelPath),
-            faceapi.nets.faceLandmark68TinyNet.loadFromDisk(modelPath),
+            faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath),
             faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath)
         ]);
 

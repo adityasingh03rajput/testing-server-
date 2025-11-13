@@ -16,7 +16,7 @@ const MODELS = [
     'tiny_face_detector_model-weights_manifest.json',
     'tiny_face_detector_model-shard1',
     
-    // Face Landmark 68 - Facial landmarks
+    // Face Landmark 68 (full model - more accurate)
     'face_landmark_68_model-weights_manifest.json',
     'face_landmark_68_model-shard1',
     
