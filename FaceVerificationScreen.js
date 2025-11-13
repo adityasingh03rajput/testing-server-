@@ -71,7 +71,8 @@ export default function FaceVerificationScreen({
           console.log('🔍 Verifying reference photo exists for:', userId);
 
           const response = await fetch(
-            `https://google-8j5x.onrender.com/api/student-management?enrollmentNo=${userId}`
+            `https://google-8j5x.onrender.com/api/student-management?enrollmentNo=${userId}`,
+            { timeout: 10000 }
           );
 
           const data = await response.json();
@@ -84,21 +85,21 @@ export default function FaceVerificationScreen({
               setVerificationMessage('Ready! Position your face');
             } else {
               console.log('⚠️ No reference photo found');
-              setVerificationMessage('❌ No reference photo found. Please upload your photo in the admin panel first.');
-              setIsInitializing(false);
-              return;
+              setVerificationMessage('⚠️ No reference photo found. Upload photo in admin panel first.');
+              // Still allow verification - server will give proper error
+              setCachedPhoto('server');
             }
           } else {
             console.log('⚠️ Student not found:', userId);
-            setVerificationMessage('❌ Student not found. Please check your enrollment number.');
-            setIsInitializing(false);
-            return;
+            setVerificationMessage('⚠️ Student not found. Server will verify during capture.');
+            // Still allow verification - server will give proper error
+            setCachedPhoto('server');
           }
         } catch (error) {
           console.log('❌ Error checking reference photo:', error);
-          setVerificationMessage('❌ Network error. Please check your connection.');
-          setIsInitializing(false);
-          return;
+          setVerificationMessage('⚠️ Could not verify photo. You can still try verification.');
+          // Allow verification anyway - server will handle it
+          setCachedPhoto('server');
         }
 
         setVerificationMessage('Ready! Position your face');
