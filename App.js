@@ -18,6 +18,7 @@ import LanyardCard from './LanyardCard';
 import CircularTimer from './CircularTimer';
 import { SunIcon, MoonIcon, LogoutIcon, RefreshIcon } from './Icons';
 import { initializeServerTime, getServerTime } from './ServerTime';
+import FluidSplashScreen from './FluidSplashScreen';
 
 const API_URL = 'https://google-8j5x.onrender.com/api/config';
 const SOCKET_URL = 'https://google-8j5x.onrender.com';
@@ -147,6 +148,9 @@ export default function App() {
   // Bottom navigation state
   const [activeTab, setActiveTab] = useState('home');
   const [notificationBadge, setNotificationBadge] = useState(0);
+
+  // Splash screen state
+  const [showSplash, setShowSplash] = useState(true);
 
   // Lanyard state
   const [showLanyard, setShowLanyard] = useState(false);
@@ -2557,6 +2561,11 @@ export default function App() {
   }
 
   // Home Screen (Timer)
+  // Show splash screen first
+  if (showSplash) {
+    return <FluidSplashScreen onFinish={() => setShowSplash(false)} />;
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <StatusBar style={theme.statusBar} />
