@@ -98,7 +98,7 @@ async function getFaceDescriptor(base64Image, cacheKey = null) {
         for (const option of options) {
             const detection = await faceapi
                 .detectSingleFace(img, option)
-                .withFaceLandmarks()
+                .withFaceLandmarks(true)  // true = use tiny model
                 .withFaceDescriptor();
 
             if (detection) {
