@@ -39,7 +39,7 @@ async function loadModels() {
         // Check if model files exist
         const requiredFiles = [
             'tiny_face_detector_model-weights_manifest.json',
-            'face_landmark_68_model-weights_manifest.json',
+            'face_landmark_68_tiny_model-weights_manifest.json',
             'face_recognition_model-weights_manifest.json'
         ];
 
@@ -55,7 +55,7 @@ async function loadModels() {
 
         await Promise.all([
             faceapi.nets.tinyFaceDetector.loadFromDisk(modelPath),
-            faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath),
+            faceapi.nets.faceLandmark68TinyNet.loadFromDisk(modelPath),
             faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath)
         ]);
 
