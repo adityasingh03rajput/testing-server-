@@ -165,6 +165,36 @@ async function compareFaces(capturedBase64, referenceBase64) {
 }
 
 /**
+ * Extract face descriptor only (for client-side verification)
+ * Returns just the descriptor without comparison
+ */
+async function extractDescriptor(base64Image) {
+    try {
+        // Ensure models are loaded
+        if (!modelsLoaded) {
+            const loaded = await loadModels();
+            if (!loaded) {
+                return null;
+            }
+        }
+
+        console.log('🔍 Extracting face descriptor...');
+        const descriptor = await getFaceDescriptor(base64Image, 'reference');
+
+        if (!descriptor) {
+            console.log('❌ Could not extract face descriptor');
+            return null;
+        }
+
+        console.log('✅ Face descriptor extracted successfully');
+        return descriptor;
+    } catch (error) {
+        console.error('❌ Error extracting descriptor:', error);
+        return null;
+    }
+}
+
+/**
  * Check if models are loaded
  */
 function areModelsLoaded() {
@@ -174,5 +204,6 @@ function areModelsLoaded() {
 module.exports = {
     loadModels,
     compareFaces,
+    extractDescriptor,
     areModelsLoaded
 };

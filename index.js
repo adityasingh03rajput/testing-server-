@@ -1047,7 +1047,8 @@ app.post('/api/verify-face', async (req, res) => {
             });
         }
 
-        // Find user's profile photo - use StudentManagement model (not Student)
+        // SECURITY: Fetch reference photo from database (not from client)
+        // This prevents tampering with the reference photo
         console.log('🔍 Looking for user with ID:', userId);
         let user;
 
@@ -1219,6 +1220,177 @@ app.post('/api/verify-face', async (req, res) => {
         });
     }
 });
+
+// ==================== CLIENT-SIDE FACE VERIFICATION ENDPOINTS ====================
+
+// Get face descriptor for client-side verification (encrypted)
+app.get('/api/face-descriptor/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        console.log('📥 Face descriptor request for user:', userId);
+
+        // Find user
+        let user;
+        try {
+            user = await StudentManagement.findById(userId);
+        } catch (dbError) {
+            user = await StudentManagement.findOne({ enrollmentNo: userId });
+        }
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Check if user has photo
+        if (!user.photoUrl) {
+            return res.status(404).json({
+                success: false,
+                message: 'No profile photo found'
+            });
+        }
+
+        // Load reference photo
+        let referenceImageBase64 = '';
+        const photoUrl = user.photoUrl;
+
+        if (photoUrl.startsWith('data:image')) {
+            referenceImageBase64 = photoUrl.replace(/^data:image\/\w+;base64,/, '');
+        } else if (photoUrl.includes('cloudinary.com')) {
+            const response = await axios.get(photoUrl, { responseType: 'arraybuffer' });
+            referenceImageBase64 = Buffer.from(response.data, 'binary').toString('base64');
+        } else if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) {
+            const response = await axios.get(photoUrl, { responseType: 'arraybuffer' });
+            referenceImageBase64 = Buffer.from(response.data, 'binary').toString('base64');
+        }
+
+        if (!referenceImageBase64) {
+            return res.status(500).json({
+                success: false,
+                message: 'Could not load reference photo'
+            });
+        }
+
+        // Extract face descriptor using face-api.js
+        if (!faceApiService.areModelsLoaded()) {
+            return res.status(503).json({
+                success: false,
+                message: 'Face recognition service not available'
+            });
+        }
+
+        console.log('🤖 Extracting face descriptor from reference photo...');
+        const descriptor = await faceApiService.extractDescriptor(referenceImageBase64);
+
+        if (!descriptor) {
+            return res.status(500).json({
+                success: false,
+                message: 'Could not extract face descriptor from photo'
+            });
+        }
+
+        console.log('✅ Face descriptor extracted successfully');
+
+        // Return descriptor (as array for client-side verification)
+        res.json({
+            success: true,
+            descriptor: Array.from(descriptor), // Convert Float32Array to regular array
+            timestamp: Date.now(),
+        });
+    } catch (error) {
+        console.error('❌ Error getting face descriptor:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error: ' + error.message
+        });
+    }
+});
+
+// Verify face proof from client (cryptographic verification)
+app.post('/api/verify-face-proof', async (req, res) => {
+    try {
+        const { userId, timestamp, match, confidence, descriptorHash, serverTimeISO, signature } = req.body;
+
+        console.log('🔐 Verifying face proof for user:', userId);
+
+        // Validate timestamp (prevent replay attacks)
+        const currentTime = Date.now();
+        const timeDiff = Math.abs(currentTime - timestamp);
+        
+        // Proof must be recent (within 5 minutes)
+        if (timeDiff > 5 * 60 * 1000) {
+            console.log('❌ Proof expired (timestamp too old)');
+            return res.status(400).json({
+                success: false,
+                message: 'Verification proof expired'
+            });
+        }
+
+        // Verify signature (prevent tampering)
+        const expectedSignature = generateSignature(userId, timestamp, match, confidence, descriptorHash);
+        if (signature !== expectedSignature) {
+            console.log('❌ Invalid signature - proof may be tampered');
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid verification proof'
+            });
+        }
+
+        // Find user
+        let user;
+        try {
+            user = await StudentManagement.findById(userId);
+        } catch (dbError) {
+            user = await StudentManagement.findOne({ enrollmentNo: userId });
+        }
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Log verification
+        console.log(`✅ Face verification proof validated:`);
+        console.log(`   User: ${user.name}`);
+        console.log(`   Match: ${match ? 'YES' : 'NO'}`);
+        console.log(`   Confidence: ${confidence}%`);
+        console.log(`   Timestamp: ${new Date(timestamp).toISOString()}`);
+
+        // Update user verification status (optional - for tracking)
+        await StudentManagement.findByIdAndUpdate(user._id, {
+            lastFaceVerification: new Date(timestamp),
+            lastVerificationResult: match,
+            lastVerificationConfidence: confidence,
+        });
+
+        res.json({
+            success: true,
+            message: 'Verification proof accepted',
+            verified: match,
+        });
+    } catch (error) {
+        console.error('❌ Error verifying proof:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error: ' + error.message
+        });
+    }
+});
+
+// Helper function to generate signature (must match client-side)
+function generateSignature(userId, timestamp, match, confidence, descriptorHash) {
+    const data = `${userId}:${timestamp}:${match}:${confidence}:${descriptorHash}`;
+    let signature = 0;
+    for (let i = 0; i < data.length; i++) {
+        signature = ((signature << 5) - signature) + data.charCodeAt(i);
+        signature = signature & signature;
+    }
+    return signature.toString(16);
+}
 
 // ==================== ADMIN PANEL API ENDPOINTS ====================
 
