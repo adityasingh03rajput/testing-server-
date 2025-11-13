@@ -57,7 +57,7 @@ export default function FaceVerificationScreen({
         const { status } = await Camera.requestCameraPermissionsAsync();
         setHasPermission(status === 'granted');
 
-        // Initialize face-api.js models
+        // Initialize face-api.js models (for client-side verification)
         setVerificationMessage('Loading AI models...');
         const modelsLoaded = await initializeFaceAPI();
         if (!modelsLoaded) {
@@ -65,44 +65,29 @@ export default function FaceVerificationScreen({
           return;
         }
 
-        // Check if user has reference photo on server
-        setVerificationMessage('Checking reference photo...');
+        // Download face descriptor for client-side verification
+        setVerificationMessage('Downloading face data...');
         try {
-          console.log('🔍 Verifying reference photo exists for:', userId);
+          console.log('📥 Downloading face descriptor for:', userId);
 
-          const response = await fetch(
-            `https://google-8j5x.onrender.com/api/student-management?enrollmentNo=${userId}`,
-            { timeout: 10000 }
-          );
+          const { downloadFaceDescriptor } = require('./OfflineFaceVerification');
+          const downloaded = await downloadFaceDescriptor(userId);
 
-          const data = await response.json();
-
-          if (data.success && data.student) {
-            if (data.student.photoUrl) {
-              console.log('✅ Reference photo exists on server');
-              // We don't need to download it - server will use it during verification
-              setCachedPhoto('server'); // Just a flag to indicate photo exists
-              setVerificationMessage('Ready! Position your face');
-            } else {
-              console.log('⚠️ No reference photo found');
-              setVerificationMessage('⚠️ No reference photo found. Upload photo in admin panel first.');
-              // Still allow verification - server will give proper error
-              setCachedPhoto('server');
-            }
+          if (downloaded) {
+            console.log('✅ Face descriptor downloaded and cached');
+            setCachedPhoto('cached'); // Descriptor is cached
+            setVerificationMessage('Ready! Position your face');
           } else {
-            console.log('⚠️ Student not found:', userId);
-            setVerificationMessage('⚠️ Student not found. Server will verify during capture.');
-            // Still allow verification - server will give proper error
-            setCachedPhoto('server');
+            console.log('⚠️ Could not download face descriptor');
+            setVerificationMessage('⚠️ No face data found. Upload photo in admin panel first.');
+            setCachedPhoto(null);
           }
         } catch (error) {
-          console.log('❌ Error checking reference photo:', error);
-          setVerificationMessage('⚠️ Could not verify photo. You can still try verification.');
-          // Allow verification anyway - server will handle it
-          setCachedPhoto('server');
+          console.log('❌ Error downloading face descriptor:', error);
+          setVerificationMessage('⚠️ Could not download face data. Check connection.');
+          setCachedPhoto(null);
         }
 
-        setVerificationMessage('Ready! Position your face');
         setIsInitializing(false);
       } catch (error) {
         console.error('Initialization error:', error);
