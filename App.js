@@ -19,7 +19,6 @@ import CircularTimer from './CircularTimer';
 import { SunIcon, MoonIcon, LogoutIcon, RefreshIcon } from './Icons';
 import { initializeServerTime, getServerTime } from './ServerTime';
 import FloatingBrandButton from './FloatingBrandButton';
-import StudentHomeScreen from './StudentHomeScreen';
 
 const API_URL = 'https://google-8j5x.onrender.com/api/config';
 const SOCKET_URL = 'https://google-8j5x.onrender.com';
@@ -101,7 +100,7 @@ export default function App() {
   const [studentName, setStudentName] = useState('');
   const [studentId, setStudentId] = useState(null);
   const [showNameInput, setShowNameInput] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(120);
+  // Removed timeLeft state - attendance is tracked by attendedMinutes based on actual lecture time
   const [isRunning, setIsRunning] = useState(false);
   const [students, setStudents] = useState([]);
   const [semester, setSemester] = useState('1');
@@ -501,16 +500,12 @@ export default function App() {
           try {
             const serverTime = getServerTime();
             const currentServerTime = serverTime.now();
-            const timeInBackground = Math.floor((currentServerTime - backgroundTimeRef.current) / 1000);
-            setTimeLeft(prev => {
-              const newTime = Math.max(0, prev - timeInBackground);
-              updateTimerOnServer(newTime, newTime > 0, newTime === 0 ? 'present' : null);
-              return newTime;
-            });
+            // Attendance continues tracking in background based on server time
+            // No need to update timer value - attendance is calculated from classStartTime
+            updateTimerOnServer(0, true);
           } catch {
-            // If server time fails, reset timer - security measure
+            // If server time fails, stop tracking - security measure
             console.error('⚠️ Cannot calculate background time without server time');
-            setTimeLeft(0);
             updateTimerOnServer(0, false, null);
           }
         }
@@ -808,9 +803,7 @@ export default function App() {
       const data = await response.json();
       await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(data));
       setConfig(data);
-      if (selectedRole === 'student' && data.studentScreen) {
-        setTimeLeft(data.studentScreen.timer.duration);
-      }
+      // Timer duration from config is no longer used - attendance based on actual lecture time
     } catch (error) {
       console.log('Using cached config');
     }
@@ -1042,10 +1035,9 @@ export default function App() {
     }
   };
 
-  // Remove the old 2-minute timer logic - timer now runs continuously based on lectures
+  // Timer runs continuously when started - no countdown logic needed
+  // Attendance is tracked per lecture based on actual class time
   useEffect(() => {
-    // Timer runs continuously when started, no automatic stop
-    // Attendance is tracked per lecture in the class progress effect
     return () => clearInterval(intervalRef.current);
   }, [isRunning]);
 
@@ -1071,6 +1063,8 @@ export default function App() {
   }, [isRunning]);
 
   const updateTimerOnServer = async (timer, running, status = null) => {
+    // NOTE: timer parameter is legacy - actual attendance is tracked by attendedMinutes
+    // based on real lecture time from timetable
     if (!studentId) {
       console.log('⚠️ No studentId for timer update');
       return;
@@ -1085,7 +1079,6 @@ export default function App() {
     let finalStatus = status;
     if (!finalStatus) {
       if (running) finalStatus = 'attending';
-      else if (timer === 0) finalStatus = 'present';
       else finalStatus = 'absent';
     }
 
@@ -1155,7 +1148,7 @@ export default function App() {
 
     // Start timer (no toggle, only start)
     setIsRunning(true);
-    updateTimerOnServer(timeLeft, true);
+    updateTimerOnServer(0, true); // Timer value not used anymore
   };
 
   const handleVerificationSuccess = async (result) => {
@@ -1203,7 +1196,7 @@ export default function App() {
     // Auto-start timer after verification and keep it running
     setTimeout(() => {
       setIsRunning(true);
-      updateTimerOnServer(timeLeft, true);
+      updateTimerOnServer(0, true); // Timer value not used anymore
     }, 500);
   };
 
@@ -1220,9 +1213,7 @@ export default function App() {
     setClassStartTime(null);
     setAttendedMinutes(0);
     clearInterval(intervalRef.current);
-    const duration = config?.studentScreen?.timer?.duration || 120;
-    setTimeLeft(duration);
-    updateTimerOnServer(duration, false, 'absent');
+    updateTimerOnServer(0, false, 'absent');
   };
 
   const formatTime = (seconds) => {
@@ -2338,8 +2329,8 @@ export default function App() {
   const startPauseBtn = screen?.buttons?.[0] || getDefaultConfig().studentScreen.buttons[0];
   const resetBtn = screen?.buttons?.[1] || getDefaultConfig().studentScreen.buttons[1];
 
-  // Calculate current status
-  const currentStatus = timeLeft === 0 ? 'present' : isRunning ? 'attending' : 'absent';
+  // Calculate current status based on verification and running state
+  const currentStatus = isRunning ? 'attending' : verifiedToday ? 'present' : 'absent';
   const statusColor = currentStatus === 'present' ? (isDarkTheme ? '#00ff88' : '#059669') :
     currentStatus === 'attending' ? (isDarkTheme ? '#ffaa00' : '#d97706') :
       (isDarkTheme ? '#ff4444' : '#dc2626');
@@ -2642,54 +2633,7 @@ export default function App() {
     );
   }
 
-  // Home Screen (Lecture-Based Attendance)
-  if (activeTab === 'home') {
-    return (
-      <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <StatusBar style={theme.statusBar} />
-
-        <StudentHomeScreen
-          theme={theme}
-          userData={userData}
-          timetable={timetable}
-          socketUrl={SOCKET_URL}
-          onShowFluidSim={() => setShowFluidSim(true)}
-        />
-
-        {/* Lanyard Modal */}
-        <LanyardCard
-          visible={showLanyard}
-          onClose={() => setShowLanyard(false)}
-          theme={theme}
-          studentData={{
-            name: studentName,
-            enrollmentNo: loginId,
-            semester: semester,
-            branch: branch,
-            photoUrl: userData?.photoUrl
-          }}
-          onOpenFullProfile={() => {
-            setShowLanyard(false);
-            setTimeout(() => setShowProfile(true), 300);
-          }}
-        />
-
-        {/* Floating Brand Button */}
-        <FloatingBrandButton theme={{ ...theme, isDark: isDarkTheme }} />
-
-        {/* Bottom Navigation */}
-        <BottomNavigation
-          theme={theme}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          userRole={selectedRole}
-          notificationBadge={notificationBadge}
-        />
-      </View>
-    );
-  }
-
-  // Fallback Home Screen (Old Timer - for reference)
+  // Home Screen (Timer)
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <StatusBar style={theme.statusBar} />
@@ -2819,7 +2763,7 @@ export default function App() {
         })()}
         <CircularTimer
           theme={theme}
-          initialTime={(config?.studentScreen?.timer?.duration || 120) - timeLeft}
+          initialTime={attendedMinutes * 60}
           isRunning={isRunning}
           onToggleTimer={handleStartPause}
           onReset={handleReset}

@@ -9,11 +9,11 @@ class AttendanceTracker {
   }
 
   /**
-   * Start tracking attendance for a student
+   * Start tracking attendance after face verification
+   * Called when student verifies face and timer starts
    */
-  async startTracking(studentId, lectureInfo, timetable) {
+  async startTracking(studentId, lectureInfo) {
     const now = new Date();
-    const dateKey = this.getDateKey(now);
 
     // Get or create attendance session for today
     let session = await AttendanceSession.findOne({
@@ -57,20 +57,23 @@ class AttendanceTracker {
         teacherName: lectureInfo.teacherName,
         scheduledStart: new Date(lectureInfo.startTime),
         scheduledEnd: new Date(lectureInfo.endTime),
-        segments: [],
+        faceVerifiedAt: now,
+        timerStartedAt: now,
         totalSecondsAttended: 0,
         totalLectureSeconds: this.calculateDuration(lectureInfo.startTime, lectureInfo.endTime),
         attendancePercentage: 0,
         isPresent: false,
         requiredPercentage: threshold,
-        currentSegmentStart: now,
-        isActive: true
+        isActive: true,
+        lastSyncedAt: now
       };
       session.sessions.push(lectureSession);
     } else {
       // Resume tracking for existing lecture
-      lectureSession.currentSegmentStart = now;
+      lectureSession.faceVerifiedAt = now;
+      lectureSession.timerStartedAt = now;
       lectureSession.isActive = true;
+      lectureSession.lastSyncedAt = now;
     }
 
     await session.save();
@@ -83,40 +86,82 @@ class AttendanceTracker {
       lastUpdate: now
     });
 
+    console.log(`✅ Started tracking for ${studentId} - ${lectureSession.subject}`);
     return { sessionId: session._id, lectureId: lectureSession.lectureId };
   }
 
   /**
-   * Stop tracking (on disconnect or manual stop)
+   * Update timer value from client
+   * Called periodically (every 30s) to sync timer state
    */
-  async stopTracking(studentId, reason = 'manual') {
+  async updateTimer(studentId, timerSeconds) {
     const activeSession = this.activeSessions.get(studentId);
-    if (!activeSession) return;
+    if (!activeSession) {
+      console.log(`⚠️ No active session for ${studentId}`);
+      return { success: false, error: 'No active session' };
+    }
 
     const now = new Date();
     const session = await AttendanceSession.findById(activeSession.sessionId);
-    if (!session) return;
+    if (!session) {
+      console.log(`⚠️ Session not found for ${studentId}`);
+      return { success: false, error: 'Session not found' };
+    }
 
     // Find the active lecture
     const lectureSession = session.sessions.find(s => s.lectureId === activeSession.lectureId);
-    if (!lectureSession || !lectureSession.isActive) return;
+    if (!lectureSession || !lectureSession.isActive) {
+      console.log(`⚠️ No active lecture for ${studentId}`);
+      return { success: false, error: 'No active lecture' };
+    }
 
-    // Calculate time for this segment
-    const segmentDuration = Math.floor((now - lectureSession.currentSegmentStart) / 1000);
-
-    // Add segment
-    lectureSession.segments.push({
-      startTime: lectureSession.currentSegmentStart,
-      endTime: now,
-      durationSeconds: segmentDuration
-    });
-
-    // Update cumulative time
-    lectureSession.totalSecondsAttended += segmentDuration;
+    // Update attended time from timer
+    lectureSession.totalSecondsAttended = timerSeconds;
     lectureSession.attendancePercentage = (lectureSession.totalSecondsAttended / lectureSession.totalLectureSeconds) * 100;
     lectureSession.isPresent = lectureSession.attendancePercentage >= lectureSession.requiredPercentage;
+    lectureSession.lastSyncedAt = now;
+
+    // Update daily summary
+    this.updateDailySummary(session);
+
+    session.lastUpdated = now;
+    await session.save();
+
+    activeSession.lastUpdate = now;
+
+    console.log(`📊 Updated timer for ${studentId}: ${timerSeconds}s (${lectureSession.attendancePercentage.toFixed(1)}%)`);
+
+    return {
+      success: true,
+      lecturePercentage: lectureSession.attendancePercentage.toFixed(2),
+      isPresent: lectureSession.isPresent,
+      dailyPercentage: session.dailySummary.attendancePercentage.toFixed(2),
+      isPresentForDay: session.dailySummary.isPresentForDay
+    };
+  }
+
+  /**
+   * Stop tracking when lecture ends
+   */
+  async stopTracking(studentId, reason = 'lecture_ended') {
+    const activeSession = this.activeSessions.get(studentId);
+    if (!activeSession) return { success: false, error: 'No active session' };
+
+    const now = new Date();
+    const session = await AttendanceSession.findById(activeSession.sessionId);
+    if (!session) return { success: false, error: 'Session not found' };
+
+    // Find the active lecture
+    const lectureSession = session.sessions.find(s => s.lectureId === activeSession.lectureId);
+    if (!lectureSession || !lectureSession.isActive) return { success: false, error: 'No active lecture' };
+
+    // Mark as stopped
+    lectureSession.timerStoppedAt = now;
     lectureSession.isActive = false;
-    lectureSession.currentSegmentStart = null;
+
+    // Final calculation
+    lectureSession.attendancePercentage = (lectureSession.totalSecondsAttended / lectureSession.totalLectureSeconds) * 100;
+    lectureSession.isPresent = lectureSession.attendancePercentage >= lectureSession.requiredPercentage;
 
     // Update daily summary
     this.updateDailySummary(session);
@@ -124,7 +169,10 @@ class AttendanceTracker {
     await session.save();
     this.activeSessions.delete(studentId);
 
+    console.log(`🛑 Stopped tracking for ${studentId} - ${lectureSession.isPresent ? 'PRESENT' : 'ABSENT'} (${lectureSession.attendancePercentage.toFixed(1)}%)`);
+
     return {
+      success: true,
       lectureTime: this.formatTime(lectureSession.totalSecondsAttended),
       lecturePercentage: lectureSession.attendancePercentage.toFixed(2),
       isPresent: lectureSession.isPresent,
@@ -135,18 +183,8 @@ class AttendanceTracker {
   }
 
   /**
-   * Update tracking (called periodically while connected)
-   */
-  async updateTracking(studentId) {
-    const activeSession = this.activeSessions.get(studentId);
-    if (!activeSession) return;
-
-    activeSession.lastUpdate = new Date();
-    return { status: 'active', lastUpdate: activeSession.lastUpdate };
-  }
-
-  /**
    * Auto-save active sessions to database
+   * This is a backup - main updates come from client timer syncs
    */
   startAutoSave() {
     setInterval(async () => {
@@ -154,27 +192,14 @@ class AttendanceTracker {
       
       for (const [studentId, activeSession] of this.activeSessions.entries()) {
         try {
-          const session = await AttendanceSession.findById(activeSession.sessionId);
-          if (!session) continue;
-
-          const lectureSession = session.sessions.find(s => s.lectureId === activeSession.lectureId);
-          if (!lectureSession || !lectureSession.isActive) continue;
-
-          // Calculate time since last save
-          const timeSinceStart = Math.floor((now - lectureSession.currentSegmentStart) / 1000);
-          
-          // Update cumulative time (without creating segment yet)
-          lectureSession.totalSecondsAttended = lectureSession.segments.reduce((sum, seg) => sum + seg.durationSeconds, 0) + timeSinceStart;
-          lectureSession.attendancePercentage = (lectureSession.totalSecondsAttended / lectureSession.totalLectureSeconds) * 100;
-          lectureSession.isPresent = lectureSession.attendancePercentage >= lectureSession.requiredPercentage;
-
-          // Update daily summary
-          this.updateDailySummary(session);
-
-          session.lastUpdated = now;
-          await session.save();
+          // Check if session is stale (no update in 5 minutes)
+          const timeSinceLastUpdate = (now - activeSession.lastUpdate) / 1000;
+          if (timeSinceLastUpdate > 300) {
+            console.log(`⚠️ Stale session detected for ${studentId}, stopping tracking`);
+            await this.stopTracking(studentId, 'timeout');
+          }
         } catch (error) {
-          console.error(`Error auto-saving attendance for ${studentId}:`, error);
+          console.error(`Error checking session for ${studentId}:`, error);
         }
       }
     }, this.saveInterval);
@@ -188,17 +213,7 @@ class AttendanceTracker {
     let totalClass = 0;
 
     session.sessions.forEach(lecture => {
-      // Add completed segments
-      const segmentTime = lecture.segments.reduce((sum, seg) => sum + seg.durationSeconds, 0);
-      
-      // Add current active time if lecture is active
-      if (lecture.isActive && lecture.currentSegmentStart) {
-        const activeTime = Math.floor((new Date() - lecture.currentSegmentStart) / 1000);
-        totalAttended += segmentTime + activeTime;
-      } else {
-        totalAttended += segmentTime;
-      }
-      
+      totalAttended += lecture.totalSecondsAttended;
       totalClass += lecture.totalLectureSeconds;
     });
 
