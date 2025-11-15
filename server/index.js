@@ -1537,7 +1537,13 @@ app.post('/api/login', async (req, res) => {
             if (user && user.password === password) {
                 role = 'student';
                 console.log('✅ Student logged in:', user.name);
-                console.log('📸 PhotoUrl from DB:', user.photoUrl);
+                // Truncate photo URL for cleaner logs
+                const photoPreview = user.photoUrl 
+                    ? (user.photoUrl.startsWith('data:') 
+                        ? `${user.photoUrl.substring(0, 50)}... (base64 data)` 
+                        : user.photoUrl)
+                    : 'No photo';
+                console.log('📸 Photo:', photoPreview);
                 return res.json({
                     success: true,
                     user: {
