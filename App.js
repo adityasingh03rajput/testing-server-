@@ -2277,7 +2277,12 @@ export default function App() {
 
                   {/* Actions */}
                   <View style={{ padding: 20 }}>
-
+                    <TouchableOpacity
+                      style={[styles.logoutButton, { backgroundColor: '#ff4444' }]}
+                      onPress={handleLogout}
+                    >
+                      <Text style={styles.logoutButtonText}>🚪 Logout</Text>
+                    </TouchableOpacity>
                   </View>
                 </ScrollView>
               </Animated.View>
@@ -3045,7 +3050,12 @@ export default function App() {
 
                 {/* Actions */}
                 <View style={{ padding: 20 }}>
-
+                  <TouchableOpacity
+                    style={[styles.logoutButton, { backgroundColor: '#ff4444' }]}
+                    onPress={handleLogout}
+                  >
+                    <Text style={styles.logoutButtonText}>🚪 Logout</Text>
+                  </TouchableOpacity>
                 </View>
               </ScrollView>
             </Animated.View>
