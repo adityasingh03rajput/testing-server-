@@ -1,15 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const faceVerificationRedis = require('../face-verification-redis');
-const faceapi = require('@vladmandic/face-api');
-const canvas = require('canvas');
-const { Canvas, Image, ImageData } = canvas;
-
-// Patch face-api to use node-canvas
-faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
+const faceVerificationQueue = require('../services/FaceVerificationQueue');
 
 /**
- * Fast face verification endpoint using Redis cache
+ * Fast face verification endpoint using queue + Redis cache
+ * Handles concurrent requests efficiently
  * POST /api/face/verify-fast
  */
 router.post('/verify-fast', async (req, res) => {
@@ -20,71 +16,15 @@ router.post('/verify-fast', async (req, res) => {
       return res.status(400).json({ error: 'Missing imageData or studentId' });
     }
 
-    // Decode base64 image
-    const buffer = Buffer.from(imageData.replace(/^data:image\/\w+;base64,/, ''), 'base64');
-    const img = await canvas.loadImage(buffer);
-
-    // Detect face and get descriptor
-    const detection = await faceapi
-      .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks()
-      .withFaceDescriptor();
-
-    if (!detection) {
-      return res.json({
-        success: false,
-        error: 'No face detected in image'
-      });
-    }
-
-    const capturedDescriptor = detection.descriptor;
-
-    // Try Redis cache first
-    const cachedResult = await faceVerificationRedis.verifyFaceWithCache(
-      capturedDescriptor,
+    // Add to queue for parallel processing
+    const result = await faceVerificationQueue.addToQueue({
+      imageData,
       studentId,
-      threshold
-    );
-
-    if (cachedResult) {
-      // Cache hit - ultra fast!
-      return res.json({
-        success: true,
-        isMatch: cachedResult.isMatch,
-        confidence: cachedResult.confidence,
-        distance: cachedResult.distance,
-        cached: true,
-        processingTime: '< 50ms'
-      });
-    }
-
-    // Cache miss - fetch from DB and cache it
-    const StudentManagement = require('../models/StudentManagement');
-    const student = await StudentManagement.findOne({ enrollmentNo: studentId });
-
-    if (!student || !student.faceDescriptor) {
-      return res.json({
-        success: false,
-        error: 'Student not found or no face descriptor stored'
-      });
-    }
-
-    // Cache the descriptor for next time
-    await faceVerificationRedis.cacheStudentDescriptor(studentId, student.faceDescriptor);
-
-    // Verify
-    const storedDescriptor = new Float32Array(student.faceDescriptor);
-    const distance = faceapi.euclideanDistance(capturedDescriptor, storedDescriptor);
-    const isMatch = distance < threshold;
-
-    res.json({
-      success: true,
-      isMatch,
-      confidence: (1 - distance).toFixed(4),
-      distance: distance.toFixed(4),
-      cached: false,
-      processingTime: '< 200ms'
+      threshold,
+      type: 'verify'
     });
+
+    res.json(result);
 
   } catch (error) {
     console.error('Error in fast face verification:', error);
@@ -108,108 +48,16 @@ router.post('/identify-fast', async (req, res) => {
       return res.status(400).json({ error: 'Missing imageData' });
     }
 
-    const startTime = Date.now();
+    // Add to queue for parallel processing
+    const result = await faceVerificationQueue.addToQueue({
+      imageData,
+      semester,
+      branch,
+      threshold,
+      type: 'identify'
+    });
 
-    // Decode and detect face
-    const buffer = Buffer.from(imageData.replace(/^data:image\/\w+;base64,/, ''), 'base64');
-    const img = await canvas.loadImage(buffer);
-
-    const detection = await faceapi
-      .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks()
-      .withFaceDescriptor();
-
-    if (!detection) {
-      return res.json({
-        success: false,
-        error: 'No face detected in image'
-      });
-    }
-
-    const capturedDescriptor = detection.descriptor;
-
-    // Get all students for the semester/branch
-    const StudentManagement = require('../models/StudentManagement');
-    const query = {};
-    if (semester) query.semester = semester;
-    if (branch) query.course = branch;
-
-    const students = await StudentManagement.find(query).select('enrollmentNo name faceDescriptor');
-    const studentIds = students.map(s => s.enrollmentNo);
-
-    // Try batch verification with cache
-    const matches = await faceVerificationRedis.batchVerifyWithCache(
-      capturedDescriptor,
-      studentIds,
-      threshold
-    );
-
-    if (matches.length > 0) {
-      // Found match in cache
-      const bestMatch = matches[0];
-      const student = students.find(s => s.enrollmentNo === bestMatch.studentId);
-
-      const processingTime = Date.now() - startTime;
-
-      return res.json({
-        success: true,
-        identified: true,
-        student: {
-          enrollmentNo: student.enrollmentNo,
-          name: student.name
-        },
-        confidence: bestMatch.confidence,
-        distance: bestMatch.distance,
-        cached: true,
-        processingTime: `${processingTime}ms`,
-        totalStudentsChecked: studentIds.length
-      });
-    }
-
-    // Cache miss - do full verification and cache results
-    let bestMatch = null;
-    let bestDistance = Infinity;
-
-    for (const student of students) {
-      if (!student.faceDescriptor) continue;
-
-      const storedDescriptor = new Float32Array(student.faceDescriptor);
-      const distance = faceapi.euclideanDistance(capturedDescriptor, storedDescriptor);
-
-      // Cache this descriptor
-      await faceVerificationRedis.cacheStudentDescriptor(student.enrollmentNo, student.faceDescriptor);
-
-      if (distance < threshold && distance < bestDistance) {
-        bestDistance = distance;
-        bestMatch = student;
-      }
-    }
-
-    const processingTime = Date.now() - startTime;
-
-    if (bestMatch) {
-      res.json({
-        success: true,
-        identified: true,
-        student: {
-          enrollmentNo: bestMatch.enrollmentNo,
-          name: bestMatch.name
-        },
-        confidence: (1 - bestDistance).toFixed(4),
-        distance: bestDistance.toFixed(4),
-        cached: false,
-        processingTime: `${processingTime}ms`,
-        totalStudentsChecked: students.length
-      });
-    } else {
-      res.json({
-        success: true,
-        identified: false,
-        message: 'No matching student found',
-        processingTime: `${processingTime}ms`,
-        totalStudentsChecked: students.length
-      });
-    }
+    res.json(result);
 
   } catch (error) {
     console.error('Error in fast identification:', error);
@@ -290,6 +138,54 @@ router.post('/clear-cache', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to clear cache'
+    });
+  }
+});
+
+/**
+ * Get queue statistics
+ * GET /api/face/queue-stats
+ */
+router.get('/queue-stats', (req, res) => {
+  try {
+    const stats = faceVerificationQueue.getStats();
+    res.json({
+      success: true,
+      ...stats
+    });
+  } catch (error) {
+    console.error('Error getting queue stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get queue stats'
+    });
+  }
+});
+
+/**
+ * Configure queue settings
+ * POST /api/face/queue-config
+ */
+router.post('/queue-config', (req, res) => {
+  try {
+    const { maxConcurrent } = req.body;
+    
+    if (maxConcurrent) {
+      faceVerificationQueue.setMaxConcurrent(maxConcurrent);
+    }
+
+    res.json({
+      success: true,
+      message: 'Queue configured successfully',
+      config: {
+        maxConcurrent: faceVerificationQueue.maxConcurrent
+      }
+    });
+  } catch (error) {
+    console.error('Error configuring queue:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to configure queue'
     });
   }
 });
