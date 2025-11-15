@@ -139,7 +139,7 @@ class FaceVerificationQueue {
   }
 
   /**
-   * Verify against single student (with Redis cache)
+   * Verify against single student (with Redis cache + DB optimization)
    */
   async verifySingleStudent(capturedDescriptor, studentId, threshold) {
     // Try Redis cache first
@@ -160,11 +160,11 @@ class FaceVerificationQueue {
       };
     }
 
-    // Cache miss - fetch from DB
+    // Cache miss - fetch from DB with optimization
     const StudentManagement = require('../models/StudentManagement');
-    const student = await StudentManagement.findOne({ enrollmentNo: studentId })
-      .select('enrollmentNo name faceDescriptor')
-      .lean();
+    const dbOptimizer = require('../optimizations/DatabaseOptimizer');
+    
+    const student = await dbOptimizer.getStudentOptimized(StudentManagement, studentId);
 
     if (!student || !student.faceDescriptor) {
       return {
@@ -173,8 +173,8 @@ class FaceVerificationQueue {
       };
     }
 
-    // Cache for next time
-    await faceVerificationRedis.cacheStudentDescriptor(studentId, student.faceDescriptor);
+    // Cache for next time (fire and forget)
+    faceVerificationRedis.cacheStudentDescriptor(studentId, student.faceDescriptor).catch(() => {});
 
     // Verify
     const storedDescriptor = new Float32Array(student.faceDescriptor);
@@ -193,21 +193,19 @@ class FaceVerificationQueue {
   }
 
   /**
-   * Identify student from batch (with Redis cache)
+   * Identify student from batch (with Redis cache + DB optimization)
    */
   async identifyStudent(capturedDescriptor, semester, branch, threshold) {
     const StudentManagement = require('../models/StudentManagement');
+    const dbOptimizer = require('../optimizations/DatabaseOptimizer');
     
     // Build query
     const query = {};
     if (semester) query.semester = semester;
     if (branch) query.course = branch;
 
-    // Get all student IDs first (lightweight query)
-    const students = await StudentManagement.find(query)
-      .select('enrollmentNo name faceDescriptor')
-      .lean();
-
+    // Get all students with optimization
+    const students = await dbOptimizer.getStudentsBatch(StudentManagement, query);
     const studentIds = students.map(s => s.enrollmentNo);
 
     // Try batch verification with Redis cache

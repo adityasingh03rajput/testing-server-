@@ -2,6 +2,45 @@ const express = require('express');
 const router = express.Router();
 const faceVerificationRedis = require('../face-verification-redis');
 const faceVerificationQueue = require('../services/FaceVerificationQueue');
+const ResponseOptimizer = require('../optimizations/ResponseCompression');
+const ImageOptimizer = require('../optimizations/ImageOptimizer');
+
+/**
+ * Ultra-fast face verification endpoint
+ * Optimized for minimum latency
+ * POST /api/face/verify-ultra
+ */
+router.post('/verify-ultra', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    // Parse lightweight request format
+    const { imageData, studentId, threshold } = ResponseOptimizer.parseLightRequest(req);
+
+    // Quick validation
+    if (!ImageOptimizer.isValidImage(imageData) || !studentId) {
+      return res.json(ResponseOptimizer.createLightResponse(false, null, 'Invalid input'));
+    }
+
+    // Optimize image before processing
+    const optimizedImage = await ImageOptimizer.optimizeForFaceDetection(imageData);
+
+    // Add to queue with optimized image
+    const result = await faceVerificationQueue.addToQueue({
+      imageData: `data:image/jpeg;base64,${optimizedImage.toString('base64')}`,
+      studentId,
+      threshold,
+      type: 'verify'
+    });
+
+    // Send lightweight response
+    res.json(ResponseOptimizer.createLightResponse(result.success, result));
+
+  } catch (error) {
+    console.error('Error in ultra-fast verification:', error);
+    res.json(ResponseOptimizer.createLightResponse(false, null, error.message));
+  }
+});
 
 /**
  * Fast face verification endpoint using queue + Redis cache
