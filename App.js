@@ -577,6 +577,60 @@ export default function App() {
   };
 
   // Save lecture attendance when class ends
+  // Load today's attendance from server (called on login)
+  const loadTodayAttendance = async (studentIdValue) => {
+    try {
+      console.log('📥 Loading today\'s attendance for student:', studentIdValue);
+      
+      // Get today's date using server time
+      let todayDate;
+      let serverTime;
+      try {
+        serverTime = getServerTime();
+        todayDate = serverTime.nowDate().toISOString().split('T')[0]; // YYYY-MM-DD
+      } catch {
+        todayDate = new Date().toISOString().split('T')[0];
+      }
+
+      const response = await fetch(`${SOCKET_URL}/api/attendance/records?studentId=${studentIdValue}&startDate=${todayDate}&endDate=${todayDate}`);
+      const data = await response.json();
+
+      if (data.success && data.records && data.records.length > 0) {
+        const todayRecord = data.records[0];
+        console.log('✅ Found today\'s attendance record:', todayRecord);
+
+        // Restore attendance data
+        setTodayAttendance({
+          date: new Date(todayRecord.date).toDateString(),
+          lectures: todayRecord.lectures || [],
+          totalAttended: todayRecord.totalAttended || 0,
+          totalClassTime: todayRecord.totalClassTime || 0,
+          dayPercentage: todayRecord.dayPercentage || 0,
+          dayPresent: todayRecord.dayPercentage >= 75
+        });
+
+        console.log(`✅ Restored attendance: ${todayRecord.totalAttended} minutes total today`);
+        
+        // If user was verified today, restore verification status
+        // This allows attendance to continue tracking after logout/login
+        if (todayRecord.totalAttended > 0 && serverTime) {
+          const todayDateStr = serverTime.nowDate().toDateString();
+          await AsyncStorage.setItem(DAILY_VERIFICATION_KEY, JSON.stringify({
+            date: todayDateStr,
+            verified: true
+          }));
+          setVerifiedToday(true);
+          setIsFaceVerified(true);
+          console.log('✅ Restored face verification status');
+        }
+      } else {
+        console.log('ℹ️  No attendance record found for today');
+      }
+    } catch (error) {
+      console.error('❌ Error loading today\'s attendance:', error);
+    }
+  };
+
   const saveLectureAttendance = (lectureInfo, attendedMin) => {
     const totalMin = lectureInfo.totalMinutes;
     const attendancePercentage = (attendedMin / totalMin) * 100;
@@ -1303,16 +1357,20 @@ export default function App() {
         if (data.user.role === 'student') {
           setStudentName(data.user.name);
           // Use enrollmentNo as studentId for attendance tracking
-          setStudentId(data.user.enrollmentNo || data.user._id);
+          const studentIdValue = data.user.enrollmentNo || data.user._id;
+          setStudentId(studentIdValue);
           setSemester(data.user.semester);
           setBranch(data.user.course);
 
           // Fetch timetable for student
           fetchTimetable(data.user.semester, data.user.course);
 
+          // Load today's attendance to restore attended minutes
+          loadTodayAttendance(studentIdValue);
+
           storageData.push(
             [STUDENT_NAME_KEY, data.user.name],
-            [STUDENT_ID_KEY, data.user.enrollmentNo || data.user._id]
+            [STUDENT_ID_KEY, studentIdValue]
           );
         } else if (data.user.role === 'teacher') {
           setSemester(data.user.semester || '1');
