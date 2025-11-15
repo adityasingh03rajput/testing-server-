@@ -538,19 +538,44 @@ export default function App() {
   }, [isRunning, selectedRole]);
 
   const setupSocket = () => {
-    socketRef.current = io(SOCKET_URL);
+    // Disconnect existing socket if any
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+    }
+
+    socketRef.current = io(SOCKET_URL, {
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 10
+    });
 
     socketRef.current.on('connect', () => {
-      console.log('Connected to server');
+      console.log('✅ Connected to server, socket ID:', socketRef.current.id);
+      
+      // Re-send current status if student is active
+      if (selectedRole === 'student' && studentId && isRunning) {
+        console.log('📡 Re-sending student status after reconnect');
+        updateTimerOnServer(timerValue, isRunning);
+      }
+    });
+
+    socketRef.current.on('disconnect', (reason) => {
+      console.log('❌ Disconnected from server:', reason);
+    });
+
+    socketRef.current.on('connect_error', (error) => {
+      console.log('❌ Connection error:', error.message);
     });
 
     socketRef.current.on('student_update', (data) => {
+      console.log('📥 Received student update:', data);
       setStudents(prev => prev.map(s =>
-        s._id === data.studentId ? { ...s, ...data } : s
+        s._id === data.studentId || s.enrollmentNo === data.studentId ? { ...s, ...data } : s
       ));
     });
 
     socketRef.current.on('student_registered', () => {
+      console.log('📥 Student registered event received');
       fetchStudents();
     });
   };
@@ -1045,7 +1070,16 @@ export default function App() {
   }, [isRunning]);
 
   const updateTimerOnServer = async (timer, running, status = null) => {
-    if (!studentId || !socketRef.current) return;
+    if (!studentId) {
+      console.log('⚠️ No studentId for timer update');
+      return;
+    }
+    
+    if (!socketRef.current || !socketRef.current.connected) {
+      console.log('⚠️ Socket not connected, reconnecting...');
+      setupSocket();
+      return;
+    }
 
     let finalStatus = status;
     if (!finalStatus) {
@@ -1054,12 +1088,17 @@ export default function App() {
       else finalStatus = 'absent';
     }
 
+    console.log('📡 Sending timer update:', { studentId, timer, running, status: finalStatus });
+    
     socketRef.current.emit('timer_update', {
       studentId,
       studentName: studentName,
       timerValue: timer,
       isRunning: running,
-      status: finalStatus
+      status: finalStatus,
+      enrollmentNo: userData?.enrollmentNo,
+      semester,
+      branch
     });
 
     // Save attendance record when timer completes or student marks present/absent
