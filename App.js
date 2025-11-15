@@ -19,6 +19,7 @@ import CircularTimer from './CircularTimer';
 import { SunIcon, MoonIcon, LogoutIcon, RefreshIcon } from './Icons';
 import { initializeServerTime, getServerTime } from './ServerTime';
 import FloatingBrandButton from './FloatingBrandButton';
+import StudentHomeScreen from './StudentHomeScreen';
 
 const API_URL = 'https://google-8j5x.onrender.com/api/config';
 const SOCKET_URL = 'https://google-8j5x.onrender.com';
@@ -2641,7 +2642,54 @@ export default function App() {
     );
   }
 
-  // Home Screen (Timer)
+  // Home Screen (Lecture-Based Attendance)
+  if (activeTab === 'home') {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <StatusBar style={theme.statusBar} />
+
+        <StudentHomeScreen
+          theme={theme}
+          userData={userData}
+          timetable={timetable}
+          socketUrl={SOCKET_URL}
+          onShowFluidSim={() => setShowFluidSim(true)}
+        />
+
+        {/* Lanyard Modal */}
+        <LanyardCard
+          visible={showLanyard}
+          onClose={() => setShowLanyard(false)}
+          theme={theme}
+          studentData={{
+            name: studentName,
+            enrollmentNo: loginId,
+            semester: semester,
+            branch: branch,
+            photoUrl: userData?.photoUrl
+          }}
+          onOpenFullProfile={() => {
+            setShowLanyard(false);
+            setTimeout(() => setShowProfile(true), 300);
+          }}
+        />
+
+        {/* Floating Brand Button */}
+        <FloatingBrandButton theme={{ ...theme, isDark: isDarkTheme }} />
+
+        {/* Bottom Navigation */}
+        <BottomNavigation
+          theme={theme}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          userRole={selectedRole}
+          notificationBadge={notificationBadge}
+        />
+      </View>
+    );
+  }
+
+  // Fallback Home Screen (Old Timer - for reference)
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <StatusBar style={theme.statusBar} />
