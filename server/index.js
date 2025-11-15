@@ -188,6 +188,9 @@ let teachersMemory = [];
 let classroomsMemory = [];
 let attendanceRecordsMemory = [];
 
+// Face descriptor cache for faster verification (avoids re-processing reference photos)
+const faceDescriptorCache = new Map(); // userId -> { descriptor, timestamp }
+
 // SDUI Configuration endpoint
 app.get('/api/config', (req, res) => {
     res.json({
@@ -1267,10 +1270,38 @@ app.post('/api/verify-face', async (req, res) => {
                 });
             }
 
+            // Check cache for reference descriptor to speed up verification
+            const cacheKey = userId;
+            let referenceDescriptor = null;
+            
+            if (faceDescriptorCache.has(cacheKey)) {
+                const cached = faceDescriptorCache.get(cacheKey);
+                // Cache valid for 1 hour
+                if (Date.now() - cached.timestamp < 3600000) {
+                    referenceDescriptor = cached.descriptor;
+                    console.log('⚡ Using cached face descriptor (fast path)');
+                }
+            }
+
+            // If not cached, extract descriptor and cache it
+            if (!referenceDescriptor) {
+                console.log('🔄 Extracting face descriptor from reference photo...');
+                referenceDescriptor = await faceApiService.extractDescriptor(referenceImageBase64);
+                if (referenceDescriptor) {
+                    faceDescriptorCache.set(cacheKey, {
+                        descriptor: referenceDescriptor,
+                        timestamp: Date.now()
+                    });
+                    console.log('💾 Cached face descriptor for future use');
+                }
+            }
+
+            // Now compare with captured image
             result = await faceApiService.compareFaces(
                 capturedImage, 
                 referenceImageBase64,
-                user.enrollmentNo // Pass enrollmentNo for caching
+                user.enrollmentNo, // Pass enrollmentNo for caching
+                referenceDescriptor // Pass pre-computed descriptor
             );
             verificationTime = Date.now() - startTime;
             method = 'face-api.js';
