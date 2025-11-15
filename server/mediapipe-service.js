@@ -63,6 +63,13 @@ class MediaPipeService {
     }
 
     /**
+     * Alias for isReady() - for compatibility
+     */
+    isInitialized() {
+        return this.isReady();
+    }
+
+    /**
      * Detect face and extract features
      */
     async detectFace(imageBuffer) {
