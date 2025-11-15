@@ -1438,7 +1438,7 @@ app.post('/api/login', async (req, res) => {
             if (user && user.password === password) {
                 role = 'student';
                 console.log('✅ Student logged in:', user.name);
-                console.log('📸 PhotoUrl from DB:', user.photoUrl);
+                console.log('📸 PhotoUrl from DB:', user.photoUrl ? `[${user.photoUrl.substring(0, 30)}...] (${user.photoUrl.length} chars)` : 'None');
                 return res.json({
                     success: true,
                     user: {
@@ -1449,7 +1449,7 @@ app.post('/api/login', async (req, res) => {
                         course: user.course,
                         semester: user.semester,
                         phone: user.phone,
-                        photoUrl: user.photoUrl,
+                        hasPhoto: !!user.photoUrl, // Just indicate if photo exists
                         role: 'student'
                     }
                 });
