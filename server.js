@@ -1031,7 +1031,29 @@ faceApiService.loadModels().then(loaded => {
     }
 });
 
-// Face Verification API - Using face-api.js only
+// Initialize MediaPipe with Liveness Detection (Anti-Spoofing)
+console.log('🛡️  Initializing MediaPipe with Liveness Detection...');
+try {
+    const mediapipeService = require('./mediapipe-service');
+    mediapipeService.initialize().then(success => {
+        if (success) {
+            console.log('✅ MediaPipe ready with ANTI-SPOOFING protection');
+            console.log('   🔒 Liveness detection: ENABLED');
+            console.log('   🚫 Photo/Screen attacks: BLOCKED');
+        } else {
+            console.log('⚠️  MediaPipe initialization failed - using face-api.js fallback');
+            console.log('   ⚠️  WARNING: No liveness detection - vulnerable to photo/screen attacks!');
+        }
+    }).catch(err => {
+        console.log('⚠️  MediaPipe not available:', err.message);
+        console.log('   ⚠️  WARNING: No liveness detection - vulnerable to photo/screen attacks!');
+    });
+} catch (err) {
+    console.log('⚠️  MediaPipe module not found - using face-api.js fallback');
+    console.log('   ⚠️  WARNING: No liveness detection - vulnerable to photo/screen attacks!');
+}
+
+// Face Verification API - Using MediaPipe with Liveness Detection
 app.post('/api/verify-face', async (req, res) => {
     try {
         const { userId, capturedImage } = req.body;
@@ -1048,7 +1070,6 @@ app.post('/api/verify-face', async (req, res) => {
         }
 
         // SECURITY: Fetch reference photo from database (not from client)
-        // This prevents tampering with the reference photo
         console.log('🔍 Looking for user with ID:', userId);
         let user;
 
@@ -1168,39 +1189,104 @@ app.post('/api/verify-face', async (req, res) => {
 
         const startTime = Date.now();
 
-        // Check if models are loaded
-        if (!faceApiService.areModelsLoaded()) {
-            console.log('❌ Face-API.js models not loaded');
-            return res.status(503).json({
-                success: false,
-                match: false,
-                confidence: 0,
-                message: 'Face recognition service not available. Please contact administrator.'
-            });
+        // Try MediaPipe first (with liveness detection)
+        let mediapipeAvailable = false;
+        try {
+            const mediapipeService = require('./mediapipe-service');
+            mediapipeAvailable = mediapipeService.isInitialized();
+        } catch (err) {
+            console.log('⚠️  MediaPipe not available, will use face-api.js fallback');
         }
 
-        // Use face-api.js for verification
-        console.log('🤖 Using face-api.js for verification...');
+        let result;
+        let verificationTime;
+        let method;
 
-        const result = await faceApiService.compareFaces(capturedImage, referenceImageBase64);
-        const verificationTime = Date.now() - startTime;
+        if (mediapipeAvailable) {
+            // Use MediaPipe with liveness detection (ANTI-SPOOFING)
+            console.log('🛡️  Using MediaPipe with LIVENESS DETECTION...');
+            const mediapipeService = require('./mediapipe-service');
+            
+            // Convert base64 to buffers for MediaPipe
+            const capturedBuffer = Buffer.from(capturedImage, 'base64');
+            const referenceBuffer = Buffer.from(referenceImageBase64, 'base64');
+            
+            result = await mediapipeService.verifyFaceWithLiveness(capturedBuffer, referenceBuffer);
+            verificationTime = Date.now() - startTime;
+            method = 'mediapipe-liveness';
 
-        if (!result.success) {
-            console.log('❌ Face verification failed:', result.message);
-            return res.json({
-                success: false,
-                match: false,
-                confidence: 0,
-                message: result.message
-            });
+            if (!result.success) {
+                console.log('❌ MediaPipe verification failed:', result.message);
+                return res.json({
+                    success: false,
+                    match: false,
+                    confidence: 0,
+                    message: result.message,
+                    liveness: result.liveness
+                });
+            }
+
+            // Check liveness score - REJECT if too low (likely a photo/screen)
+            if (result.liveness && result.liveness.isLive === false) {
+                console.log('🚫 LIVENESS CHECK FAILED - Possible photo/screen attack!');
+                console.log(`   Liveness score: ${result.liveness.score}`);
+                console.log(`   Reason: ${result.liveness.reason}`);
+                
+                return res.json({
+                    success: false,
+                    match: false,
+                    confidence: 0,
+                    message: 'Liveness check failed. Please use a real face, not a photo or screen.',
+                    liveness: result.liveness,
+                    antiSpoofing: {
+                        detected: true,
+                        reason: result.liveness.reason
+                    }
+                });
+            }
+
+            console.log(`📊 MediaPipe result:`);
+            console.log(`   Verification time: ${verificationTime}ms`);
+            console.log(`   Match: ${result.match ? 'YES' : 'NO'}`);
+            console.log(`   Confidence: ${result.confidence}%`);
+            console.log(`   Liveness: ${result.liveness?.isLive ? 'LIVE' : 'FAKE'} (score: ${result.liveness?.score})`);
+            console.log(`   User: ${user.name}`);
+
+        } else {
+            // Fallback to face-api.js (NO liveness detection - vulnerable to spoofing)
+            console.log('⚠️  Using face-api.js (NO LIVENESS DETECTION)...');
+            
+            if (!faceApiService.areModelsLoaded()) {
+                console.log('❌ Face-API.js models not loaded');
+                return res.status(503).json({
+                    success: false,
+                    match: false,
+                    confidence: 0,
+                    message: 'Face recognition service not available. Please contact administrator.'
+                });
+            }
+
+            result = await faceApiService.compareFaces(capturedImage, referenceImageBase64);
+            verificationTime = Date.now() - startTime;
+            method = 'face-api.js';
+
+            if (!result.success) {
+                console.log('❌ Face verification failed:', result.message);
+                return res.json({
+                    success: false,
+                    match: false,
+                    confidence: 0,
+                    message: result.message
+                });
+            }
+
+            console.log(`📊 Face-API.js result:`);
+            console.log(`   Verification time: ${verificationTime}ms`);
+            console.log(`   Match: ${result.match ? 'YES' : 'NO'}`);
+            console.log(`   Confidence: ${result.confidence}%`);
+            console.log(`   Distance: ${result.distance}`);
+            console.log(`   User: ${user.name}`);
         }
-
-        console.log(`📊 Face-API.js result:`);
-        console.log(`   Verification time: ${verificationTime}ms`);
-        console.log(`   Match: ${result.match ? 'YES' : 'NO'}`);
-        console.log(`   Confidence: ${result.confidence}%`);
-        console.log(`   Distance: ${result.distance}`);
-        console.log(`   User: ${user.name}`);
 
         res.json({
             success: true,
@@ -1208,7 +1294,15 @@ app.post('/api/verify-face', async (req, res) => {
             confidence: result.confidence,
             distance: result.distance,
             message: result.message,
-            method: 'face-api.js'
+            method: method,
+            liveness: result.liveness || null,
+            antiSpoofing: result.liveness ? {
+                enabled: true,
+                passed: result.liveness.isLive
+            } : {
+                enabled: false,
+                warning: 'No liveness detection - vulnerable to photo/screen attacks'
+            }
         });
     } catch (error) {
         console.error('❌ Face verification error:', error);
