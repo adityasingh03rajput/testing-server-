@@ -123,7 +123,7 @@ async function getFaceDescriptor(base64Image, cacheKey = null) {
 /**
  * Compare two faces
  */
-async function compareFaces(capturedBase64, referenceBase64, userId = null) {
+async function compareFaces(capturedBase64, referenceBase64, userId = null, preComputedReferenceDescriptor = null) {
     const startTime = Date.now();
 
     try {
@@ -137,11 +137,17 @@ async function compareFaces(capturedBase64, referenceBase64, userId = null) {
             }
         }
 
-        // Process both images in parallel
-        const [capturedDescriptor, referenceDescriptor] = await Promise.all([
-            getFaceDescriptor(capturedBase64),
-            getFaceDescriptor(referenceBase64, userId) // Cache reference
-        ]);
+        // Use pre-computed descriptor if provided (FAST PATH)
+        let referenceDescriptor = preComputedReferenceDescriptor;
+        
+        // Process images - use cached reference if available
+        const capturedDescriptor = await getFaceDescriptor(capturedBase64);
+        
+        if (!referenceDescriptor) {
+            referenceDescriptor = await getFaceDescriptor(referenceBase64, userId); // Cache reference
+        } else {
+            console.log('   ⚡ Using pre-computed reference descriptor');
+        }
 
         if (!capturedDescriptor) {
             return {
