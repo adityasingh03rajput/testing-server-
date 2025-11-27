@@ -130,13 +130,13 @@ const timetableSchema = new mongoose.Schema({
         endTime: String
     }],
     timetable: {
-        sunday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        monday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        tuesday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        wednesday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        thursday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        friday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        saturday: [{ period: Number, subject: String, room: String, isBreak: Boolean }]
+        sunday: [{ period: Number, subject: String, teacher: String, room: String, isBreak: Boolean }],
+        monday: [{ period: Number, subject: String, teacher: String, room: String, isBreak: Boolean }],
+        tuesday: [{ period: Number, subject: String, teacher: String, room: String, isBreak: Boolean }],
+        wednesday: [{ period: Number, subject: String, teacher: String, room: String, isBreak: Boolean }],
+        thursday: [{ period: Number, subject: String, teacher: String, room: String, isBreak: Boolean }],
+        friday: [{ period: Number, subject: String, teacher: String, room: String, isBreak: Boolean }],
+        saturday: [{ period: Number, subject: String, teacher: String, room: String, isBreak: Boolean }]
     },
     lastUpdated: { type: Date, default: Date.now }
 });
@@ -682,15 +682,46 @@ app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
         }
 
         // Get students for this class (semester + branch)
-        const students = await StudentManagement.find({
+        const allStudents = await StudentManagement.find({
             semester: currentClass.semester.toString(),
             course: currentClass.branch
         }).select('-password');
 
-        console.log(`👥 Found ${students.length} students for ${currentClass.branch} Semester ${currentClass.semester}`);
+        console.log(`👥 Found ${allStudents.length} total students for ${currentClass.branch} Semester ${currentClass.semester}`);
+
+        // Filter to only show students who are currently in THIS teacher's period
+        const studentsInThisClass = allStudents.filter(student => {
+            // Only show if timer is running AND student's current class matches this teacher
+            if (!student.isRunning || !student.currentClass) {
+                return false;
+            }
+            
+            const studentTeacher = student.currentClass.teacher?.toLowerCase() || '';
+            const thisTeacher = teacherName.toLowerCase();
+            
+            const matches = studentTeacher.includes(thisTeacher);
+            if (matches) {
+                console.log(`✅ ${student.name} is in ${teacherName}'s class`);
+            }
+            return matches;
+        });
+
+        console.log(`📊 ${studentsInThisClass.length} students currently in ${teacherName}'s class`);
 
         // Get classroom info
         const classroom = await Classroom.findOne({ roomNumber: currentClass.room });
+
+        // Add real-time status from active sessions
+        const studentsWithStatus = studentsInThisClass.map(student => {
+            const studentObj = student.toObject();
+            // Ensure we have the latest timer status from database
+            return {
+                ...studentObj,
+                timerValue: studentObj.timerValue || 0,
+                isRunning: studentObj.isRunning || false,
+                status: studentObj.status || 'absent'
+            };
+        });
 
         res.json({
             success: true,
@@ -700,8 +731,8 @@ app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
                 capacity: classroom?.capacity || 60,
                 bssid: classroom?.bssid || null
             },
-            students: students,
-            totalStudents: students.length,
+            students: studentsWithStatus,
+            totalStudents: studentsWithStatus.length,
             teacherName: teacherName
         });
 
@@ -758,10 +789,19 @@ io.on('connection', (socket) => {
     // Student updates timer
     socket.on('timer_update', async (data) => {
         try {
-            const { studentId, timerValue, isRunning, status, studentName } = data;
+            const { studentId, timerValue, isRunning, status, studentName, currentClass } = data;
+            
+            console.log('📥 Timer update received:', {
+                student: studentName,
+                status,
+                currentClass: currentClass ? `${currentClass.subject} - ${currentClass.teacher}` : 'No class'
+            });
 
             // Check if it's an offline ID (starts with "offline_")
             const isOfflineId = studentId && studentId.toString().startsWith('offline_');
+
+            let studentSemester = null;
+            let studentBranch = null;
 
             if (mongoose.connection.readyState === 1 && !isOfflineId) {
                 try {
@@ -785,13 +825,33 @@ io.on('connection', (socket) => {
                     }
 
                     if (student) {
-                        console.log(`✅ Found student: ${student.name} (${student.enrollmentNo})`);
+                        console.log(`✅ Found student: ${student.name} (${student.enrollmentNo}) - ${student.course} Sem ${student.semester}`);
+                        
+                        // Store student info for filtering
+                        studentSemester = student.semester;
+                        studentBranch = student.course;
+                        
+                        // Update student with timer status AND current class info
                         await StudentManagement.findByIdAndUpdate(student._id, {
                             timerValue,
                             isRunning,
                             status,
+                            currentClass: currentClass, // Store which class/teacher student is attending
                             lastUpdated: new Date()
                         });
+                        
+                        // Broadcast with full class details for precise teacher matching
+                        io.emit('student_update', { 
+                            studentId, 
+                            timerValue, 
+                            isRunning, 
+                            status,
+                            semester: studentSemester,
+                            branch: studentBranch,
+                            currentClass: currentClass // Include class info with teacher name
+                        });
+                        
+                        console.log(`✅ Broadcasted update for ${student.name} - Class: ${currentClass ? currentClass.subject : 'None'}`);
                     } else {
                         console.log(`⚠️ Student not found with ID: ${studentId}`);
                     }
@@ -818,10 +878,10 @@ io.on('connection', (socket) => {
                     student.isRunning = isRunning;
                     student.status = status;
                 }
+                
+                // Broadcast to all teachers (offline mode)
+                io.emit('student_update', { studentId, timerValue, isRunning, status });
             }
-
-            // Broadcast to all teachers
-            io.emit('student_update', { studentId, timerValue, isRunning, status });
         } catch (error) {
             console.error('❌ Error updating timer:', error);
             socket.emit('error', { message: 'Failed to update timer' });
@@ -1670,6 +1730,19 @@ const studentManagementSchema = new mongoose.Schema({
     dob: { type: Date, required: true },
     phone: String,
     photoUrl: String,
+    // Timer and attendance tracking fields
+    timerValue: { type: Number, default: 0 },
+    isRunning: { type: Boolean, default: false },
+    status: { type: String, default: 'absent' },
+    currentClass: {
+        subject: String,
+        teacher: String,
+        period: Number,
+        room: String,
+        startTime: String,
+        endTime: String
+    },
+    lastUpdated: Date,
     createdAt: { type: Date, default: Date.now }
 });
 
