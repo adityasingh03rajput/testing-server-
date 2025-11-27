@@ -103,6 +103,8 @@ export default function App() {
   // Removed timeLeft state - attendance is tracked by attendedMinutes based on actual lecture time
   const [isRunning, setIsRunning] = useState(false);
   const [students, setStudents] = useState([]);
+  const [teacherCurrentClass, setTeacherCurrentClass] = useState(null);
+  const [teacherStudents, setTeacherStudents] = useState([]);
   const [semester, setSemester] = useState('1');
   const [branch, setBranch] = useState('letsbunk enters');
 
@@ -403,7 +405,9 @@ export default function App() {
 
             foundClass = {
               subject: slot.subject,
+              teacher: slot.teacher, // CRITICAL: Include teacher for matching
               room: slot.room,
+              period: slot.period, // Include period number
               startTime: start,
               endTime: end,
               elapsedMinutes: Math.floor(elapsed / 60),
@@ -565,9 +569,75 @@ export default function App() {
 
     socketRef.current.on('student_update', (data) => {
       console.log('📥 Received student update:', data);
+      
+      // Update global students list (for admin/general view)
       setStudents(prev => prev.map(s =>
         s._id === data.studentId || s.enrollmentNo === data.studentId ? { ...s, ...data } : s
       ));
+      
+      // Update teacher's current class students (with filtering by teacher name)
+      if (selectedRole === 'teacher' && teacherCurrentClass && data.currentClass) {
+        // Check if this student's class matches teacher's current class
+        const teacherName = userData?.name?.toLowerCase();
+        const studentTeacher = data.currentClass.teacher?.toLowerCase();
+        
+        if (teacherName && studentTeacher && studentTeacher.includes(teacherName)) {
+          console.log(`✅ Student belongs to ${userData.name}'s class`);
+          
+          setTeacherStudents(prev => {
+            const existingIndex = prev.findIndex(s => 
+              s._id === data.studentId || s.enrollmentNo === data.studentId
+            );
+            
+            if (existingIndex >= 0) {
+              // Update existing student
+              const updated = [...prev];
+              updated[existingIndex] = { ...updated[existingIndex], ...data };
+              
+              // Remove if timer stopped
+              if (!data.isRunning) {
+                console.log(`⏹️ Student stopped timer - removing from list`);
+                return updated.filter((_, idx) => idx !== existingIndex);
+              }
+              
+              return updated;
+            } else if (data.isRunning) {
+              // Add new student if timer is running
+              console.log(`➕ Adding new student to teacher's list`);
+              // Fetch full student details
+              fetch(`${SOCKET_URL}/api/students`)
+                .then(res => res.json())
+                .then(result => {
+                  if (result.success) {
+                    const fullStudent = result.students.find(s => 
+                      s._id === data.studentId || s.enrollmentNo === data.studentId
+                    );
+                    if (fullStudent) {
+                      setTeacherStudents(current => [...current, { ...fullStudent, ...data }]);
+                    }
+                  }
+                });
+              return prev;
+            }
+            
+            return prev;
+          });
+        } else {
+          console.log(`⏭️ Student belongs to ${data.currentClass.teacher}, not ${userData?.name} - removing if present`);
+          // Remove student if they were in list but now in different teacher's class
+          setTeacherStudents(prev => prev.filter(s => 
+            s._id !== data.studentId && s.enrollmentNo !== data.studentId
+          ));
+        }
+      } else {
+        // No filtering for non-teachers or when no current class
+        setTeacherStudents(prev => prev.map(s => {
+          if (s._id === data.studentId || s.enrollmentNo === data.studentId) {
+            return { ...s, ...data };
+          }
+          return s;
+        }));
+      }
     });
 
     socketRef.current.on('student_registered', () => {
@@ -875,6 +945,34 @@ export default function App() {
     }
   };
 
+  const fetchTeacherCurrentClass = async () => {
+    if (!userData?.employeeId) return;
+    
+    try {
+      console.log('🔍 Fetching current class for teacher:', userData.employeeId);
+      const response = await fetch(
+        `${SOCKET_URL}/api/teacher/current-class-students/${userData.employeeId}`
+      );
+      const data = await response.json();
+      
+      if (data.success && data.hasActiveClass) {
+        console.log('📚 Current class:', data.currentClass);
+        console.log('👥 Students currently in this class:', data.students.length);
+        
+        setTeacherCurrentClass(data.currentClass);
+        setTeacherStudents(data.students); // Already filtered by API
+      } else {
+        console.log('⏰ No active class');
+        setTeacherCurrentClass(null);
+        setTeacherStudents([]);
+      }
+    } catch (error) {
+      console.error('Error fetching teacher current class:', error);
+      setTeacherCurrentClass(null);
+      setTeacherStudents([]);
+    }
+  };
+
   const fetchStudentDetails = async (student) => {
     setSelectedStudent(student);
     setLoadingDetails(true);
@@ -941,7 +1039,9 @@ export default function App() {
       if (timetable.timetable[dayKey]) {
         schedule[dayName] = timetable.timetable[dayKey].map(period => ({
           subject: period.subject,
+          teacher: period.teacher, // CRITICAL: Include teacher name for matching
           room: period.room,
+          period: period.period, // Include period number
           time: timetable.periods && timetable.periods[period.period - 1]
             ? `${timetable.periods[period.period - 1].startTime}-${timetable.periods[period.period - 1].endTime}`
             : '',
@@ -1136,7 +1236,7 @@ export default function App() {
       else finalStatus = 'absent';
     }
 
-    console.log('📡 Sending timer update:', { studentId, timer, running, status: finalStatus });
+    console.log('📡 Sending timer update:', { studentId, timer, running, status: finalStatus, currentClass: currentClassInfo });
     
     socketRef.current.emit('timer_update', {
       studentId,
@@ -1146,7 +1246,16 @@ export default function App() {
       status: finalStatus,
       enrollmentNo: userData?.enrollmentNo,
       semester,
-      branch
+      branch,
+      // Include current class info so teacher can be matched
+      currentClass: currentClassInfo ? {
+        subject: currentClassInfo.subject,
+        teacher: currentClassInfo.teacher,
+        period: currentClassInfo.period,
+        room: currentClassInfo.room,
+        startTime: currentClassInfo.startTime,
+        endTime: currentClassInfo.endTime
+      } : null
     });
 
     // Save attendance record when timer completes or student marks present/absent
@@ -1834,11 +1943,20 @@ export default function App() {
     const teacherConfig = config?.teacherScreen || getDefaultConfig().teacherScreen;
     const canEditTimetable = userData?.canEditTimetable || false;
 
-    // Calculate statistics with safety checks
-    const totalStudents = students.length;
-    const presentStudents = students.filter(s => s && s.status === 'present').length;
-    const attendingStudents = students.filter(s => s && s.status === 'attending').length;
-    const absentStudents = students.filter(s => s && s.status === 'absent').length;
+    // Fetch current class on mount and periodically
+    React.useEffect(() => {
+      fetchTeacherCurrentClass();
+      
+      // Refresh every 30 seconds
+      const interval = setInterval(fetchTeacherCurrentClass, 30000);
+      return () => clearInterval(interval);
+    }, [userData?.employeeId]);
+
+    // Calculate statistics with safety checks - use teacherStudents instead of students
+    const totalStudents = teacherStudents.length;
+    const presentStudents = teacherStudents.filter(s => s && s.status === 'present').length;
+    const attendingStudents = teacherStudents.filter(s => s && s.status === 'attending').length;
+    const absentStudents = teacherStudents.filter(s => s && s.status === 'absent').length;
     const attendancePercentage = totalStudents > 0 ? Math.round((presentStudents / totalStudents) * 100) : 0;
 
     return (
@@ -1955,6 +2073,35 @@ export default function App() {
             </View>
           </View>
 
+          {/* Current Class Info */}
+          {teacherCurrentClass && (
+            <View style={{
+              marginHorizontal: 20,
+              marginTop: 20,
+              backgroundColor: theme.primary + '20',
+              borderRadius: 12,
+              padding: 16,
+              borderLeftWidth: 4,
+              borderLeftColor: theme.primary,
+            }}>
+              <Text style={{ fontSize: 14, fontWeight: 'bold', color: theme.text, marginBottom: 8 }}>
+                📚 Current Class
+              </Text>
+              <Text style={{ fontSize: 18, fontWeight: '600', color: theme.text, marginBottom: 4 }}>
+                {teacherCurrentClass.subject}
+              </Text>
+              <Text style={{ fontSize: 14, color: theme.textSecondary, marginBottom: 2 }}>
+                🎓 {teacherCurrentClass.branch} - Semester {teacherCurrentClass.semester}
+              </Text>
+              <Text style={{ fontSize: 14, color: theme.textSecondary, marginBottom: 2 }}>
+                🏢 Room {teacherCurrentClass.room}
+              </Text>
+              <Text style={{ fontSize: 14, color: theme.textSecondary }}>
+                🕐 {teacherCurrentClass.startTime} - {teacherCurrentClass.endTime}
+              </Text>
+            </View>
+          )}
+
           {/* Quick Actions Row */}
           <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingTop: 20, gap: 12 }}>
             <TouchableOpacity
@@ -2011,7 +2158,7 @@ export default function App() {
                 {students.length} student{students.length !== 1 ? 's' : ''}
               </Text>
             </View>
-            {students.map((student) => {
+            {teacherStudents.map((student) => {
               if (!student || !student._id) return null;
 
               const studentStatus = student.status || 'absent';
@@ -2072,7 +2219,18 @@ export default function App() {
                 </TouchableOpacity>
               );
             })}
-            {students.length === 0 && (
+            {!teacherCurrentClass && (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <Text style={{ fontSize: 48, marginBottom: 12 }}>⏰</Text>
+                <Text style={{ fontSize: 16, color: theme.textSecondary, marginBottom: 4 }}>
+                  No active class right now
+                </Text>
+                <Text style={{ fontSize: 13, color: theme.textSecondary, opacity: 0.7, textAlign: 'center' }}>
+                  Students will appear when you have an ongoing class
+                </Text>
+              </View>
+            )}
+            {teacherCurrentClass && teacherStudents.length === 0 && (
               <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                 <Text style={{ fontSize: 48, marginBottom: 12 }}>📭</Text>
                 <Text style={{ fontSize: 16, color: theme.textSecondary, marginBottom: 4 }}>
