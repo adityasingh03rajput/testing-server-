@@ -977,7 +977,7 @@ app.get('/api/attendance/records', async (req, res) => {
 // Get attendance statistics
 app.get('/api/attendance/stats', async (req, res) => {
     try {
-        const { studentId, semester, branch, startDate, endDate } = req.query;
+        const { studentId, semester, branch, startDate, endDate} = req.query;
         let query = {};
 
         if (studentId) query.studentId = studentId;
@@ -1015,6 +1015,103 @@ app.get('/api/attendance/stats', async (req, res) => {
         }
     } catch (error) {
         console.error('Error fetching attendance stats:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get students attendance for a specific date (for teachers)
+app.get('/api/attendance/date/:date', async (req, res) => {
+    try {
+        const { date } = req.params;
+        const { semester, branch } = req.query;
+        
+        console.log('📅 Fetching students for date:', date, 'Semester:', semester, 'Branch:', branch);
+        
+        if (!date || !semester || !branch) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Date, semester, and branch are required' 
+            });
+        }
+
+        const targetDate = new Date(date);
+        const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
+        const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+
+        if (mongoose.connection.readyState === 1) {
+            // Fetch all attendance records for this date, semester, and branch
+            const records = await AttendanceRecord.find({
+                date: { $gte: startOfDay, $lte: endOfDay },
+                semester: semester,
+                branch: branch
+            }).lean();
+
+            console.log('📊 Found', records.length, 'attendance records');
+
+            // Group by student and aggregate their data
+            const studentMap = {};
+            
+            for (const record of records) {
+                if (!studentMap[record.studentId]) {
+                    // Fetch student details
+                    const student = await Student.findOne({ studentId: record.studentId }).lean();
+                    
+                    studentMap[record.studentId] = {
+                        studentId: record.studentId,
+                        name: student?.name || 'Unknown',
+                        status: record.status,
+                        totalAttended: record.totalAttended || 0,
+                        totalClassTime: record.totalClassTime || 0,
+                        percentage: record.dayPercentage || 0,
+                        lectures: record.lectures || []
+                    };
+                } else {
+                    // Aggregate if multiple records exist
+                    studentMap[record.studentId].totalAttended += record.totalAttended || 0;
+                    studentMap[record.studentId].totalClassTime += record.totalClassTime || 0;
+                    if (record.lectures) {
+                        studentMap[record.studentId].lectures.push(...record.lectures);
+                    }
+                }
+            }
+
+            const students = Object.values(studentMap);
+            console.log('👥 Returning', students.length, 'students');
+
+            res.json({
+                success: true,
+                students: students,
+                date: date,
+                semester: semester,
+                branch: branch
+            });
+        } else {
+            // Memory fallback
+            const records = attendanceRecordsMemory.filter(r => {
+                const recordDate = new Date(r.date);
+                return recordDate >= startOfDay && recordDate <= endOfDay &&
+                       r.semester === semester && r.branch === branch;
+            });
+
+            const students = records.map(r => ({
+                studentId: r.studentId,
+                name: r.studentName || 'Unknown',
+                status: r.status,
+                totalAttended: r.totalAttended || 0,
+                totalClassTime: r.totalClassTime || 0,
+                percentage: r.dayPercentage || 0
+            }));
+
+            res.json({
+                success: true,
+                students: students,
+                date: date,
+                semester: semester,
+                branch: branch
+            });
+        }
+    } catch (error) {
+        console.error('❌ Error fetching students for date:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
