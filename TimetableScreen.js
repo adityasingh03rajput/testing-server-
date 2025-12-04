@@ -1,17 +1,167 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, Modal
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, Modal, Alert
 } from 'react-native';
 import { BookIcon, CalendarIcon, CoffeeIcon, LocationIcon } from './Icons';
 import { getServerTime } from './ServerTime';
 
-export default function TimetableScreen({ theme, semester, branch, socketUrl, canEdit = false, isTeacher = false }) {
+export default function TimetableScreen({ 
+  theme, 
+  semester, 
+  branch, 
+  socketUrl, 
+  canEdit = false, 
+  isTeacher = false,
+  onRefreshPermissions,
+  userData,
+  loginId,  // Add loginId prop
+  onLogout  // Add logout handler prop
+}) {
   const [timetable, setTimetable] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editingCell, setEditingCell] = useState(null);
   const [editSubject, setEditSubject] = useState('');
   const [editRoom, setEditRoom] = useState('');
+  const [editTeacher, setEditTeacher] = useState('');
   const [saving, setSaving] = useState(false);
+  const [copiedPeriod, setCopiedPeriod] = useState(null);
+  const [showSubjectDropdown, setShowSubjectDropdown] = useState(false);
+  const [showRoomDropdown, setShowRoomDropdown] = useState(false);
+  const [showTeacherDropdown, setShowTeacherDropdown] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Track edit mode toggle (teacher controls this)
+  const [editModeEnabled, setEditModeEnabled] = useState(false);
+  const [checkingPermission, setCheckingPermission] = useState(false);
+  
+  // Three-dot menu state
+  const [showMenu, setShowMenu] = useState(false);
+
+  // Handle edit mode toggle with server permission check
+  const handleToggleEditMode = async () => {
+    if (!isTeacher) return;
+
+    // If turning off, just disable
+    if (editModeEnabled) {
+      setEditModeEnabled(false);
+      Alert.alert('Edit Mode', 'Edit mode disabled', [{ text: 'OK' }]);
+      return;
+    }
+
+    // If turning on, check server permission first by fetching teacher data
+    setCheckingPermission(true);
+    try {
+      console.log('=== Permission Check Debug ===');
+      console.log('loginId prop:', loginId);
+      console.log('userData:', JSON.stringify(userData));
+      console.log('userData.employeeId:', userData?.employeeId);
+      console.log('userData._id:', userData?._id);
+      console.log('userData.email:', userData?.email);
+      console.log('userData.name:', userData?.name);
+      
+      // Use loginId prop if available, otherwise try userData
+      const teacherIdentifier = loginId || userData?.employeeId || userData?._id || userData?.email || userData?.name;
+      
+      console.log('Final teacher identifier:', teacherIdentifier);
+      
+      if (!teacherIdentifier) {
+        Alert.alert(
+          'Debug Info',
+          `loginId: ${loginId}\nuserData: ${JSON.stringify(userData)}\n\nNo identification found!`,
+          [{ text: 'OK' }]
+        );
+        throw new Error('No teacher identification available');
+      }
+      
+      // Fetch latest teacher data from server
+      const response = await fetch(`${socketUrl}/api/teachers`);
+      const data = await response.json();
+      
+      console.log('Fetched', data.teachers?.length, 'teachers from server');
+      
+      if (data.success && data.teachers) {
+        // Find this teacher in the list
+        const teacher = data.teachers.find(t => 
+          t.employeeId === teacherIdentifier ||
+          t._id === teacherIdentifier ||
+          t._id?.toString() === teacherIdentifier?.toString() ||
+          t.email === teacherIdentifier ||
+          t.name === teacherIdentifier
+        );
+        
+        console.log('Found teacher:', teacher?.name, '| canEditTimetable:', teacher?.canEditTimetable);
+        
+        if (teacher && teacher.canEditTimetable === true) {
+          setEditModeEnabled(true);
+          Alert.alert('Edit Mode', 'Edit mode enabled ✅\nYou can now edit the timetable', [{ text: 'OK' }]);
+        } else if (teacher) {
+          setEditModeEnabled(false);
+          Alert.alert(
+            'Permission Denied',
+            'You do not have permission to edit the timetable.\n\nPlease contact your administrator.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          throw new Error('Teacher not found: ' + teacherIdentifier);
+        }
+      } else {
+        throw new Error('Failed to fetch teacher data from server');
+      }
+    } catch (error) {
+      console.error('Error checking permission:', error.message);
+      setEditModeEnabled(false);
+      Alert.alert('Error', 'Failed to check permissions: ' + error.message, [{ text: 'OK' }]);
+    } finally {
+      setCheckingPermission(false);
+    }
+  };
+
+  // Pre-defined subjects list
+  const SUBJECTS = [
+    'Data Structures',
+    'Database Management',
+    'Operating Systems',
+    'Computer Networks',
+    'Software Engineering',
+    'Web Development',
+    'Machine Learning',
+    'Artificial Intelligence',
+    'Programming in C',
+    'Programming in Java',
+    'Python Programming',
+    'Digital Electronics',
+    'Microprocessors',
+    'Signals & Systems',
+    'Control Systems',
+    'Thermodynamics',
+    'Fluid Mechanics',
+    'Structural Analysis',
+    'Surveying',
+    'Mathematics',
+    'Physics',
+    'Chemistry',
+    'English',
+    'Free Period',
+  ];
+
+  // Pre-defined rooms list
+  const ROOMS = [
+    'Room 101', 'Room 102', 'Room 103', 'Room 104', 'Room 105',
+    'Room 201', 'Room 202', 'Room 203', 'Room 204', 'Room 205',
+    'Room 301', 'Room 302', 'Room 303', 'Room 304', 'Room 305',
+    'Lab 1', 'Lab 2', 'Lab 3', 'Lab 4',
+    'Auditorium', 'Seminar Hall', 'Library',
+  ];
+
+  // Teachers list (will be fetched from server)
+  const [teachers, setTeachers] = useState([
+    'Dr. Rajesh Kumar',
+    'Prof. Meera Singh',
+    'Dr. Sunil Patil',
+    'Prof. Anjali Desai',
+    'Dr. Amit Patel',
+    'Prof. Sunita Reddy',
+  ]);
 
   // Get days dynamically from timetable in proper week order (recalculates when timetable changes)
   const DAYS = useMemo(() => {
@@ -45,6 +195,8 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
   };
 
   const [currentDay, setCurrentDay] = useState(0);
+
+
 
   useEffect(() => {
     fetchTimetable();
@@ -126,7 +278,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
   };
 
   const saveTimetable = async () => {
-    if (!canEdit || !timetable) return;
+    if (!editModeEnabled || !timetable) return;
 
     setSaving(true);
     try {
@@ -153,7 +305,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
   };
 
   const handleCellPress = (dayIndex, periodNumber) => {
-    if (!canEdit) return;
+    if (!editModeEnabled) return;
 
     const dayKey = DAYS[dayIndex].toLowerCase();
     const period = timetable.timetable[dayKey].find(p => p.period === periodNumber);
@@ -162,7 +314,100 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
       setEditingCell({ dayIndex, periodNumber });
       setEditSubject(period.subject || '');
       setEditRoom(period.room || '');
+      setEditTeacher(period.teacher || '');
     }
+  };
+
+  const handleMarkAsBreak = () => {
+    if (!editingCell) return;
+
+    const { dayIndex, periodNumber } = editingCell;
+    const dayKey = DAYS[dayIndex].toLowerCase();
+
+    const updatedTimetable = { ...timetable };
+    const periodIndex = updatedTimetable.timetable[dayKey].findIndex(p => p.period === periodNumber);
+
+    if (periodIndex !== -1) {
+      updatedTimetable.timetable[dayKey][periodIndex] = {
+        ...updatedTimetable.timetable[dayKey][periodIndex],
+        subject: 'Break',
+        room: '',
+        isBreak: true
+      };
+      setTimetable(updatedTimetable);
+    }
+
+    setEditingCell(null);
+    setEditSubject('');
+    setEditRoom('');
+  };
+
+  const handleClearPeriod = () => {
+    if (!editingCell) return;
+
+    const { dayIndex, periodNumber } = editingCell;
+    const dayKey = DAYS[dayIndex].toLowerCase();
+
+    const updatedTimetable = { ...timetable };
+    const periodIndex = updatedTimetable.timetable[dayKey].findIndex(p => p.period === periodNumber);
+
+    if (periodIndex !== -1) {
+      updatedTimetable.timetable[dayKey][periodIndex] = {
+        ...updatedTimetable.timetable[dayKey][periodIndex],
+        subject: '',
+        room: '',
+        teacher: '',
+        isBreak: false
+      };
+      setTimetable(updatedTimetable);
+    }
+
+    setEditingCell(null);
+    setEditSubject('');
+    setEditRoom('');
+    setEditTeacher('');
+  };
+
+  const handleCopyPeriod = () => {
+    if (!editingCell) return;
+
+    const { dayIndex, periodNumber } = editingCell;
+    const dayKey = DAYS[dayIndex].toLowerCase();
+    const period = timetable.timetable[dayKey].find(p => p.period === periodNumber);
+
+    if (period) {
+      setCopiedPeriod({
+        subject: period.subject || '',
+        room: period.room || '',
+        teacher: period.teacher || '',
+        isBreak: period.isBreak || false
+      });
+      alert('Period copied! Tap another period and use "Paste" to apply.');
+    }
+  };
+
+  const handlePastePeriod = () => {
+    if (!editingCell || !copiedPeriod) return;
+
+    const { dayIndex, periodNumber } = editingCell;
+    const dayKey = DAYS[dayIndex].toLowerCase();
+
+    const updatedTimetable = { ...timetable };
+    const periodIndex = updatedTimetable.timetable[dayKey].findIndex(p => p.period === periodNumber);
+
+    if (periodIndex !== -1) {
+      updatedTimetable.timetable[dayKey][periodIndex] = {
+        ...updatedTimetable.timetable[dayKey][periodIndex],
+        ...copiedPeriod
+      };
+      setTimetable(updatedTimetable);
+      alert('Period pasted successfully!');
+    }
+
+    setEditingCell(null);
+    setEditSubject('');
+    setEditRoom('');
+    setEditTeacher('');
   };
 
   const handleSaveCell = () => {
@@ -179,6 +424,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
         ...updatedTimetable.timetable[dayKey][periodIndex],
         subject: editSubject,
         room: editRoom,
+        teacher: editTeacher,
         isBreak: false
       };
       setTimetable(updatedTimetable);
@@ -187,6 +433,10 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
     setEditingCell(null);
     setEditSubject('');
     setEditRoom('');
+    setEditTeacher('');
+    setShowSubjectDropdown(false);
+    setShowRoomDropdown(false);
+    setShowTeacherDropdown(false);
   };
 
   // Get periods from timetable data or use defaults
@@ -265,16 +515,19 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
         <View style={styles.titleRow}>
           <BookIcon size={28} color={theme.primary} />
           <Text style={[styles.title, { color: theme.primary }]}>Timetable</Text>
-          {canEdit && (
+          
+          {/* Save Button (only when edit mode enabled) */}
+          {editModeEnabled && (
             <TouchableOpacity
               onPress={saveTimetable}
               disabled={saving}
               style={{
-                backgroundColor: theme.primary,
+                backgroundColor: '#10b981',
                 paddingHorizontal: 16,
                 paddingVertical: 8,
                 borderRadius: 8,
                 marginLeft: 'auto',
+                marginRight: 8,
               }}
             >
               <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>
@@ -282,11 +535,42 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
               </Text>
             </TouchableOpacity>
           )}
+          
+          {/* Three-dot Menu Button */}
+          <TouchableOpacity
+            onPress={() => setShowMenu(true)}
+            style={{
+              backgroundColor: theme.cardBackground,
+              borderWidth: 1,
+              borderColor: theme.border,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 8,
+              marginLeft: editModeEnabled ? 0 : 'auto',
+            }}
+          >
+            <Text style={{ color: theme.text, fontSize: 20, fontWeight: 'bold' }}>⋮</Text>
+          </TouchableOpacity>
         </View>
-        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-          {semester && branch ? `Semester ${semester} • ${branch}` : 'Your class schedule'}
-          {canEdit && ' • Tap to edit'}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+            {semester && branch ? `Semester ${semester} • ${branch}` : 'Your class schedule'}
+          </Text>
+          {editModeEnabled && (
+            <View style={{
+              backgroundColor: theme.primary + '20',
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              borderRadius: 6,
+              borderWidth: 1,
+              borderColor: theme.primary,
+            }}>
+              <Text style={{ color: theme.primary, fontSize: 11, fontWeight: '600' }}>
+                ✏️ EDITING
+              </Text>
+            </View>
+          )}
+        </View>
       </View>
 
       {loading ? (
@@ -365,9 +649,9 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
               return (
                 <TouchableOpacity
                   key={period.number}
-                  onPress={() => canEdit && handleCellPress(currentDay, period.number)}
-                  disabled={!canEdit}
-                  activeOpacity={canEdit ? 0.7 : 1}
+                  onPress={() => editModeEnabled && handleCellPress(currentDay, period.number)}
+                  disabled={!editModeEnabled}
+                  activeOpacity={editModeEnabled ? 0.7 : 1}
                 >
                   <View
                     style={[
@@ -513,7 +797,7 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
 
       {/* Edit Modal */}
       <Modal
-        visible={editingCell !== null && canEdit}
+        visible={editingCell !== null && editModeEnabled}
         transparent={true}
         animationType="fade"
         onRequestClose={() => setEditingCell(null)}
@@ -541,46 +825,278 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
               {editingCell && `${DAYS[editingCell.dayIndex]} - Period ${editingCell.periodNumber}`}
             </Text>
 
+            {/* Subject Dropdown */}
             <Text style={{ fontSize: 14, fontWeight: '600', color: theme.text, marginBottom: 8 }}>
               Subject Name
             </Text>
-            <TextInput
-              style={{
-                backgroundColor: theme.background,
-                borderWidth: 1,
-                borderColor: theme.border,
-                borderRadius: 8,
-                padding: 12,
-                fontSize: 16,
-                color: theme.text,
-                marginBottom: 16,
-              }}
-              value={editSubject}
-              onChangeText={setEditSubject}
-              placeholder="Enter subject name"
-              placeholderTextColor={theme.textSecondary}
-            />
+            <View style={{ marginBottom: 16 }}>
+              <TouchableOpacity
+                onPress={() => setShowSubjectDropdown(!showSubjectDropdown)}
+                style={{
+                  backgroundColor: theme.background,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderRadius: 8,
+                  padding: 12,
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 16, color: editSubject ? theme.text : theme.textSecondary }}>
+                  {editSubject || 'Select or type subject'}
+                </Text>
+                <Text style={{ fontSize: 16, color: theme.textSecondary }}>▼</Text>
+              </TouchableOpacity>
+              
+              {showSubjectDropdown && (
+                <ScrollView style={{
+                  maxHeight: 150,
+                  backgroundColor: theme.background,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderRadius: 8,
+                  marginTop: 4,
+                }}>
+                  {SUBJECTS.map((subject, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      onPress={() => {
+                        setEditSubject(subject);
+                        setShowSubjectDropdown(false);
+                      }}
+                      style={{
+                        padding: 12,
+                        borderBottomWidth: index < SUBJECTS.length - 1 ? 1 : 0,
+                        borderBottomColor: theme.border,
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, color: theme.text }}>{subject}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+              
+              <TextInput
+                style={{
+                  backgroundColor: theme.background,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: 14,
+                  color: theme.text,
+                  marginTop: 8,
+                }}
+                value={editSubject}
+                onChangeText={setEditSubject}
+                placeholder="Or type custom subject"
+                placeholderTextColor={theme.textSecondary}
+              />
+            </View>
 
+            {/* Room Dropdown */}
             <Text style={{ fontSize: 14, fontWeight: '600', color: theme.text, marginBottom: 8 }}>
               Room Number
             </Text>
-            <TextInput
-              style={{
-                backgroundColor: theme.background,
-                borderWidth: 1,
-                borderColor: theme.border,
-                borderRadius: 8,
-                padding: 12,
-                fontSize: 16,
-                color: theme.text,
-                marginBottom: 24,
-              }}
-              value={editRoom}
-              onChangeText={setEditRoom}
-              placeholder="Enter room number"
-              placeholderTextColor={theme.textSecondary}
-            />
+            <View style={{ marginBottom: 16 }}>
+              <TouchableOpacity
+                onPress={() => setShowRoomDropdown(!showRoomDropdown)}
+                style={{
+                  backgroundColor: theme.background,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderRadius: 8,
+                  padding: 12,
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 16, color: editRoom ? theme.text : theme.textSecondary }}>
+                  {editRoom || 'Select or type room'}
+                </Text>
+                <Text style={{ fontSize: 16, color: theme.textSecondary }}>▼</Text>
+              </TouchableOpacity>
+              
+              {showRoomDropdown && (
+                <ScrollView style={{
+                  maxHeight: 150,
+                  backgroundColor: theme.background,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderRadius: 8,
+                  marginTop: 4,
+                }}>
+                  {ROOMS.map((room, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      onPress={() => {
+                        setEditRoom(room);
+                        setShowRoomDropdown(false);
+                      }}
+                      style={{
+                        padding: 12,
+                        borderBottomWidth: index < ROOMS.length - 1 ? 1 : 0,
+                        borderBottomColor: theme.border,
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, color: theme.text }}>{room}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+              
+              <TextInput
+                style={{
+                  backgroundColor: theme.background,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: 14,
+                  color: theme.text,
+                  marginTop: 8,
+                }}
+                value={editRoom}
+                onChangeText={setEditRoom}
+                placeholder="Or type custom room"
+                placeholderTextColor={theme.textSecondary}
+              />
+            </View>
 
+            {/* Teacher Dropdown */}
+            <Text style={{ fontSize: 14, fontWeight: '600', color: theme.text, marginBottom: 8 }}>
+              Teacher (Optional)
+            </Text>
+            <View style={{ marginBottom: 16 }}>
+              <TouchableOpacity
+                onPress={() => setShowTeacherDropdown(!showTeacherDropdown)}
+                style={{
+                  backgroundColor: theme.background,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderRadius: 8,
+                  padding: 12,
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 16, color: editTeacher ? theme.text : theme.textSecondary }}>
+                  {editTeacher || 'Select teacher'}
+                </Text>
+                <Text style={{ fontSize: 16, color: theme.textSecondary }}>▼</Text>
+              </TouchableOpacity>
+              
+              {showTeacherDropdown && (
+                <ScrollView style={{
+                  maxHeight: 150,
+                  backgroundColor: theme.background,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderRadius: 8,
+                  marginTop: 4,
+                }}>
+                  {teachers.map((teacher, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      onPress={() => {
+                        setEditTeacher(teacher);
+                        setShowTeacherDropdown(false);
+                      }}
+                      style={{
+                        padding: 12,
+                        borderBottomWidth: index < teachers.length - 1 ? 1 : 0,
+                        borderBottomColor: theme.border,
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, color: theme.text }}>{teacher}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+
+            {/* Quick Actions Row 1 */}
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+              <TouchableOpacity
+                onPress={handleMarkAsBreak}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#fbbf2420',
+                  borderWidth: 1,
+                  borderColor: '#fbbf24',
+                  padding: 10,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#fbbf24', fontWeight: '600', fontSize: 13 }}>
+                  ☕ Break
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleClearPeriod}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#ef444420',
+                  borderWidth: 1,
+                  borderColor: '#ef4444',
+                  padding: 10,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#ef4444', fontWeight: '600', fontSize: 13 }}>
+                  🗑️ Clear
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleCopyPeriod}
+                style={{
+                  flex: 1,
+                  backgroundColor: theme.primary + '20',
+                  borderWidth: 1,
+                  borderColor: theme.primary,
+                  padding: 10,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: theme.primary, fontWeight: '600', fontSize: 13 }}>
+                  📋 Copy
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Quick Actions Row 2 */}
+            {copiedPeriod && (
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                <TouchableOpacity
+                  onPress={handlePastePeriod}
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#10b98120',
+                    borderWidth: 1,
+                    borderColor: '#10b981',
+                    padding: 10,
+                    borderRadius: 8,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#10b981', fontWeight: '600', fontSize: 13 }}>
+                    📌 Paste: {copiedPeriod.subject || 'Empty'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {!copiedPeriod && <View style={{ marginBottom: 16 }} />}
+
+            {/* Main Actions */}
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <TouchableOpacity
                 onPress={() => {
@@ -612,12 +1128,169 @@ export default function TimetableScreen({ theme, semester, branch, socketUrl, ca
                 }}
               >
                 <Text style={{ color: '#fff', fontWeight: '600', fontSize: 16 }}>
-                  Save
+                  💾 Save
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Three-dot Menu Modal */}
+      <Modal
+        visible={showMenu}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowMenu(false)}
+      >
+        <TouchableOpacity
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+          activeOpacity={1}
+          onPress={() => setShowMenu(false)}
+        >
+          <View
+            style={{
+              backgroundColor: theme.cardBackground,
+              borderRadius: 16,
+              padding: 8,
+              width: 280,
+              borderWidth: 2,
+              borderColor: theme.border,
+            }}
+            onStartShouldSetResponder={() => true}
+          >
+            <Text style={{
+              fontSize: 18,
+              fontWeight: 'bold',
+              color: theme.text,
+              paddingHorizontal: 16,
+              paddingVertical: 12,
+              borderBottomWidth: 1,
+              borderBottomColor: theme.border,
+            }}>
+              Settings & Tools
+            </Text>
+
+            {/* Edit Mode Toggle (for teachers) */}
+            {isTeacher && (
+              <TouchableOpacity
+                onPress={() => {
+                  setShowMenu(false);
+                  handleToggleEditMode();
+                }}
+                disabled={checkingPermission}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 16,
+                  paddingVertical: 14,
+                  borderBottomWidth: 1,
+                  borderBottomColor: theme.border,
+                }}
+              >
+                <Text style={{ fontSize: 20, marginRight: 12 }}>
+                  {checkingPermission ? '⏳' : editModeEnabled ? '✏️' : '🔒'}
+                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: theme.text }}>
+                    {checkingPermission ? 'Checking Permission...' : editModeEnabled ? 'Disable Edit Mode' : 'Enable Edit Mode'}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: theme.textSecondary, marginTop: 2 }}>
+                    {editModeEnabled ? 'Turn off timetable editing' : 'Edit timetable periods'}
+                  </Text>
+                </View>
+                {editModeEnabled && (
+                  <View style={{
+                    backgroundColor: theme.primary + '20',
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 6,
+                  }}>
+                    <Text style={{ color: theme.primary, fontSize: 10, fontWeight: '600' }}>ON</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {/* Refresh Timetable */}
+            <TouchableOpacity
+              onPress={() => {
+                setShowMenu(false);
+                fetchTimetable();
+              }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderBottomWidth: 1,
+                borderBottomColor: theme.border,
+              }}
+            >
+              <Text style={{ fontSize: 20, marginRight: 12 }}>🔄</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 16, fontWeight: '600', color: theme.text }}>
+                  Refresh Timetable
+                </Text>
+                <Text style={{ fontSize: 12, color: theme.textSecondary, marginTop: 2 }}>
+                  Reload latest schedule
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Logout */}
+            {onLogout && (
+              <TouchableOpacity
+                onPress={() => {
+                  setShowMenu(false);
+                  Alert.alert(
+                    'Logout',
+                    'Are you sure you want to logout?',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Logout', style: 'destructive', onPress: onLogout }
+                    ]
+                  );
+                }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 16,
+                  paddingVertical: 14,
+                }}
+              >
+                <Text style={{ fontSize: 20, marginRight: 12 }}>🚪</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#ef4444' }}>
+                    Logout
+                  </Text>
+                  <Text style={{ fontSize: 12, color: theme.textSecondary, marginTop: 2 }}>
+                    Sign out of your account
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {/* Close Button */}
+            <TouchableOpacity
+              onPress={() => setShowMenu(false)}
+              style={{
+                marginTop: 8,
+                paddingVertical: 12,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ fontSize: 14, color: theme.textSecondary, fontWeight: '600' }}>
+                Close
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       </Modal>
     </ScrollView>
   );

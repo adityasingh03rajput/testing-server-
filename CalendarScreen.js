@@ -10,7 +10,7 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
 
 import { getServerTime } from './ServerTime';
 
-export default function CalendarScreen({ theme, studentId, semester, branch, socketUrl }) {
+export default function CalendarScreen({ theme, studentId, semester, branch, socketUrl, isTeacher = false }) {
     // Use server time for calendar
     const getInitialDate = () => {
         try {
@@ -30,6 +30,10 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
     const [showDetailsModal, setShowDetailsModal] = useState(false);
     const [selectedDateDetails, setSelectedDateDetails] = useState(null);
     const [holidays, setHolidays] = useState({});
+    
+    // Teacher-specific states
+    const [studentsOnDate, setStudentsOnDate] = useState([]);
+    const [loadingStudents, setLoadingStudents] = useState(false);
 
     useEffect(() => {
         console.log('📱 CalendarScreen mounted with props:', {
@@ -37,11 +41,16 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
             semester,
             branch,
             socketUrl,
+            isTeacher,
             currentMonth: currentDate.toDateString()
         });
-        fetchMonthAttendance();
+        if (isTeacher) {
+            fetchTeacherMonthData();
+        } else {
+            fetchMonthAttendance();
+        }
         fetchHolidays();
-    }, [currentDate, studentId]);
+    }, [currentDate, studentId, semester, branch]);
 
     const fetchHolidays = async () => {
         try {
@@ -63,6 +72,71 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
             }
         } catch (error) {
             console.log('Error fetching holidays:', error);
+        }
+    };
+
+    const fetchTeacherMonthData = async () => {
+        if (!semester || !branch) {
+            console.log('⚠️ No semester/branch provided for teacher calendar');
+            return;
+        }
+
+        console.log('📅 Fetching teacher month data for:', semester, branch);
+        setLoading(true);
+        try {
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            const startDate = new Date(year, month, 1);
+            const endDate = new Date(year, month + 1, 0);
+
+            // Fetch all attendance records for this semester/branch in the month
+            const url = `${socketUrl}/api/attendance/records?semester=${semester}&branch=${branch}&startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`;
+            console.log('📡 Fetching from:', url);
+
+            const response = await fetch(url);
+            const data = await response.json();
+
+            console.log('📊 Teacher attendance data received:', data);
+
+            if (data.success && data.records) {
+                // Group records by date and count present/absent
+                const dateMap = {};
+                
+                data.records.forEach(record => {
+                    const date = new Date(record.date).toDateString();
+                    if (!dateMap[date]) {
+                        dateMap[date] = { present: 0, absent: 0, total: 0 };
+                    }
+                    if (record.status === 'present') dateMap[date].present++;
+                    else if (record.status === 'absent') dateMap[date].absent++;
+                    dateMap[date].total++;
+                });
+
+                console.log('✅ Processed teacher data:', dateMap);
+                setAttendanceData(dateMap);
+                
+                // Calculate month stats
+                let totalPresent = 0, totalAbsent = 0;
+                Object.values(dateMap).forEach(day => {
+                    totalPresent += day.present;
+                    totalAbsent += day.absent;
+                });
+                setMonthStats({ 
+                    present: totalPresent, 
+                    absent: totalAbsent, 
+                    total: totalPresent + totalAbsent 
+                });
+            } else {
+                console.log('❌ No records found');
+                setAttendanceData({});
+                setMonthStats({ present: 0, absent: 0, total: 0 });
+            }
+        } catch (error) {
+            console.log('❌ Error fetching teacher data:', error);
+            setAttendanceData({});
+            setMonthStats({ present: 0, absent: 0, total: 0 });
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -167,6 +241,16 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
 
     const getAttendanceStatus = (date) => {
         if (!date) return null;
+        const dateKey = date.toDateString();
+        if (isTeacher) {
+            // For teachers, return if there's any data for this date
+            return attendanceData[dateKey] ? 'present' : null;
+        }
+        return attendanceData[dateKey];
+    };
+    
+    const getDateStats = (date) => {
+        if (!date || !isTeacher) return null;
         return attendanceData[date.toDateString()];
     };
 
@@ -175,22 +259,58 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
         return holidays[date.toDateString()];
     };
 
+    const fetchStudentsForDate = async (date) => {
+        if (!isTeacher || !semester || !branch) return;
+        
+        setLoadingStudents(true);
+        try {
+            const dateStr = date.toISOString().split('T')[0];
+            const url = `${socketUrl}/api/attendance/date/${dateStr}?semester=${semester}&branch=${branch}`;
+            console.log('📊 Fetching students for date:', url);
+            
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            console.log('👥 Students data:', data);
+            
+            if (data.success && data.students) {
+                setStudentsOnDate(data.students);
+            } else {
+                setStudentsOnDate([]);
+            }
+        } catch (error) {
+            console.log('❌ Error fetching students:', error);
+            setStudentsOnDate([]);
+        } finally {
+            setLoadingStudents(false);
+        }
+    };
+
     const showDateDetails = (date) => {
         if (!date) return;
         const dateKey = date.toDateString();
-        const record = attendanceRecords[dateKey];
-        const holiday = holidays[dateKey];
-
-        console.log('📅 Showing details for:', dateKey);
-        console.log('📋 Record:', record);
-        console.log('🏖️ Holiday:', holiday);
-
-        if (record || holiday) {
-            setSelectedDate(date);
-            setSelectedDateDetails({ ...record, holiday });
+        
+        setSelectedDate(date);
+        
+        if (isTeacher) {
+            // Teacher view: show students for this date
+            fetchStudentsForDate(date);
             setShowDetailsModal(true);
         } else {
-            console.log('⚠️ No attendance record or holiday for this date');
+            // Student view: show their own attendance
+            const record = attendanceRecords[dateKey];
+            const holiday = holidays[dateKey];
+
+            console.log('📅 Showing details for:', dateKey);
+            console.log('📋 Record:', record);
+            console.log('🏖️ Holiday:', holiday);
+
+            if (record || holiday) {
+                setSelectedDateDetails({ ...record, holiday });
+                setShowDetailsModal(true);
+            } else {
+                console.log('⚠️ No attendance record or holiday for this date');
+            }
         }
     };
 
@@ -282,9 +402,11 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
                     <View style={styles.daysGrid}>
                         {days.map((date, index) => {
                             const status = getAttendanceStatus(date);
+                            const dateStats = getDateStats(date);
                             const holiday = getHoliday(date);
                             const today = isToday(date);
                             const selected = isSelected(date);
+                            const hasData = isTeacher ? dateStats : status;
 
                             return (
                                 <TouchableOpacity
@@ -294,8 +416,7 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
                                         !date && styles.emptyCell,
                                         today && styles.todayCell,
                                         selected && { borderColor: theme.primary, borderWidth: 2 },
-                                        status === 'present' && styles.presentCell,
-                                        status === 'absent' && styles.absentCell,
+                                        hasData && styles.presentCell,
                                         holiday && styles.holidayCell,
                                     ]}
                                     onPress={() => date && showDateDetails(date)}
@@ -307,7 +428,7 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
                                                 styles.dayNumber,
                                                 { color: theme.text },
                                                 today && styles.todayText,
-                                                (status === 'present' || status === 'absent') && styles.statusText,
+                                                hasData && styles.statusText,
                                                 holiday && styles.holidayText
                                             ]}>
                                                 {date.getDate()}
@@ -319,7 +440,14 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
                                                     </Text>
                                                 </View>
                                             )}
-                                            {status && !holiday && (
+                                            {isTeacher && dateStats && !holiday && (
+                                                <View style={styles.teacherDateBadge}>
+                                                    <Text style={[styles.teacherDateCount, { color: theme.primary }]}>
+                                                        {dateStats.total}
+                                                    </Text>
+                                                </View>
+                                            )}
+                                            {!isTeacher && status && !holiday && (
                                                 <View style={styles.statusIcon}>
                                                     {status === 'present' ? (
                                                         <CheckIcon size={10} color="#10b981" />
@@ -341,18 +469,38 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
             <View style={[styles.legend, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
                 <Text style={[styles.legendTitle, { color: theme.text }]}>Legend:</Text>
                 <View style={styles.legendItems}>
-                    <View style={styles.legendItem}>
-                        <View style={[styles.legendDot, { backgroundColor: '#10b981' }]} />
-                        <Text style={[styles.legendText, { color: theme.textSecondary }]}>Present</Text>
-                    </View>
-                    <View style={styles.legendItem}>
-                        <View style={[styles.legendDot, { backgroundColor: '#ef4444' }]} />
-                        <Text style={[styles.legendText, { color: theme.textSecondary }]}>Absent</Text>
-                    </View>
-                    <View style={styles.legendItem}>
-                        <View style={[styles.legendDot, { backgroundColor: theme.primary }]} />
-                        <Text style={[styles.legendText, { color: theme.textSecondary }]}>Today</Text>
-                    </View>
+                    {isTeacher ? (
+                        <>
+                            <View style={styles.legendItem}>
+                                <View style={[styles.legendDot, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]} />
+                                <Text style={[styles.legendText, { color: theme.textSecondary }]}>Has Data</Text>
+                            </View>
+                            <View style={styles.legendItem}>
+                                <View style={[styles.legendDot, { backgroundColor: theme.primary }]} />
+                                <Text style={[styles.legendText, { color: theme.textSecondary }]}>Today</Text>
+                            </View>
+                            <View style={styles.legendItem}>
+                                <Text style={[styles.legendText, { color: theme.textSecondary }]}>
+                                    Number = Total Students
+                                </Text>
+                            </View>
+                        </>
+                    ) : (
+                        <>
+                            <View style={styles.legendItem}>
+                                <View style={[styles.legendDot, { backgroundColor: '#10b981' }]} />
+                                <Text style={[styles.legendText, { color: theme.textSecondary }]}>Present</Text>
+                            </View>
+                            <View style={styles.legendItem}>
+                                <View style={[styles.legendDot, { backgroundColor: '#ef4444' }]} />
+                                <Text style={[styles.legendText, { color: theme.textSecondary }]}>Absent</Text>
+                            </View>
+                            <View style={styles.legendItem}>
+                                <View style={[styles.legendDot, { backgroundColor: theme.primary }]} />
+                                <Text style={[styles.legendText, { color: theme.textSecondary }]}>Today</Text>
+                            </View>
+                        </>
+                    )}
                 </View>
             </View>
 
@@ -374,7 +522,114 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
                             </TouchableOpacity>
                         </View>
 
-                        {selectedDateDetails && (
+                        {isTeacher ? (
+                            /* Teacher View: Show Students List */
+                            <ScrollView style={styles.modalBody}>
+                                {loadingStudents ? (
+                                    <View style={styles.loadingContainer}>
+                                        <ActivityIndicator size="large" color={theme.primary} />
+                                        <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
+                                            Loading students...
+                                        </Text>
+                                    </View>
+                                ) : studentsOnDate.length > 0 ? (
+                                    <>
+                                        {/* Summary Stats */}
+                                        <View style={[styles.summaryCard, { backgroundColor: theme.background }]}>
+                                            <Text style={[styles.summaryTitle, { color: theme.text }]}>
+                                                📊 Attendance Summary
+                                            </Text>
+                                            <View style={styles.summaryRow}>
+                                                <View style={styles.summaryItem}>
+                                                    <Text style={[styles.summaryValue, { color: '#10b981' }]}>
+                                                        {studentsOnDate.filter(s => s.status === 'present').length}
+                                                    </Text>
+                                                    <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>
+                                                        Present
+                                                    </Text>
+                                                </View>
+                                                <View style={styles.summaryItem}>
+                                                    <Text style={[styles.summaryValue, { color: '#ef4444' }]}>
+                                                        {studentsOnDate.filter(s => s.status === 'absent').length}
+                                                    </Text>
+                                                    <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>
+                                                        Absent
+                                                    </Text>
+                                                </View>
+                                                <View style={styles.summaryItem}>
+                                                    <Text style={[styles.summaryValue, { color: theme.primary }]}>
+                                                        {studentsOnDate.length}
+                                                    </Text>
+                                                    <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>
+                                                        Total
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                        </View>
+
+                                        {/* Students List */}
+                                        <Text style={[styles.studentsTitle, { color: theme.text }]}>
+                                            Students ({studentsOnDate.length}):
+                                        </Text>
+                                        {studentsOnDate.map((student, index) => (
+                                            <View
+                                                key={index}
+                                                style={[
+                                                    styles.studentCard,
+                                                    {
+                                                        backgroundColor: theme.background,
+                                                        borderLeftColor: student.status === 'present' ? '#10b981' : '#ef4444'
+                                                    }
+                                                ]}
+                                            >
+                                                <View style={styles.studentHeader}>
+                                                    <View style={{ flex: 1 }}>
+                                                        <Text style={[styles.studentName, { color: theme.text }]}>
+                                                            {student.name || 'Unknown Student'}
+                                                        </Text>
+                                                        <Text style={[styles.studentId, { color: theme.textSecondary }]}>
+                                                            ID: {student.studentId || 'N/A'}
+                                                        </Text>
+                                                    </View>
+                                                    <View style={[
+                                                        styles.statusBadge,
+                                                        { backgroundColor: student.status === 'present' ? '#10b98120' : '#ef444420' }
+                                                    ]}>
+                                                        <Text style={[
+                                                            styles.statusBadgeText,
+                                                            { color: student.status === 'present' ? '#10b981' : '#ef4444' }
+                                                        ]}>
+                                                            {student.status === 'present' ? '✓ Present' : '✗ Absent'}
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                                {student.percentage !== undefined && (
+                                                    <Text style={[styles.studentPercentage, { color: theme.textSecondary }]}>
+                                                        📊 Attendance: {student.percentage}%
+                                                    </Text>
+                                                )}
+                                                {student.totalAttended !== undefined && student.totalClassTime !== undefined && (
+                                                    <Text style={[styles.studentTime, { color: theme.textSecondary }]}>
+                                                        ⏱️ {student.totalAttended} min / {student.totalClassTime} min
+                                                    </Text>
+                                                )}
+                                            </View>
+                                        ))}
+                                    </>
+                                ) : (
+                                    <View style={styles.noDataContainer}>
+                                        <Text style={[styles.noDataText, { color: theme.textSecondary }]}>
+                                            📚 No attendance data available for this date
+                                        </Text>
+                                        <Text style={[styles.noDataSubtext, { color: theme.textSecondary }]}>
+                                            Students may not have been marked yet
+                                        </Text>
+                                    </View>
+                                )}
+                            </ScrollView>
+                        ) : (
+                            /* Student View: Show Their Own Attendance */
+                            selectedDateDetails && (
                             <ScrollView style={styles.modalBody}>
                                 {/* Holiday Info (if applicable) */}
                                 {selectedDateDetails.holiday && (
@@ -466,6 +721,7 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
                                     </View>
                                 )}
                             </ScrollView>
+                            )
                         )}
                     </View>
                 </View>
@@ -617,6 +873,21 @@ const styles = StyleSheet.create({
         position: 'absolute',
         bottom: 4,
     },
+    teacherDateBadge: {
+        position: 'absolute',
+        bottom: 2,
+        right: 2,
+        backgroundColor: 'rgba(0, 217, 255, 0.2)',
+        borderRadius: 8,
+        paddingHorizontal: 4,
+        paddingVertical: 2,
+        minWidth: 16,
+        alignItems: 'center',
+    },
+    teacherDateCount: {
+        fontSize: 8,
+        fontWeight: 'bold',
+    },
     loadingContainer: {
         padding: 40,
         alignItems: 'center',
@@ -757,5 +1028,91 @@ const styles = StyleSheet.create({
     holidayInfoDesc: {
         fontSize: 13,
         textAlign: 'center',
+    },
+    summaryCard: {
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 16,
+    },
+    summaryTitle: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        marginBottom: 12,
+        textAlign: 'center',
+    },
+    summaryRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+    },
+    summaryItem: {
+        alignItems: 'center',
+    },
+    summaryValue: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        marginBottom: 4,
+    },
+    summaryLabel: {
+        fontSize: 11,
+    },
+    studentsTitle: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        marginBottom: 12,
+    },
+    studentCard: {
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 10,
+        borderLeftWidth: 3,
+    },
+    studentHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 6,
+    },
+    studentName: {
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    studentId: {
+        fontSize: 11,
+        marginTop: 2,
+    },
+    statusBadge: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    statusBadgeText: {
+        fontSize: 11,
+        fontWeight: 'bold',
+    },
+    studentPercentage: {
+        fontSize: 11,
+        marginTop: 2,
+    },
+    studentTime: {
+        fontSize: 10,
+        marginTop: 2,
+    },
+    noDataContainer: {
+        padding: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    noDataText: {
+        fontSize: 14,
+        textAlign: 'center',
+        marginBottom: 8,
+    },
+    noDataSubtext: {
+        fontSize: 12,
+        textAlign: 'center',
+    },
+    loadingText: {
+        marginTop: 12,
+        fontSize: 14,
     },
 });
