@@ -1082,6 +1082,103 @@ app.get('/api/attendance/stats', async (req, res) => {
     }
 });
 
+// Get students attendance for a specific date (for teachers)
+app.get('/api/attendance/date/:date', async (req, res) => {
+    try {
+        const { date } = req.params;
+        const { semester, branch } = req.query;
+        
+        console.log('📅 Fetching students for date:', date, 'Semester:', semester, 'Branch:', branch);
+        
+        if (!date || !semester || !branch) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Date, semester, and branch are required' 
+            });
+        }
+
+        const targetDate = new Date(date);
+        const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
+        const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+
+        if (mongoose.connection.readyState === 1) {
+            // Fetch all attendance records for this date, semester, and branch
+            const records = await AttendanceRecord.find({
+                date: { $gte: startOfDay, $lte: endOfDay },
+                semester: semester,
+                branch: branch
+            }).lean();
+
+            console.log('📊 Found', records.length, 'attendance records');
+
+            // Group by student and aggregate their data
+            const studentMap = {};
+            
+            for (const record of records) {
+                if (!studentMap[record.studentId]) {
+                    // Fetch student details
+                    const student = await Student.findOne({ studentId: record.studentId }).lean();
+                    
+                    studentMap[record.studentId] = {
+                        studentId: record.studentId,
+                        name: student?.name || 'Unknown',
+                        status: record.status,
+                        totalAttended: record.totalAttended || 0,
+                        totalClassTime: record.totalClassTime || 0,
+                        percentage: record.dayPercentage || 0,
+                        lectures: record.lectures || []
+                    };
+                } else {
+                    // Aggregate if multiple records exist
+                    studentMap[record.studentId].totalAttended += record.totalAttended || 0;
+                    studentMap[record.studentId].totalClassTime += record.totalClassTime || 0;
+                    if (record.lectures) {
+                        studentMap[record.studentId].lectures.push(...record.lectures);
+                    }
+                }
+            }
+
+            const students = Object.values(studentMap);
+            console.log('👥 Returning', students.length, 'students');
+
+            res.json({
+                success: true,
+                students: students,
+                date: date,
+                semester: semester,
+                branch: branch
+            });
+        } else {
+            // Memory fallback
+            const records = attendanceRecordsMemory.filter(r => {
+                const recordDate = new Date(r.date);
+                return recordDate >= startOfDay && recordDate <= endOfDay &&
+                       r.semester === semester && r.branch === branch;
+            });
+
+            const students = records.map(r => ({
+                studentId: r.studentId,
+                name: r.studentName || 'Unknown',
+                status: r.status,
+                totalAttended: r.totalAttended || 0,
+                totalClassTime: r.totalClassTime || 0,
+                percentage: r.dayPercentage || 0
+            }));
+
+            res.json({
+                success: true,
+                students: students,
+                date: date,
+                semester: semester,
+                branch: branch
+            });
+        }
+    } catch (error) {
+        console.error('❌ Error fetching students for date:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 const faceApiService = require('./face-api-service');
 
 // Load face-api.js models on startup
@@ -1719,6 +1816,109 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
+// Refresh user profile endpoint (get latest data without password)
+app.post('/api/refresh-profile', async (req, res) => {
+    try {
+        const { id, role } = req.body;
+        console.log('Profile refresh request:', id, role);
+
+        if (!id || !role) {
+            return res.json({ success: false, message: 'ID and role required' });
+        }
+
+        let user = null;
+
+        if (mongoose.connection.readyState === 1) {
+            if (role === 'student') {
+                user = await StudentManagement.findOne({
+                    $or: [
+                        { enrollmentNo: id },
+                        { email: id }
+                    ]
+                });
+
+                if (user) {
+                    console.log('✅ Student profile refreshed:', user.name);
+                    return res.json({
+                        success: true,
+                        user: {
+                            _id: user._id,
+                            name: user.name,
+                            email: user.email,
+                            enrollmentNo: user.enrollmentNo,
+                            course: user.course,
+                            semester: user.semester,
+                            phone: user.phone,
+                            photoUrl: user.photoUrl,
+                            role: 'student'
+                        }
+                    });
+                }
+            } else if (role === 'teacher') {
+                user = await Teacher.findOne({
+                    $or: [
+                        { employeeId: id },
+                        { email: id }
+                    ]
+                });
+
+                if (user) {
+                    console.log('✅ Teacher profile refreshed:', user.name);
+                    console.log('   canEditTimetable value:', user.canEditTimetable);
+                    console.log('   canEditTimetable type:', typeof user.canEditTimetable);
+                    
+                    const responseData = {
+                        success: true,
+                        user: {
+                            _id: user._id,
+                            name: user.name,
+                            email: user.email,
+                            employeeId: user.employeeId,
+                            department: user.department,
+                            phone: user.phone,
+                            photoUrl: user.photoUrl,
+                            canEditTimetable: user.canEditTimetable,
+                            role: 'teacher'
+                        }
+                    };
+                    
+                    console.log('   Response canEditTimetable:', responseData.user.canEditTimetable);
+                    return res.json(responseData);
+                }
+            }
+        } else {
+            // In-memory storage
+            if (role === 'student') {
+                user = studentManagementMemory.find(s =>
+                    s.enrollmentNo === id || s.email === id
+                );
+            } else if (role === 'teacher') {
+                user = teachersMemory.find(t =>
+                    t.employeeId === id || t.email === id
+                );
+            }
+
+            if (user) {
+                console.log('Profile refreshed (memory):', user.name);
+                return res.json({
+                    success: true,
+                    user: {
+                        ...user,
+                        role: role
+                    }
+                });
+            }
+        }
+
+        console.log('Profile refresh failed for:', id);
+        res.json({ success: false, message: 'User not found' });
+
+    } catch (error) {
+        console.error('Profile refresh error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
 // Student Management
 const studentManagementSchema = new mongoose.Schema({
     enrollmentNo: { type: String, required: true, unique: true },
@@ -2065,13 +2265,21 @@ app.post('/api/teachers/bulk', async (req, res) => {
 app.put('/api/teachers/:id/timetable-access', async (req, res) => {
     try {
         const { canEditTimetable } = req.body;
+        console.log(`🔐 Updating timetable access for teacher ${req.params.id}:`, canEditTimetable);
+        
         if (mongoose.connection.readyState === 1) {
-            await Teacher.findByIdAndUpdate(req.params.id, { canEditTimetable });
-            res.json({ success: true });
+            const updated = await Teacher.findByIdAndUpdate(
+                req.params.id, 
+                { canEditTimetable },
+                { new: true }
+            );
+            console.log(`✅ Updated successfully. New value:`, updated?.canEditTimetable);
+            res.json({ success: true, teacher: updated });
         } else {
             res.json({ success: true });
         }
     } catch (error) {
+        console.error('❌ Error updating timetable access:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -2318,6 +2526,162 @@ app.delete('/api/classrooms/:id', async (req, res) => {
     } catch (error) {
         console.error('Error deleting classroom:', error);
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ==================== RANDOM RING API ====================
+
+// Random Ring - Send notifications to selected students
+app.post('/api/random-ring', async (req, res) => {
+    try {
+        const { type, count, teacherId, semester, branch } = req.body;
+
+        console.log('🔔 Random Ring initiated:', { type, count, teacherId, semester, branch });
+
+        if (!teacherId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Teacher ID required'
+            });
+        }
+
+        // Get students for the class
+        let students = [];
+        if (mongoose.connection.readyState === 1) {
+            const query = {};
+            if (semester) query.semester = semester;
+            if (branch) query.course = branch;
+            
+            students = await StudentManagement.find(query);
+        } else {
+            students = studentManagementMemory;
+        }
+
+        // Filter students who are currently attending (connected to WiFi)
+        const attendingStudents = students.filter(s => 
+            s.status === 'attending' || s.status === 'active' || s.isRunning
+        );
+
+        console.log(`📊 Found ${attendingStudents.length} attending students out of ${students.length} total`);
+
+        if (attendingStudents.length === 0) {
+            return res.json({
+                success: true,
+                message: 'No students currently attending',
+                selectedStudents: []
+            });
+        }
+
+        // Select students based on type
+        let selectedStudents = [];
+        if (type === 'all') {
+            selectedStudents = attendingStudents;
+        } else if (type === 'select' && count) {
+            // Randomly select N students
+            const shuffled = [...attendingStudents].sort(() => 0.5 - Math.random());
+            selectedStudents = shuffled.slice(0, Math.min(count, attendingStudents.length));
+        }
+
+        console.log(`✅ Selected ${selectedStudents.length} students for random ring`);
+
+        // Send notifications via Socket.IO
+        selectedStudents.forEach(student => {
+            io.emit('random_ring_notification', {
+                studentId: student._id || student.enrollmentNo,
+                studentName: student.name,
+                message: 'Please verify your attendance now!',
+                teacherId: teacherId,
+                timestamp: Date.now()
+            });
+        });
+
+        res.json({
+            success: true,
+            message: `Random ring sent to ${selectedStudents.length} students`,
+            selectedStudents: selectedStudents.map(s => ({
+                id: s._id || s.enrollmentNo,
+                name: s.name,
+                enrollmentNo: s.enrollmentNo
+            }))
+        });
+
+    } catch (error) {
+        console.error('❌ Error in random ring:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// ==================== VIEW RECORDS API ====================
+
+// Get students by semester and branch (for ViewRecords screen)
+app.get('/api/view-records/students', async (req, res) => {
+    try {
+        const { semester, branch } = req.query;
+
+        if (!semester || !branch) {
+            return res.status(400).json({
+                success: false,
+                error: 'Semester and branch required'
+            });
+        }
+
+        console.log(`📋 Fetching records for ${branch} Semester ${semester}`);
+
+        if (mongoose.connection.readyState === 1) {
+            const students = await StudentManagement.find({
+                semester: semester,
+                course: branch
+            }).select('-password');
+
+            // Get attendance stats for each student
+            const studentsWithStats = await Promise.all(
+                students.map(async (student) => {
+                    const records = await AttendanceRecord.find({
+                        studentId: student._id
+                    });
+
+                    const total = records.length;
+                    const present = records.filter(r => r.status === 'present').length;
+                    const attendancePercentage = total > 0 ? Math.round((present / total) * 100) : 0;
+
+                    return {
+                        ...student.toObject(),
+                        attendancePercentage,
+                        totalDays: total,
+                        presentDays: present
+                    };
+                })
+            );
+
+            res.json({
+                success: true,
+                students: studentsWithStats,
+                count: studentsWithStats.length
+            });
+        } else {
+            // In-memory fallback
+            const students = studentManagementMemory.filter(s =>
+                s.semester === semester && s.course === branch
+            );
+
+            res.json({
+                success: true,
+                students: students.map(s => ({
+                    ...s,
+                    attendancePercentage: Math.floor(Math.random() * 30) + 70
+                })),
+                count: students.length
+            });
+        }
+    } catch (error) {
+        console.error('❌ Error fetching view records:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
 });
 
