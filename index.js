@@ -850,6 +850,78 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Student starts timer (centralized system)
+    socket.on('start_timer', async (data) => {
+        try {
+            const { studentId, enrollmentNo, name, semester, branch, currentClass, lectureDuration } = data;
+            
+            console.log(`⏱️ Starting timer for ${name} (${enrollmentNo}) - ${currentClass}`);
+            
+            // Add to active timers
+            activeStudentTimers.set(studentId, {
+                startTime: Date.now(),
+                semester,
+                branch,
+                currentClass,
+                enrollmentNo,
+                name,
+                lectureDuration: lectureDuration || 60 // default 60 minutes
+            });
+            
+            // Update database
+            if (mongoose.connection.readyState === 1) {
+                await StudentManagement.findOneAndUpdate(
+                    { $or: [{ _id: studentId }, { enrollmentNo }] },
+                    {
+                        isRunning: true,
+                        status: 'attending',
+                        lastUpdated: new Date()
+                    }
+                );
+            }
+            
+            socket.emit('timer_started', { success: true, studentId });
+            console.log(`✅ Timer started for ${name}`);
+        } catch (error) {
+            console.error('❌ Error starting timer:', error);
+            socket.emit('timer_error', { message: 'Failed to start timer' });
+        }
+    });
+    
+    // Student stops timer (centralized system)
+    socket.on('stop_timer', async (data) => {
+        try {
+            const { studentId, enrollmentNo } = data;
+            
+            const timerData = activeStudentTimers.get(studentId);
+            if (timerData) {
+                const elapsedMinutes = Math.floor((Date.now() - timerData.startTime) / 60000);
+                console.log(`⏹️ Stopping timer for ${timerData.name} - Attended: ${elapsedMinutes} min`);
+                
+                // Remove from active timers
+                activeStudentTimers.delete(studentId);
+                
+                // Update database
+                if (mongoose.connection.readyState === 1) {
+                    await StudentManagement.findOneAndUpdate(
+                        { $or: [{ _id: studentId }, { enrollmentNo }] },
+                        {
+                            isRunning: false,
+                            status: 'absent',
+                            timerValue: 0,
+                            lastUpdated: new Date()
+                        }
+                    );
+                }
+                
+                socket.emit('timer_stopped', { success: true, attendedMinutes: elapsedMinutes });
+            }
+        } catch (error) {
+            console.error('❌ Error stopping timer:', error);
+            socket.emit('timer_error', { message: 'Failed to stop timer' });
+        }
+    });
+
     socket.on('disconnect', () => {
         console.log('📴 Client disconnected:', socket.id);
     });
@@ -910,79 +982,7 @@ setInterval(async () => {
     }
 }, 1000); // Every second
 
-// Student starts timer
-io.on('connection', (socket) => {
-    socket.on('start_timer', async (data) => {
-        try {
-            const { studentId, enrollmentNo, name, semester, branch, currentClass, lectureDuration } = data;
-            
-            console.log(`⏱️ Starting timer for ${name} (${enrollmentNo}) - ${currentClass}`);
-            
-            // Add to active timers
-            activeStudentTimers.set(studentId, {
-                startTime: Date.now(),
-                semester,
-                branch,
-                currentClass,
-                enrollmentNo,
-                name,
-                lectureDuration: lectureDuration || 60 // default 60 minutes
-            });
-            
-            // Update database
-            if (mongoose.connection.readyState === 1) {
-                await StudentManagement.findOneAndUpdate(
-                    { $or: [{ _id: studentId }, { enrollmentNo }] },
-                    {
-                        isRunning: true,
-                        status: 'attending',
-                        lastUpdated: new Date()
-                    }
-                );
-            }
-            
-            socket.emit('timer_started', { success: true, studentId });
-            console.log(`✅ Timer started for ${name}`);
-        } catch (error) {
-            console.error('❌ Error starting timer:', error);
-            socket.emit('timer_error', { message: 'Failed to start timer' });
-        }
-    });
-    
-    // Student stops timer
-    socket.on('stop_timer', async (data) => {
-        try {
-            const { studentId, enrollmentNo } = data;
-            
-            const timerData = activeStudentTimers.get(studentId);
-            if (timerData) {
-                const elapsedMinutes = Math.floor((Date.now() - timerData.startTime) / 60000);
-                console.log(`⏹️ Stopping timer for ${timerData.name} - Attended: ${elapsedMinutes} min`);
-                
-                // Remove from active timers
-                activeStudentTimers.delete(studentId);
-                
-                // Update database
-                if (mongoose.connection.readyState === 1) {
-                    await StudentManagement.findOneAndUpdate(
-                        { $or: [{ _id: studentId }, { enrollmentNo }] },
-                        {
-                            isRunning: false,
-                            status: 'absent',
-                            timerValue: 0,
-                            lastUpdated: new Date()
-                        }
-                    );
-                }
-                
-                socket.emit('timer_stopped', { success: true, attendedMinutes: elapsedMinutes });
-            }
-        } catch (error) {
-            console.error('❌ Error stopping timer:', error);
-            socket.emit('timer_error', { message: 'Failed to stop timer' });
-        }
-    });
-});
+
 
 // Attendance Records API
 app.post('/api/attendance/record', async (req, res) => {
