@@ -52,7 +52,7 @@ const StudentList = ({ theme, students = [], onStudentPress, activeRandomRing = 
         theme={theme}
         onPress={() => handleStudentPress(student)}
         randomRingStudent={randomRingStudent}
-        onTeacherAction={onTeacherAction}
+        onTeacherAction={onTeacherAction || (() => console.log('onTeacherAction not provided'))}
         randomRingId={activeRandomRing?._id}
       />
     );
@@ -236,9 +236,19 @@ const StudentItem = ({ student, theme, onPress, randomRingStudent, onTeacherActi
             style={[styles.acceptButton, { opacity: actionLoading ? 0.5 : 1 }]}
             onPress={async () => {
               if (actionLoading) return;
+              if (!onTeacherAction) {
+                alert('Error: Teacher action handler not available');
+                return;
+              }
               setActionLoading(true);
-              await onTeacherAction(randomRingId, student._id || student.enrollmentNo, 'accepted');
-              setActionLoading(false);
+              try {
+                await onTeacherAction(randomRingId, student._id || student.enrollmentNo, 'accepted');
+              } catch (error) {
+                console.error('Error accepting student:', error);
+                alert('Error accepting student. Please check your connection.');
+              } finally {
+                setActionLoading(false);
+              }
             }}
             disabled={actionLoading}
           >
@@ -249,9 +259,19 @@ const StudentItem = ({ student, theme, onPress, randomRingStudent, onTeacherActi
             style={[styles.rejectButton, { opacity: actionLoading ? 0.5 : 1 }]}
             onPress={async () => {
               if (actionLoading) return;
+              if (!onTeacherAction) {
+                alert('Error: Teacher action handler not available');
+                return;
+              }
               setActionLoading(true);
-              await onTeacherAction(randomRingId, student._id || student.enrollmentNo, 'rejected');
-              setActionLoading(false);
+              try {
+                await onTeacherAction(randomRingId, student._id || student.enrollmentNo, 'rejected');
+              } catch (error) {
+                console.error('Error rejecting student:', error);
+                alert('Error rejecting student. Please check your connection.');
+              } finally {
+                setActionLoading(false);
+              }
             }}
             disabled={actionLoading}
           >
