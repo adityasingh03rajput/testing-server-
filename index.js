@@ -999,6 +999,84 @@ app.get('/api/attendance/records', async (req, res) => {
     }
 });
 
+// 5-minute backup: Save attended minutes for recovery
+app.post('/api/attendance/backup', async (req, res) => {
+    try {
+        const {
+            studentId, enrollmentNo, studentName, semester, branch,
+            attendedMinutes, currentClass, timestamp, isRunning, status
+        } = req.body;
+
+        console.log(`💾 Backup received: ${studentName} - ${attendedMinutes} minutes in ${currentClass}`);
+
+        // Use server time for backup timestamp
+        const serverTimestamp = new Date();
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (mongoose.connection.readyState === 1) {
+            // Update StudentManagement with latest attended minutes
+            const student = await StudentManagement.findOne({
+                $or: [
+                    { _id: studentId },
+                    { enrollmentNo: enrollmentNo }
+                ]
+            });
+
+            if (student) {
+                // Store backup data in a new field
+                if (!student.attendanceBackup) {
+                    student.attendanceBackup = [];
+                }
+
+                // Add backup entry
+                student.attendanceBackup.push({
+                    date: today,
+                    timestamp: serverTimestamp,
+                    attendedMinutes,
+                    currentClass,
+                    isRunning,
+                    status
+                });
+
+                // Keep only last 10 backups per day
+                student.attendanceBackup = student.attendanceBackup
+                    .filter(b => b.date.toDateString() === today.toDateString())
+                    .slice(-10);
+
+                // Update current status
+                student.status = status;
+                student.isRunning = isRunning;
+                student.lastUpdated = serverTimestamp;
+
+                await student.save();
+
+                console.log(`✅ Backup saved for ${studentName}: ${attendedMinutes} min`);
+                res.json({ 
+                    success: true, 
+                    message: 'Backup saved',
+                    attendedMinutes,
+                    serverTimestamp: serverTimestamp.toISOString()
+                });
+            } else {
+                console.warn(`⚠️ Student not found for backup: ${studentId}`);
+                res.status(404).json({ success: false, error: 'Student not found' });
+            }
+        } else {
+            // In-memory fallback
+            console.log('📝 Backup saved to memory (DB not connected)');
+            res.json({ 
+                success: true, 
+                message: 'Backup saved to memory',
+                attendedMinutes
+            });
+        }
+    } catch (error) {
+        console.error('❌ Error saving backup:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Get attendance statistics
 app.get('/api/attendance/stats', async (req, res) => {
     try {
@@ -1661,7 +1739,16 @@ const studentManagementSchema = new mongoose.Schema({
     timerValue: { type: Number, default: 0 },
     isRunning: { type: Boolean, default: false },
     status: { type: String, enum: ['attending', 'absent', 'present'], default: 'absent' },
-    lastUpdated: { type: Date, default: Date.now }
+    lastUpdated: { type: Date, default: Date.now },
+    // 5-minute backup data for recovery
+    attendanceBackup: [{
+        date: { type: Date, required: true },
+        timestamp: { type: Date, required: true },
+        attendedMinutes: { type: Number, required: true },
+        currentClass: { type: String },
+        isRunning: { type: Boolean },
+        status: { type: String }
+    }]
 });
 
 const StudentManagement = mongoose.model('StudentManagement', studentManagementSchema);

@@ -360,3 +360,38 @@ export const ArrowRightIcon = ({ size = 24, color = '#000' }) => (
     />
   </Svg>
 );
+
+// Bell/Notification Icon
+export const BellIcon = ({ size = 24, color = '#000' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
+
+// Clock Icon
+export const ClockIcon = ({ size = 24, color = '#000' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Circle
+      cx={12}
+      cy={12}
+      r={10}
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Path
+      d="M12 6v6l4 2"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);

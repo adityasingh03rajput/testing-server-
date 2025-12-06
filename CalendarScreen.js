@@ -81,7 +81,7 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
             return;
         }
 
-        console.log('📅 Fetching teacher month data for:', semester, branch);
+        console.log('📅 Fetching teacher data for:', semester, branch);
         setLoading(true);
         try {
             const year = currentDate.getFullYear();
@@ -89,9 +89,9 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
             const startDate = new Date(year, month, 1);
             const endDate = new Date(year, month + 1, 0);
 
-            // Fetch all attendance records for this semester/branch in the month
-            const url = `${socketUrl}/api/attendance/records?semester=${semester}&branch=${branch}&startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`;
-            console.log('📡 Fetching from:', url);
+            // Fetch ALL attendance records for this semester/branch (no date filter)
+            const url = `${socketUrl}/api/attendance/records?semester=${semester}&branch=${branch}`;
+            console.log('📡 Fetching ALL attendance data from:', url);
 
             const response = await fetch(url);
             const data = await response.json();
@@ -101,30 +101,35 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
             if (data.success && data.records) {
                 // Group records by date and count present/absent
                 const dateMap = {};
+                let monthPresent = 0, monthAbsent = 0;
                 
                 data.records.forEach(record => {
-                    const date = new Date(record.date).toDateString();
+                    const recordDate = new Date(record.date);
+                    const date = recordDate.toDateString();
                     if (!dateMap[date]) {
                         dateMap[date] = { present: 0, absent: 0, total: 0 };
                     }
                     if (record.status === 'present') dateMap[date].present++;
                     else if (record.status === 'absent') dateMap[date].absent++;
                     dateMap[date].total++;
+                    
+                    // Count for current month only (for stats display)
+                    if (recordDate.getMonth() === currentDate.getMonth() && 
+                        recordDate.getFullYear() === currentDate.getFullYear()) {
+                        if (record.status === 'present') monthPresent++;
+                        else if (record.status === 'absent') monthAbsent++;
+                    }
                 });
 
-                console.log('✅ Processed teacher data:', dateMap);
+                console.log('✅ Processed teacher data - Current month:', { present: monthPresent, absent: monthAbsent });
+                console.log('✅ Total records loaded:', data.records.length);
                 setAttendanceData(dateMap);
                 
-                // Calculate month stats
-                let totalPresent = 0, totalAbsent = 0;
-                Object.values(dateMap).forEach(day => {
-                    totalPresent += day.present;
-                    totalAbsent += day.absent;
-                });
+                // Calculate month stats (current month only)
                 setMonthStats({ 
-                    present: totalPresent, 
-                    absent: totalAbsent, 
-                    total: totalPresent + totalAbsent 
+                    present: monthPresent, 
+                    absent: monthAbsent, 
+                    total: monthPresent + monthAbsent 
                 });
             } else {
                 console.log('❌ No records found');
@@ -156,8 +161,9 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
             const startDate = new Date(year, month, 1);
             const endDate = new Date(year, month + 1, 0);
 
-            const url = `${socketUrl}/api/attendance/records?studentId=${studentId}&startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`;
-            console.log('📡 Fetching from:', url);
+            // Fetch ALL attendance data (no date filter) to show complete history
+            const url = `${socketUrl}/api/attendance/records?studentId=${studentId}`;
+            console.log('📡 Fetching ALL attendance data from:', url);
 
             const response = await fetch(url);
             const data = await response.json();
@@ -168,9 +174,11 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
                 const attendanceMap = {};
                 const recordsMap = {};
                 let present = 0, absent = 0;
+                let monthPresent = 0, monthAbsent = 0;
 
                 data.records.forEach(record => {
-                    const date = new Date(record.date).toDateString();
+                    const recordDate = new Date(record.date);
+                    const date = recordDate.toDateString();
                     attendanceMap[date] = record.status;
 
                     // Ensure lectures array exists and has proper structure
@@ -185,15 +193,19 @@ export default function CalendarScreen({ theme, studentId, semester, branch, soc
 
                     recordsMap[date] = record;
 
-                    if (record.status === 'present') present++;
-                    else if (record.status === 'absent') absent++;
+                    // Count for current month only (for stats display)
+                    if (recordDate.getMonth() === currentDate.getMonth() && 
+                        recordDate.getFullYear() === currentDate.getFullYear()) {
+                        if (record.status === 'present') monthPresent++;
+                        else if (record.status === 'absent') monthAbsent++;
+                    }
                 });
 
-                console.log('✅ Processed attendance:', { present, absent, total: present + absent });
-                console.log('📋 Sample record:', data.records[0]);
+                console.log('✅ Processed attendance - Current month:', { present: monthPresent, absent: monthAbsent });
+                console.log('✅ Total records loaded:', data.records.length);
                 setAttendanceData(attendanceMap);
                 setAttendanceRecords(recordsMap);
-                setMonthStats({ present, absent, total: present + absent });
+                setMonthStats({ present: monthPresent, absent: monthAbsent, total: monthPresent + monthAbsent });
             } else {
                 console.log('❌ Failed to fetch attendance or no records:', data);
                 setAttendanceData({});

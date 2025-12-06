@@ -1,0 +1,44 @@
+# Copy and paste these into Render Dashboard
+# Go to: Environment > Add from .env
+
+# MongoDB Atlas Connection (REQUIRED)
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/attendance_app?retryWrites=true&w=majority
+
+# Cloudinary Configuration (REQUIRED for photo uploads)
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+
+# Server Configuration
+PORT=3000
+NODE_ENV=production
+
+# Face Recognition Thresholds
+FACE_DETECTION_THRESHOLD=0.6
+FACE_MATCH_THRESHOLD=0.6
+
+# Upload Configuration
+MAX_FILE_SIZE=10485760
+UPLOAD_DIR=./uploads
+
+# Security (Generate strong random strings)
+JWT_SECRET=your-strong-jwt-secret-key-here-change-this
+SESSION_SECRET=your-strong-session-secret-key-here-change-this
+
+# CORS Configuration
+ALLOWED_ORIGINS=*
+
+# Redis Configuration (OPTIONAL - for caching)
+REDIS_HOST=your_redis_host
+REDIS_PORT=11769
+REDIS_USERNAME=default
+REDIS_PASSWORD=your_redis_password
+
+# ============================================
+# INSTRUCTIONS:
+# ============================================
+# 1. Replace MongoDB URI with your MongoDB Atlas connection string
+# 2. Add your Cloudinary credentials (get from cloudinary.com)
+# 3. Generate strong random strings for JWT_SECRET and SESSION_SECRET
+# 4. Redis is optional - only add if you're using Redis for caching
+# 5. In Render, paste this entire content or add variables one by one

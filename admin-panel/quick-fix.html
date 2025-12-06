@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Quick Connection Fix</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a1628 0%, #0d1f3c 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            width: 100%;
+            background: rgba(13, 31, 60, 0.8);
+            backdrop-filter: blur(10px);
+            border: 2px solid #00d9ff;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 8px 32px rgba(0, 217, 255, 0.2);
+        }
+        h1 {
+            color: #00f5ff;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        .subtitle {
+            color: #00d9ff;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        .status {
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .status.checking {
+            background: rgba(59, 130, 246, 0.2);
+            border: 2px solid #3b82f6;
+            color: #60a5fa;
+        }
+        .status.success {
+            background: rgba(16, 185, 129, 0.2);
+            border: 2px solid #10b981;
+            color: #34d399;
+        }
+        .status.error {
+            background: rgba(239, 68, 68, 0.2);
+            border: 2px solid #ef4444;
+            color: #f87171;
+        }
+        button {
+            width: 100%;
+            padding: 16px;
+            background: #00f5ff;
+            color: #0a1628;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 12px;
+        }
+        button:hover {
+            background: #00d9ff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 245, 255, 0.4);
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .log {
+            background: #000;
+            border: 1px solid #00d9ff;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-left: 3px solid #00d9ff;
+            padding-left: 10px;
+        }
+        .log-entry.success { border-left-color: #10b981; color: #34d399; }
+        .log-entry.error { border-left-color: #ef4444; color: #f87171; }
+        .log-entry.info { border-left-color: #3b82f6; color: #60a5fa; }
+        .server-url {
+            background: rgba(0, 217, 255, 0.1);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            word-break: break-all;
+            font-size: 14px;
+            color: #00d9ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Quick Connection Fix</h1>
+        <p class="subtitle">Automatically fix admin panel connection to server</p>
+
+        <div class="server-url">
+            <strong>Server:</strong><br>
+            https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net
+        </div>
+
+        <div id="status" class="status checking">
+            🔍 Ready to test connection...
+        </div>
+
+        <button id="testBtn" onclick="testConnection()">🧪 Test Connection</button>
+        <button id="fixBtn" onclick="fixConnection()" disabled>🔧 Fix & Apply</button>
+        <button id="openBtn" onclick="openAdminPanel()" disabled>🚀 Open Admin Panel</button>
+
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const SERVER_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
+        let connectionOk = false;
+
+        function addLog(message, type = 'info') {
+            const log = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        async function testConnection() {
+            const statusEl = document.getElementById('status');
+            const testBtn = document.getElementById('testBtn');
+            const fixBtn = document.getElementById('fixBtn');
+            
+            testBtn.disabled = true;
+            statusEl.className = 'status checking';
+            statusEl.textContent = '🔍 Testing connection...';
+            
+            addLog('Starting connection test...', 'info');
+            addLog(`Testing: ${SERVER_URL}`, 'info');
+
+            try {
+                // Test 1: Health endpoint
+                addLog('Testing /api/health endpoint...', 'info');
+                const healthResponse = await fetch(`${SERVER_URL}/api/health`);
+                const healthData = await healthResponse.json();
+                
+                if (healthResponse.ok) {
+                    addLog(`✅ Health check passed: ${healthData.status}`, 'success');
+                } else {
+                    throw new Error(`Health check failed: ${healthResponse.status}`);
+                }
+
+                // Test 2: Students endpoint
+                addLog('Testing /api/students endpoint...', 'info');
+                const studentsResponse = await fetch(`${SERVER_URL}/api/students`);
+                const studentsData = await studentsResponse.json();
+                
+                if (studentsResponse.ok) {
+                    const count = studentsData.students?.length || 0;
+                    addLog(`✅ Students endpoint working: ${count} students found`, 'success');
+                } else {
+                    addLog(`⚠️ Students endpoint returned: ${studentsResponse.status}`, 'error');
+                }
+
+                // Test 3: Teachers endpoint
+                addLog('Testing /api/teachers endpoint...', 'info');
+                const teachersResponse = await fetch(`${SERVER_URL}/api/teachers`);
+                const teachersData = await teachersResponse.json();
+                
+                if (teachersResponse.ok) {
+                    const count = teachersData.teachers?.length || 0;
+                    addLog(`✅ Teachers endpoint working: ${count} teachers found`, 'success');
+                } else {
+                    addLog(`⚠️ Teachers endpoint returned: ${teachersResponse.status}`, 'error');
+                }
+
+                // Success!
+                statusEl.className = 'status success';
+                statusEl.textContent = '✅ Connection Successful!';
+                addLog('🎉 All tests passed! Server is working correctly.', 'success');
+                
+                connectionOk = true;
+                fixBtn.disabled = false;
+                testBtn.disabled = false;
+
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = '❌ Connection Failed';
+                addLog(`❌ Error: ${error.message}`, 'error');
+                addLog('💡 Possible causes:', 'info');
+                addLog('   - Server is not running', 'info');
+                addLog('   - Network/firewall blocking connection', 'info');
+                addLog('   - CORS not enabled on server', 'info');
+                
+                connectionOk = false;
+                fixBtn.disabled = true;
+                testBtn.disabled = false;
+            }
+        }
+
+        function fixConnection() {
+            addLog('Applying fix to localStorage...', 'info');
+            
+            try {
+                localStorage.setItem('serverUrl', SERVER_URL);
+                addLog('✅ Server URL saved to localStorage', 'success');
+                
+                document.getElementById('openBtn').disabled = false;
+                document.getElementById('status').textContent = '✅ Fix Applied! Ready to open admin panel.';
+                
+                addLog('🎉 Fix complete! Click "Open Admin Panel" button.', 'success');
+            } catch (error) {
+                addLog(`❌ Failed to apply fix: ${error.message}`, 'error');
+            }
+        }
+
+        function openAdminPanel() {
+            addLog('Opening admin panel...', 'info');
+            addLog('📝 Note: If admin panel is already open, close it first and reopen.', 'info');
+            
+            // Try to open index.html
+            window.open('index.html', '_blank');
+            
+            setTimeout(() => {
+                addLog('✅ Admin panel should now open in a new window', 'success');
+                addLog('🔄 If already open, close it and run: npm start', 'info');
+            }, 1000);
+        }
+
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                addLog('🚀 Page loaded. Click "Test Connection" to begin.', 'info');
+            }, 500);
+        });
+    </script>
+</body>
+</html>

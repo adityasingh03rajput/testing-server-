@@ -1394,7 +1394,10 @@ function renderAdvancedTimetableEditor(timetable) {
     days.forEach((day, dayIdx) => {
         html += `<div class="tt-cell tt-header tt-day-header">${day}</div>`;
         const daySchedule = timetable.timetable[dayKeys[dayIdx]] || [];
-        daySchedule.forEach((period, periodIdx) => {
+        
+        // Ensure each day has exactly numPeriods cells
+        for (let periodIdx = 0; periodIdx < numPeriods; periodIdx++) {
+            const period = daySchedule[periodIdx] || { subject: '', teacher: '', room: '', isBreak: false };
             const isBreak = period.isBreak || period.subject.includes('Break');
             const cellId = `cell-${dayIdx}-${periodIdx}`;
             const bgColor = period.color || '';
@@ -1415,7 +1418,7 @@ function renderAdvancedTimetableEditor(timetable) {
                     </div>
                 `}
             </div>`;
-        });
+        }
     });
 
     html += '</div>';

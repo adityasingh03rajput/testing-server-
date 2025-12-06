@@ -662,6 +662,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 10, // Ensure center controls are above SVG
+    elevation: 10, // Android elevation
   },
   time: {
     fontSize: 34,
@@ -680,7 +682,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
-    elevation: 6,
+    elevation: 12, // Higher elevation to be above everything
+    zIndex: 20, // Ensure it's on top
   },
   resetBtn: {
     paddingHorizontal: 18,

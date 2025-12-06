@@ -12,9 +12,8 @@ export default function BottomNavigation({ theme, activeTab, onTabChange, userRo
 
   const teacherTabs = [
     { id: 'home', Icon: HomeIcon, label: 'Home' },
+    { id: 'calendar', Icon: CalendarIcon, label: 'Calendar' },
     { id: 'timetable', Icon: BookIcon, label: 'Timetable' },
-    { id: 'notifications', Icon: BellIcon, label: 'Schedule', badge: notificationBadge },
-    { id: 'students', Icon: UserIcon, label: 'Students' },
   ];
 
   const tabs = userRole === 'teacher' ? teacherTabs : studentTabs;

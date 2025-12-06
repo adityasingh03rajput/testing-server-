@@ -518,6 +518,51 @@ export default function App() {
     return () => clearInterval(progressInterval);
   }, [timetable, currentDay, selectedRole, isRunning, classStartTime, attendedMinutes]);
 
+  // 5-minute backup: Save attended minutes to database every 5 minutes
+  useEffect(() => {
+    if (!isRunning || !currentClassInfo || !studentId || selectedRole !== 'student') {
+      return;
+    }
+
+    const saveBackup = async () => {
+      try {
+        const serverTime = getServerTime();
+        const currentServerTime = serverTime.nowISO();
+        
+        console.log('💾 5-min backup: Saving attended minutes:', attendedMinutes);
+        
+        await fetch(`${SOCKET_URL}/api/attendance/backup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            studentId,
+            enrollmentNo: userData?.enrollmentNo,
+            studentName,
+            semester,
+            branch,
+            attendedMinutes,
+            currentClass: currentClassInfo?.subject,
+            timestamp: currentServerTime,
+            isRunning: true,
+            status: 'attending'
+          })
+        });
+        
+        console.log('✅ Backup saved successfully');
+      } catch (error) {
+        console.error('❌ Failed to save backup:', error);
+      }
+    };
+
+    // Save immediately on first run
+    saveBackup();
+
+    // Then save every 5 minutes (300000ms)
+    const backupInterval = setInterval(saveBackup, 300000);
+
+    return () => clearInterval(backupInterval);
+  }, [isRunning, currentClassInfo, studentId, attendedMinutes, selectedRole, studentName, semester, branch, userData]);
+
   useEffect(() => {
     // Initialize server time synchronization (CRITICAL for security)
     const serverTime = initializeServerTime(SOCKET_URL);
