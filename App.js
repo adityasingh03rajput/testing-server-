@@ -2382,6 +2382,18 @@ export default function App() {
   const handleTeacherAction = async (randomRingId, studentId, action) => {
     try {
       console.log(`👨‍🏫 Teacher ${action} student ${studentId}`);
+      console.log(`   Random Ring ID: ${randomRingId}`);
+      console.log(`   Student ID: ${studentId}`);
+      
+      if (!randomRingId) {
+        alert('❌ Error: No active random ring found');
+        return;
+      }
+      
+      if (!studentId) {
+        alert('❌ Error: Student ID not found');
+        return;
+      }
       
       const response = await fetch(`${SOCKET_URL}/api/random-ring/teacher-action`, {
         method: 'POST',
@@ -2393,9 +2405,16 @@ export default function App() {
         })
       });
       
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const result = await response.json();
+      console.log(`📥 Server response:`, result);
+      
       if (result.success) {
         console.log(`✅ Student ${action} successfully`);
+        alert(`✅ Student ${action} successfully`);
         
         // Update active random ring state
         setActiveRandomRing(prev => {
@@ -2410,11 +2429,14 @@ export default function App() {
           };
         });
       } else {
-        alert(`❌ Failed to ${action} student: ` + (result.message || result.error));
+        const errorMsg = result.message || result.error || 'Unknown error';
+        console.error(`❌ Server error: ${errorMsg}`);
+        alert(`❌ Failed to ${action} student: ${errorMsg}`);
       }
     } catch (error) {
       console.error(`❌ Error ${action} student:`, error);
-      alert(`❌ Error ${action} student. Please check your connection.`);
+      alert(`❌ Error ${action}ed student. Please check your connection.\n\nDetails: ${error.message}`);
+      throw error; // Re-throw so the button handler can catch it
     }
   };
 
