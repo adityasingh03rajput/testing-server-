@@ -3218,10 +3218,21 @@ app.post('/api/random-ring/teacher-action', async (req, res) => {
                 name: s.name
             })));
             
-            const studentIndex = randomRing.selectedStudents.findIndex(
-                s => s.studentId === studentId || s.enrollmentNo === studentId || 
-                     s.studentId?.toString() === studentId || s.enrollmentNo?.toString() === studentId
-            );
+            // Try multiple matching strategies
+            const studentIndex = randomRing.selectedStudents.findIndex(s => {
+                // Direct match
+                if (s.studentId === studentId) return true;
+                if (s.enrollmentNo === studentId) return true;
+                
+                // String comparison
+                if (s.studentId?.toString() === studentId?.toString()) return true;
+                if (s.enrollmentNo?.toString() === studentId?.toString()) return true;
+                
+                // Cross-field matching (studentId in DB might be enrollmentNo from client)
+                if (s.studentId === s.enrollmentNo && s.enrollmentNo === studentId) return true;
+                
+                return false;
+            });
             
             console.log(`   Found at index: ${studentIndex}`);
             

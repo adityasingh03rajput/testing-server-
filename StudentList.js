@@ -108,8 +108,14 @@ const StudentItem = ({ student, theme, onPress, randomRingStudent, onTeacherActi
 
   // Update currentTimerValue when student.timerValue changes from socket
   useEffect(() => {
-    if (student.timerValue !== undefined) {
+    if (student.timerValue !== undefined && student.timerValue !== null) {
       setCurrentTimerValue(student.timerValue);
+      // Also update display immediately
+      const minutes = Math.floor(student.timerValue / 60);
+      const seconds = student.timerValue % 60;
+      setElapsedTime(
+        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+      );
     }
   }, [student.timerValue]);
 
@@ -237,14 +243,33 @@ const StudentItem = ({ student, theme, onPress, randomRingStudent, onTeacherActi
             onPress={async () => {
               if (actionLoading) return;
               if (!onTeacherAction) {
+                console.error('❌ onTeacherAction not provided');
                 alert('Error: Teacher action handler not available');
                 return;
               }
+              if (!randomRingId) {
+                console.error('❌ randomRingId not provided');
+                alert('Error: No active random ring');
+                return;
+              }
+              
+              // Use the same ID that was used to create the random ring
+              // Priority: _id.toString() > enrollmentNo (matching server logic)
+              const studentIdToUse = (student._id ? student._id.toString() : null) || student.enrollmentNo;
+              console.log('👆 Accept button pressed');
+              console.log('   Student:', student.name);
+              console.log('   Student _id:', student._id);
+              console.log('   Student enrollmentNo:', student.enrollmentNo);
+              console.log('   Using ID:', studentIdToUse);
+              console.log('   Random Ring ID:', randomRingId);
+              console.log('   Random Ring Student ID:', randomRingStudent?.studentId);
+              console.log('   Random Ring Student enrollmentNo:', randomRingStudent?.enrollmentNo);
+              
               setActionLoading(true);
               try {
-                await onTeacherAction(randomRingId, student._id || student.enrollmentNo, 'accepted');
+                await onTeacherAction(randomRingId, studentIdToUse, 'accepted');
               } catch (error) {
-                console.error('Error accepting student:', error);
+                console.error('❌ Error accepting student:', error);
                 alert('Error accepting student. Please check your connection.');
               } finally {
                 setActionLoading(false);
@@ -260,14 +285,33 @@ const StudentItem = ({ student, theme, onPress, randomRingStudent, onTeacherActi
             onPress={async () => {
               if (actionLoading) return;
               if (!onTeacherAction) {
+                console.error('❌ onTeacherAction not provided');
                 alert('Error: Teacher action handler not available');
                 return;
               }
+              if (!randomRingId) {
+                console.error('❌ randomRingId not provided');
+                alert('Error: No active random ring');
+                return;
+              }
+              
+              // Use the same ID that was used to create the random ring
+              // Priority: _id.toString() > enrollmentNo (matching server logic)
+              const studentIdToUse = (student._id ? student._id.toString() : null) || student.enrollmentNo;
+              console.log('👆 Reject button pressed');
+              console.log('   Student:', student.name);
+              console.log('   Student _id:', student._id);
+              console.log('   Student enrollmentNo:', student.enrollmentNo);
+              console.log('   Using ID:', studentIdToUse);
+              console.log('   Random Ring ID:', randomRingId);
+              console.log('   Random Ring Student ID:', randomRingStudent?.studentId);
+              console.log('   Random Ring Student enrollmentNo:', randomRingStudent?.enrollmentNo);
+              
               setActionLoading(true);
               try {
-                await onTeacherAction(randomRingId, student._id || student.enrollmentNo, 'rejected');
+                await onTeacherAction(randomRingId, studentIdToUse, 'rejected');
               } catch (error) {
-                console.error('Error rejecting student:', error);
+                console.error('❌ Error rejecting student:', error);
                 alert('Error rejecting student. Please check your connection.');
               } finally {
                 setActionLoading(false);
