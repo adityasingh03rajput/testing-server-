@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ActivityIndicator,
-  Animated, TextInput, ScrollView, FlatList, AppState, useColorScheme, Image, Modal
+  Animated, TextInput, ScrollView, FlatList, AppState, useColorScheme, Image, Modal, RefreshControl
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -177,6 +177,7 @@ export default function App() {
   const [isFaceVerified, setIsFaceVerified] = useState(false);
   const [photoCached, setPhotoCached] = useState(false);
   const [verifiedToday, setVerifiedToday] = useState(false); // Track if verified today
+  const [randomRingData, setRandomRingData] = useState(null); // Track random ring verification
 
   // Bottom navigation state
   const [activeTab, setActiveTab] = useState('home');
@@ -184,6 +185,11 @@ export default function App() {
 
   // Lanyard state
   const [showLanyard, setShowLanyard] = useState(false);
+
+  // Pull-to-refresh states
+  const [refreshingTeacher, setRefreshingTeacher] = useState(false);
+  const [refreshingStudent, setRefreshingStudent] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
 
   // Current day state for real-time timetable updates (using server time)
   const [currentDay, setCurrentDay] = useState(() => {
@@ -394,6 +400,22 @@ export default function App() {
     }
   }, [todayAttendance.lectures.length]);
 
+  // Periodic refresh for teacher to see real-time student updates
+  useEffect(() => {
+    if (selectedRole === 'teacher' && activeTab === 'home' && semester && branch) {
+      // Initial fetch
+      fetchStudents();
+
+      // Refresh every 3 seconds for near-instant updates (backup to socket)
+      const refreshInterval = setInterval(() => {
+        console.log('🔄 Auto-refreshing student list...');
+        fetchStudents();
+      }, 3000); // 3 seconds for instant feel
+
+      return () => clearInterval(refreshInterval);
+    }
+  }, [selectedRole, activeTab, semester, branch]);
+
   // Calculate current class progress every second
   useEffect(() => {
     if (!timetable?.schedule?.[currentDay] || selectedRole !== 'student') return;
@@ -597,14 +619,111 @@ export default function App() {
 
     socketRef.current.on('student_update', (data) => {
       console.log('📥 Received student update:', data);
-      setStudents(prev => prev.map(s =>
-        s._id === data.studentId || s.enrollmentNo === data.studentId ? { ...s, ...data } : s
-      ));
+      
+      // For teachers: Instant updates for all students
+      if (selectedRole === 'teacher') {
+        console.log('👨‍🏫 Teacher received update for student:', data.studentId);
+        console.log('   Update data:', { status: data.status, isRunning: data.isRunning, enrollmentNo: data.enrollmentNo });
+        
+        setStudents(prev => {
+          // Try multiple matching strategies
+          const existingIndex = prev.findIndex(s => {
+            // Match by _id
+            if (s._id && (s._id === data.studentId || s._id.toString() === data.studentId)) return true;
+            // Match by enrollmentNo
+            if (s.enrollmentNo && (s.enrollmentNo === data.studentId || s.enrollmentNo === data.enrollmentNo)) return true;
+            // Match if data has enrollmentNo and it matches student's _id
+            if (data.enrollmentNo && s._id && s._id.toString() === data.enrollmentNo) return true;
+            // Match if data has enrollmentNo and it matches student's enrollmentNo
+            if (data.enrollmentNo && s.enrollmentNo && s.enrollmentNo === data.enrollmentNo) return true;
+            return false;
+          });
+          
+          if (existingIndex >= 0) {
+            // Student exists in list - UPDATE their status
+            const updated = [...prev];
+            const oldStudent = updated[existingIndex];
+            updated[existingIndex] = { ...oldStudent, ...data };
+            console.log('✅ Updated student:', oldStudent.name, '| Status:', data.status, '| Running:', data.isRunning);
+            return updated;
+          } else {
+            // Student not in list - log for debugging
+            console.log('⚠️ Student not found in list');
+            console.log('   Looking for studentId:', data.studentId);
+            console.log('   Looking for enrollmentNo:', data.enrollmentNo);
+            console.log('   Current list has', prev.length, 'students');
+            if (prev.length > 0) {
+              console.log('   First student in list:', { _id: prev[0]._id, enrollmentNo: prev[0].enrollmentNo, name: prev[0].name });
+            }
+            // Refresh list to get latest data
+            fetchStudents();
+            return prev;
+          }
+        });
+      } else {
+        // For non-teachers, just update
+        setStudents(prev => prev.map(s =>
+          s._id === data.studentId || s.enrollmentNo === data.studentId ? { ...s, ...data } : s
+        ));
+      }
     });
 
     socketRef.current.on('student_registered', () => {
       console.log('📥 Student registered event received');
       fetchStudents();
+    });
+
+    // Listen for Random Ring verification updates (teachers only)
+    socketRef.current.on('random_ring_student_verified', (data) => {
+      console.log('✅ Random Ring verification update:', data);
+      if (selectedRole === 'teacher' && loginId === data.teacherId) {
+        // Show notification to teacher
+        alert(`✅ Student Verified!\n\n${data.studentName} has verified their attendance.\n\nVerified: ${data.verifiedCount}/${data.totalCount}`);
+        
+        // Refresh student list to show updated status
+        fetchStudents();
+      }
+    });
+
+    // Listen for Random Ring notifications (students only)
+    socketRef.current.on('random_ring_notification', (data) => {
+      console.log('🔔 Random Ring notification received:', data);
+      console.log('   Current role:', selectedRole);
+      console.log('   Current studentId:', studentId);
+      console.log('   Notification for:', data.studentId, data.enrollmentNo);
+      
+      if (selectedRole === 'student' && (studentId === data.studentId || studentId === data.enrollmentNo)) {
+        console.log('✅ Random Ring is for this student!');
+        
+        // Store random ring data for verification submission
+        setRandomRingData({
+          randomRingId: data.randomRingId,
+          teacherId: data.teacherId,
+          timestamp: data.timestamp,
+          bssid: data.bssid
+        });
+        
+        // Show alert to student
+        alert(`🔔 Random Ring!\n\nYou have been selected for attendance verification.\n\nPlease verify your attendance now!`);
+        
+        // Auto-trigger face verification
+        console.log('📸 Auto-opening face verification for random ring');
+        setShowFaceVerification(true);
+        
+        // Set 5-minute timeout for verification
+        setTimeout(() => {
+          setRandomRingData(prev => {
+            if (prev && prev.randomRingId === data.randomRingId) {
+              console.log('⏰ Random ring verification timeout');
+              alert('⏰ Random Ring verification expired. You did not verify in time.');
+              return null;
+            }
+            return prev;
+          });
+        }, 300000); // 5 minutes = 300,000 ms
+      } else {
+        console.log('❌ Random Ring not for this student (role or ID mismatch)');
+      }
     });
   };
 
@@ -897,13 +1016,54 @@ export default function App() {
 
   const fetchStudents = async () => {
     try {
-      const response = await fetch(`${SOCKET_URL}/api/students`);
-      const data = await response.json();
-      if (data.success) {
-        setStudents(data.students);
+      // For teachers, fetch ONLY ACTIVE students (timer running) from their current class
+      if (selectedRole === 'teacher' && semester && branch) {
+        console.log(`� Fetching AtCTIVE students for ${branch} Semester ${semester}`);
+        const response = await fetch(`${SOCKET_URL}/api/view-records/students?semester=${semester}&branch=${branch}`);
+        const data = await response.json();
+        if (data.success) {
+          console.log(`✅ Found ${data.students?.length || 0} students total`);
+          setStudents(data.students || []);
+        }
+      } else {
+        // Fallback to all students
+        const response = await fetch(`${SOCKET_URL}/api/students`);
+        const data = await response.json();
+        if (data.success) {
+          setStudents(data.students);
+        }
       }
     } catch (error) {
       console.log('Error fetching students:', error);
+    }
+  };
+
+  // Fetch single student and add to list (for instant updates)
+  const fetchStudentForList = async (studentId) => {
+    try {
+      console.log('🔍 Fetching student details for instant add:', studentId);
+      const response = await fetch(`${SOCKET_URL}/api/student-management?enrollmentNo=${studentId}`);
+      const data = await response.json();
+      if (data.success && data.student) {
+        setStudents(prev => {
+          // Check if student already exists
+          const exists = prev.some(s => 
+            s._id === data.student._id || 
+            s.enrollmentNo === data.student.enrollmentNo ||
+            s._id === studentId ||
+            s.enrollmentNo === studentId
+          );
+          if (!exists) {
+            console.log('✅ Instantly added student to list:', data.student.name);
+            return [...prev, data.student];
+          }
+          return prev;
+        });
+      }
+    } catch (error) {
+      console.log('Error fetching student for list:', error);
+      // Fallback: refresh entire list
+      fetchStudents();
     }
   };
 
@@ -1243,6 +1403,39 @@ export default function App() {
     setVerifiedToday(true); // Mark as verified for the entire day
     setShowFaceVerification(false);
 
+    // Check if this is a Random Ring verification
+    if (randomRingData) {
+      console.log('🔔 Submitting Random Ring verification to server...');
+      try {
+        const response = await fetch(`${SOCKET_URL}/api/random-ring/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            randomRingId: randomRingData.randomRingId,
+            studentId: studentId,
+            verificationPhoto: result.photo || null,
+            bssid: randomRingData.bssid || null
+          })
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+          console.log(`✅ Random Ring verification submitted successfully (response time: ${data.responseTime}s)`);
+          alert(`✅ Random Ring Verified!\n\nYour attendance has been marked.\nResponse time: ${Math.round(data.responseTime)}s`);
+        } else {
+          console.error('❌ Random Ring verification failed:', data.error);
+          alert(`❌ Verification Failed\n\n${data.error}`);
+        }
+      } catch (error) {
+        console.error('❌ Error submitting Random Ring verification:', error);
+        alert('❌ Network error. Could not submit verification.');
+      } finally {
+        // Clear random ring data after submission attempt
+        setRandomRingData(null);
+      }
+    }
+
     // Save verification state with today's date
     try {
       const serverTime = getServerTime();
@@ -1445,6 +1638,58 @@ export default function App() {
       console.error('Login error:', error);
     } finally {
       setIsLoggingIn(false);
+    }
+  };
+
+  // Pull-to-refresh handlers (defined at top level to avoid hooks violations)
+  const onRefreshTeacher = async () => {
+    setRefreshingTeacher(true);
+    setIsOffline(false);
+    try {
+      // Test server connection first
+      const healthCheck = await fetch(`${SOCKET_URL}/api/health`, { timeout: 5000 });
+      if (!healthCheck.ok) {
+        throw new Error('Server not responding');
+      }
+      
+      await fetchStudents();
+      await refreshUserProfile();
+      setIsOffline(false);
+    } catch (error) {
+      console.log('Error refreshing teacher dashboard:', error);
+      setIsOffline(true);
+      // Show offline message for 3 seconds
+      setTimeout(() => setIsOffline(false), 3000);
+    } finally {
+      setRefreshingTeacher(false);
+    }
+  };
+
+  const onRefreshStudent = async () => {
+    setRefreshingStudent(true);
+    setIsOffline(false);
+    try {
+      // Test server connection first
+      const healthCheck = await fetch(`${SOCKET_URL}/api/health`, { timeout: 5000 });
+      if (!healthCheck.ok) {
+        throw new Error('Server not responding');
+      }
+      
+      if (semester && branch) {
+        await fetchTimetable(semester, branch);
+      }
+      await refreshUserProfile();
+      // Reset timer state
+      setAttendedMinutes(0);
+      setIsRunning(false);
+      setIsOffline(false);
+    } catch (error) {
+      console.log('Error refreshing student dashboard:', error);
+      setIsOffline(true);
+      // Show offline message for 3 seconds
+      setTimeout(() => setIsOffline(false), 3000);
+    } finally {
+      setRefreshingStudent(false);
     }
   };
 
@@ -1940,15 +2185,27 @@ export default function App() {
           onFeedback={() => setShowFeedback(true)}
           onLogout={handleLogout}
         />
-        <StudentSearch theme={theme} students={students} />
-        <StudentList 
-          theme={theme}
-          students={students}
-          onStudentPress={(student) => {
-            setSelectedStudent(student);
-            fetchStudentDetails(student);
-          }}
-        />
+        <ScrollView
+          style={{ flex: 1 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshingTeacher}
+              onRefresh={onRefreshTeacher}
+              colors={[theme.primary]}
+              tintColor={theme.primary}
+            />
+          }
+        >
+          <StudentSearch theme={theme} students={students} />
+          <StudentList 
+            theme={theme}
+            students={students}
+            onStudentPress={(student) => {
+              setSelectedStudent(student);
+              fetchStudentDetails(student);
+            }}
+          />
+        </ScrollView>
         <BottomNavigation 
           activeTab={activeTab}
           onTabChange={setActiveTab}
@@ -1981,9 +2238,34 @@ export default function App() {
         <RandomRingDialog
           visible={randomRingDialogOpen}
           onClose={() => setRandomRingDialogOpen(false)}
-          onConfirm={(data) => {
-            console.log('Random Ring confirmed:', data);
-            // TODO: Implement actual random ring logic
+          onConfirm={async (data) => {
+            console.log('🔔 Random Ring confirmed:', data);
+            try {
+              const response = await fetch(`${SOCKET_URL}/api/random-ring`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: data.type,
+                  count: data.count,
+                  teacherId: loginId,
+                  teacherName: userData?.name,
+                  semester: semester,
+                  branch: branch
+                })
+              });
+
+              const result = await response.json();
+              if (result.success) {
+                alert(`✅ Random Ring sent to ${result.selectedStudents?.length || 0} student(s)!`);
+                console.log('✅ Random Ring successful:', result);
+              } else {
+                alert('❌ Failed to send Random Ring: ' + (result.message || result.error));
+                console.error('❌ Random Ring failed:', result);
+              }
+            } catch (error) {
+              console.error('❌ Error sending Random Ring:', error);
+              alert('❌ Error sending Random Ring. Please check your connection.');
+            }
             setRandomRingDialogOpen(false);
           }}
           theme={theme}
@@ -2003,6 +2285,36 @@ export default function App() {
           teacherData={userData}
           onLogout={handleLogout}
         />
+        {/* Offline Toast Message */}
+        {isOffline && (
+          <Animated.View style={{
+            position: 'absolute',
+            bottom: 100,
+            left: 20,
+            right: 20,
+            backgroundColor: '#ef4444',
+            padding: 16,
+            borderRadius: 12,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            elevation: 10,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+          }}>
+            <Text style={{ fontSize: 24 }}>📡</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>
+                App is offline
+              </Text>
+              <Text style={{ color: '#fff', fontSize: 12, marginTop: 2 }}>
+                Check your internet connection
+              </Text>
+            </View>
+          </Animated.View>
+        )}
       </View>
     );
   }
@@ -2672,232 +2984,31 @@ export default function App() {
     );
   }
 
-  // Render Notifications Screen (Teachers)
-  if (activeTab === 'notifications' && selectedRole === 'teacher') {
+  // Render Calendar Screen (Teachers)
+  if (activeTab === 'calendar' && selectedRole === 'teacher') {
     return (
       <View style={{ flex: 1, backgroundColor: theme.background }}>
         <StatusBar style={theme.statusBar} />
-        <NotificationsScreen
+        <CalendarScreen
           theme={theme}
           userData={userData}
-          socketUrl={SOCKET_URL}
+          semester={semester}
+          branch={branch}
+          isTeacher={true}
         />
         <BottomNavigation
           theme={theme}
           activeTab={activeTab}
           onTabChange={setActiveTab}
           userRole={selectedRole}
-          notificationBadge={notificationBadge}
         />
       </View>
     );
   }
 
-  // Render Students Screen (Teachers)
-  if (activeTab === 'students' && selectedRole === 'teacher') {
-    const [currentClassInfo, setCurrentClassInfo] = React.useState(null);
-    const [filteredStudents, setFilteredStudents] = React.useState([]);
-    const [loading, setLoading] = React.useState(true);
+  // OLD TABS REMOVED - Using modern 3-tab navigation (Home, Calendar, Timetable)
+  // Notifications and Students tabs are now accessed via menu in TeacherHeader
 
-    React.useEffect(() => {
-      const fetchCurrentClassStudents = async () => {
-        try {
-          setLoading(true);
-          const response = await fetch(
-            `${SOCKET_URL}/api/teacher/current-class-students/${userData.employeeId}`
-          );
-          const data = await response.json();
-          
-          if (data.success && data.hasActiveClass) {
-            setCurrentClassInfo(data.currentClass);
-            setFilteredStudents(data.students);
-          } else {
-            setCurrentClassInfo(null);
-            setFilteredStudents([]);
-          }
-        } catch (error) {
-          console.error('Error fetching current class students:', error);
-          setFilteredStudents([]);
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      fetchCurrentClassStudents();
-      
-      // Refresh every 2 minutes
-      const interval = setInterval(fetchCurrentClassStudents, 2 * 60 * 1000);
-      return () => clearInterval(interval);
-    }, [userData.employeeId]);
-
-    return (
-      <View style={{ flex: 1, backgroundColor: theme.background }}>
-        <StatusBar style={theme.statusBar} />
-        <ScrollView style={{ flex: 1 }}>
-          <View style={{ padding: 20, paddingTop: 60, paddingBottom: 100 }}>
-            <Text style={{ fontSize: 28, fontWeight: 'bold', color: theme.text, marginBottom: 8 }}>
-              Students
-            </Text>
-            
-            {/* Current Class Info */}
-            {currentClassInfo && (
-              <View style={{
-                backgroundColor: theme.primary + '20',
-                padding: 16,
-                borderRadius: 12,
-                marginBottom: 20,
-                borderLeftWidth: 4,
-                borderLeftColor: theme.primary,
-              }}>
-                <Text style={{ fontSize: 16, fontWeight: 'bold', color: theme.text, marginBottom: 8 }}>
-                  📚 Current Class
-                </Text>
-                <Text style={{ fontSize: 18, fontWeight: '600', color: theme.text, marginBottom: 4 }}>
-                  {currentClassInfo.subject}
-                </Text>
-                <Text style={{ fontSize: 14, color: theme.textSecondary, marginBottom: 2 }}>
-                  🎓 {currentClassInfo.branch} - Semester {currentClassInfo.semester}
-                </Text>
-                <Text style={{ fontSize: 14, color: theme.textSecondary, marginBottom: 2 }}>
-                  🏢 Room {currentClassInfo.room} (Capacity: {currentClassInfo.capacity})
-                </Text>
-                <Text style={{ fontSize: 14, color: theme.textSecondary }}>
-                  🕐 {currentClassInfo.startTime} - {currentClassInfo.endTime}
-                </Text>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: theme.primary, marginTop: 8 }}>
-                  👥 {filteredStudents.length} Students
-                </Text>
-              </View>
-            )}
-
-            {!currentClassInfo && !loading && (
-              <View style={{
-                backgroundColor: theme.cardBackground,
-                padding: 20,
-                borderRadius: 12,
-                marginBottom: 20,
-                alignItems: 'center',
-              }}>
-                <Text style={{ fontSize: 48, marginBottom: 12 }}>⏰</Text>
-                <Text style={{ fontSize: 16, fontWeight: '600', color: theme.text, marginBottom: 4 }}>
-                  No Active Class
-                </Text>
-                <Text style={{ fontSize: 14, color: theme.textSecondary, textAlign: 'center' }}>
-                  You don't have any class scheduled right now
-                </Text>
-              </View>
-            )}
-
-            {loading && (
-              <View style={{
-                backgroundColor: theme.cardBackground,
-                padding: 40,
-                borderRadius: 12,
-                alignItems: 'center',
-                marginBottom: 20,
-              }}>
-                <Text style={{ fontSize: 16, color: theme.textSecondary }}>
-                  Loading students...
-                </Text>
-              </View>
-            )}
-            
-            {/* Student List - Only showing current class students */}
-            {filteredStudents.map((student, index) => {
-              const studentStatus = student.status || 'absent';
-              const statusIcon = studentStatus === 'present' ? '✅' :
-                studentStatus === 'attending' ? '⏱️' : '❌';
-              const statusColor = studentStatus === 'present' ? '#10b981' :
-                studentStatus === 'attending' ? '#f59e0b' : '#ef4444';
-
-              return (
-                <View
-                  key={student._id || index}
-                  style={{
-                    backgroundColor: theme.cardBackground,
-                    padding: 16,
-                    borderRadius: 12,
-                    marginBottom: 12,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    borderLeftWidth: 4,
-                    borderLeftColor: statusColor,
-                  }}
-                >
-                  {/* Profile Photo */}
-                  <View style={{
-                    width: 50,
-                    height: 50,
-                    borderRadius: 25,
-                    backgroundColor: theme.primary + '20',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginRight: 12,
-                  }}>
-                    {student.photoUrl ? (
-                      <Image
-                        source={{ uri: student.photoUrl }}
-                        style={{ width: 50, height: 50, borderRadius: 25 }}
-                      />
-                    ) : (
-                      <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.primary }}>
-                        {getInitials(student.name)}
-                      </Text>
-                    )}
-                  </View>
-
-                  {/* Student Info */}
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '600', color: theme.text }}>
-                      {student.name}
-                    </Text>
-                    <Text style={{ fontSize: 13, color: theme.textSecondary, marginTop: 2 }}>
-                      {student.enrollmentNo || student._id}
-                    </Text>
-                    {student.timerValue !== undefined && (
-                      <Text style={{ fontSize: 12, color: theme.textSecondary, marginTop: 4 }}>
-                        ⏱️ {Math.floor(student.timerValue / 60)}:{(student.timerValue % 60).toString().padStart(2, '0')}
-                      </Text>
-                    )}
-                  </View>
-
-                  {/* Status Badge */}
-                  <View style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 12,
-                    backgroundColor: statusColor + '20',
-                  }}>
-                    <Text style={{ fontSize: 20 }}>{statusIcon}</Text>
-                  </View>
-                </View>
-              );
-            })}
-
-            {filteredStudents.length === 0 && !loading && currentClassInfo && (
-              <View style={{
-                backgroundColor: theme.cardBackground,
-                padding: 40,
-                borderRadius: 12,
-                alignItems: 'center',
-              }}>
-                <Text style={{ fontSize: 16, color: theme.textSecondary }}>
-                  No students found for this class
-                </Text>
-              </View>
-            )}
-          </View>
-        </ScrollView>
-        <BottomNavigation
-          theme={theme}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          userRole={selectedRole}
-          notificationBadge={notificationBadge}
-        />
-      </View>
-    );
-  }
 
   // Render Timetable Screen
   if (activeTab === 'timetable') {
@@ -2941,6 +3052,14 @@ export default function App() {
         contentContainerStyle={{ paddingTop: 20, paddingBottom: 110, paddingHorizontal: 20, alignItems: 'center' }}
         showsVerticalScrollIndicator={false}
         style={{ flex: 1 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshingStudent}
+            onRefresh={onRefreshStudent}
+            colors={[theme.primary]}
+            tintColor={theme.primary}
+          />
+        }
       >
         {/* Header with Profile and Theme Toggle */}
         <View style={{ 
@@ -3426,6 +3545,37 @@ export default function App() {
       {/* Floating Brand Button - Only on Home tab */}
       {activeTab === 'home' && (
         <FloatingBrandButton theme={{ ...theme, isDark: isDarkTheme }} />
+      )}
+
+      {/* Offline Toast Message */}
+      {isOffline && (
+        <Animated.View style={{
+          position: 'absolute',
+          bottom: 100,
+          left: 20,
+          right: 20,
+          backgroundColor: '#ef4444',
+          padding: 16,
+          borderRadius: 12,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          elevation: 10,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 8,
+        }}>
+          <Text style={{ fontSize: 24 }}>📡</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>
+              App is offline
+            </Text>
+            <Text style={{ color: '#fff', fontSize: 12, marginTop: 2 }}>
+              Check your internet connection
+            </Text>
+          </View>
+        </Animated.View>
       )}
 
       {/* Bottom Navigation */}
