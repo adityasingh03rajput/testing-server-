@@ -1646,7 +1646,12 @@ const studentManagementSchema = new mongoose.Schema({
     dob: { type: Date, required: true },
     phone: String,
     photoUrl: String,
-    createdAt: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now },
+    // Timer and attendance tracking fields
+    timerValue: { type: Number, default: 0 },
+    isRunning: { type: Boolean, default: false },
+    status: { type: String, enum: ['attending', 'absent', 'present'], default: 'absent' },
+    lastUpdated: { type: Date, default: Date.now }
 });
 
 const StudentManagement = mongoose.model('StudentManagement', studentManagementSchema);
