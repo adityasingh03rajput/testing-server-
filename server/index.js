@@ -1,4 +1,4 @@
-const path = require('path');
+ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
@@ -782,13 +782,16 @@ function createDefaultTimetable(semester, branch) {
     return { semester, branch, periods, timetable };
 }
 
-// ==================== CENTRALIZED TIMER BROADCAST SYSTEM ====================
-// This system ensures ONE timer for the entire app, broadcast from server
-// Tracks: totalLectureTime, timeRemaining, attendedTime per student
+// ==================== SERVER-SIDE ATTENDANCE TRACKING SYSTEM ====================
+// Complete server-side timer with persistent storage and resume capability
+// Features:
+// - Timetable-based lecture tracking
+// - Persistent attendance storage in MongoDB
+// - Resume capability after logout/crash
+// - Random Ring pause/resume
+// - Real-time broadcast to all clients
 
-const activeTimers = new Map(); // studentId -> { startTime, lectureEndTime, totalSeconds, attendedSeconds }
-
-// Helper: Get current lecture info for a student
+// Helper: Get current lecture info from timetable
 async function getCurrentLectureInfo(semester, branch) {
     try {
         const now = new Date();
@@ -811,26 +814,56 @@ async function getCurrentLectureInfo(semester, branch) {
             const periodEnd = timeToMinutes(periodInfo.endTime);
 
             if (currentTime >= periodStart && currentTime <= periodEnd && !period.isBreak) {
+                const totalSeconds = (periodEnd - periodStart) * 60;
+                const elapsedSeconds = (currentTime - periodStart) * 60;
+                const remainingSeconds = (periodEnd - currentTime) * 60;
+                
                 return {
                     subject: period.subject,
                     teacher: period.teacher,
                     room: period.room,
+                    period: i + 1,
                     startTime: periodInfo.startTime,
                     endTime: periodInfo.endTime,
-                    totalMinutes: periodEnd - periodStart,
-                    elapsedMinutes: currentTime - periodStart,
-                    remainingMinutes: periodEnd - currentTime
+                    totalSeconds,
+                    elapsedSeconds,
+                    remainingSeconds,
+                    periodStart,
+                    periodEnd
                 };
             }
         }
         return null;
     } catch (error) {
-        console.error('Error getting lecture info:', error);
+        console.error('❌ Error getting lecture info:', error);
         return null;
     }
 }
 
-// Broadcast timer updates every second to ALL connected clients
+// Helper: Calculate attended time for a student
+function calculateAttendedTime(student) {
+    if (!student.attendanceSession || !student.attendanceSession.sessionStartTime) {
+        return 0;
+    }
+    
+    const session = student.attendanceSession;
+    const now = Date.now();
+    
+    // If paused, don't count time since pause
+    if (session.isPaused && session.lastPauseTime) {
+        const timeBeforePause = session.totalAttendedSeconds || 0;
+        return timeBeforePause;
+    }
+    
+    // Calculate time since session start
+    const sessionDuration = Math.floor((now - session.sessionStartTime.getTime()) / 1000);
+    const pausedDuration = session.pausedDuration || 0;
+    
+    // Total attended = session duration - paused duration
+    return sessionDuration - pausedDuration;
+}
+
+// Server-side timer broadcast (every 1 second)
 setInterval(async () => {
     try {
         if (mongoose.connection.readyState !== 1) return;
@@ -839,64 +872,83 @@ setInterval(async () => {
         const activeStudents = await StudentManagement.find({ isRunning: true });
 
         for (const student of activeStudents) {
-            const studentId = student._id.toString();
-            
-            // Get current lecture info
-            const lectureInfo = await getCurrentLectureInfo(student.semester, student.course);
-            
-            if (!lectureInfo) {
-                // No active lecture, stop timer
+            try {
+                const studentId = student._id.toString();
+                
+                // Get current lecture info from timetable
+                const lectureInfo = await getCurrentLectureInfo(student.semester, student.course);
+                
+                if (!lectureInfo) {
+                    // No active lecture, stop timer and save final attendance
+                    const finalAttendedSeconds = calculateAttendedTime(student);
+                    
+                    await StudentManagement.findByIdAndUpdate(student._id, {
+                        isRunning: false,
+                        status: 'present',
+                        'attendanceSession.totalAttendedSeconds': finalAttendedSeconds,
+                        lastUpdated: new Date()
+                    });
+                    
+                    console.log(`⏹️  Timer stopped for ${student.name} - No active lecture`);
+                    
+                    // Broadcast stop event
+                    io.emit('timer_broadcast', {
+                        studentId: studentId,
+                        enrollmentNo: student.enrollmentNo,
+                        name: student.name,
+                        isRunning: false,
+                        status: 'present',
+                        attendedSeconds: finalAttendedSeconds
+                    });
+                    continue;
+                }
+                
+                // Calculate current attended time
+                const attendedSeconds = calculateAttendedTime(student);
+                
+                // Update database with current attended time (persistent storage)
                 await StudentManagement.findByIdAndUpdate(student._id, {
-                    isRunning: false,
-                    status: 'absent'
+                    'attendanceSession.totalAttendedSeconds': attendedSeconds,
+                    'currentClass.totalDurationSeconds': lectureInfo.totalSeconds,
+                    lastUpdated: new Date()
                 });
-                activeTimers.delete(studentId);
-                continue;
-            }
-
-            // Initialize or update timer tracking
-            if (!activeTimers.has(studentId)) {
-                activeTimers.set(studentId, {
-                    startTime: Date.now(),
-                    attendedSeconds: student.timerValue || 0
+                
+                // Calculate time wasted (lecture elapsed - attended)
+                const timeWastedSeconds = Math.max(0, lectureInfo.elapsedSeconds - attendedSeconds);
+                
+                // Broadcast to all clients (teacher dashboard + student app)
+                io.emit('timer_broadcast', {
+                    studentId: studentId,
+                    enrollmentNo: student.enrollmentNo,
+                    name: student.name,
+                    semester: student.semester,
+                    branch: student.course,
+                    
+                    // Lecture info
+                    lectureSubject: lectureInfo.subject,
+                    lectureTeacher: lectureInfo.teacher,
+                    lectureRoom: lectureInfo.room,
+                    lecturePeriod: lectureInfo.period,
+                    lectureStartTime: lectureInfo.startTime,
+                    lectureEndTime: lectureInfo.endTime,
+                    
+                    // Time tracking (all in seconds, server-calculated)
+                    totalLectureSeconds: lectureInfo.totalSeconds,
+                    elapsedLectureSeconds: lectureInfo.elapsedSeconds,
+                    remainingLectureSeconds: lectureInfo.remainingSeconds,
+                    attendedSeconds: attendedSeconds,
+                    timeWastedSeconds: timeWastedSeconds,
+                    
+                    // Status
+                    isRunning: true,
+                    isPaused: student.attendanceSession?.isPaused || false,
+                    pauseReason: student.attendanceSession?.pauseReason || null,
+                    status: student.attendanceSession?.isPaused ? 'paused' : 'attending'
                 });
+                
+            } catch (studentError) {
+                console.error(`❌ Error processing student ${student.name}:`, studentError);
             }
-
-            const timerData = activeTimers.get(studentId);
-            const elapsedSeconds = Math.floor((Date.now() - timerData.startTime) / 1000);
-            const totalAttendedSeconds = timerData.attendedSeconds + elapsedSeconds;
-
-            // Update database
-            await StudentManagement.findByIdAndUpdate(student._id, {
-                timerValue: totalAttendedSeconds,
-                lastUpdated: new Date()
-            });
-
-            // Broadcast to all clients
-            io.emit('timer_broadcast', {
-                studentId: studentId,
-                enrollmentNo: student.enrollmentNo,
-                name: student.name,
-                semester: student.semester,
-                branch: student.course,
-                
-                // Lecture timing
-                lectureSubject: lectureInfo.subject,
-                lectureTeacher: lectureInfo.teacher,
-                lectureRoom: lectureInfo.room,
-                lectureStartTime: lectureInfo.startTime,
-                lectureEndTime: lectureInfo.endTime,
-                
-                // Time tracking (in seconds)
-                totalLectureSeconds: lectureInfo.totalMinutes * 60,
-                elapsedLectureSeconds: lectureInfo.elapsedMinutes * 60,
-                remainingLectureSeconds: lectureInfo.remainingMinutes * 60,
-                attendedSeconds: totalAttendedSeconds,
-                
-                // Status
-                isRunning: true,
-                status: 'attending'
-            });
         }
     } catch (error) {
         console.error('❌ Timer broadcast error:', error);
@@ -907,7 +959,7 @@ setInterval(async () => {
 io.on('connection', (socket) => {
     console.log('📱 Client connected:', socket.id);
 
-    // Student starts timer
+    // Student starts timer (after face verification)
     socket.on('start_timer', async (data) => {
         try {
             const { studentId, enrollmentNo, name, semester, branch } = data;
@@ -934,7 +986,8 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            // Start timer
+            // Initialize attendance session
+            const now = Date.now();
             await StudentManagement.findByIdAndUpdate(student._id, {
                 isRunning: true,
                 status: 'attending',
@@ -942,15 +995,21 @@ io.on('connection', (socket) => {
                     subject: lectureInfo.subject,
                     teacher: lectureInfo.teacher,
                     room: lectureInfo.room,
+                    period: lectureInfo.period,
                     startTime: lectureInfo.startTime,
-                    endTime: lectureInfo.endTime
-                }
-            });
-
-            // Initialize timer tracking
-            activeTimers.set(student._id.toString(), {
-                startTime: Date.now(),
-                attendedSeconds: student.timerValue || 0
+                    endTime: lectureInfo.endTime,
+                    totalDurationSeconds: lectureInfo.totalSeconds,
+                    startTimestamp: new Date(now)
+                },
+                attendanceSession: {
+                    sessionStartTime: new Date(now),
+                    totalAttendedSeconds: 0,
+                    lastPauseTime: null,
+                    pausedDuration: 0,
+                    isPaused: false,
+                    pauseReason: null
+                },
+                lastUpdated: new Date()
             });
 
             console.log(`✅ Timer started for ${name} - ${lectureInfo.subject}`);
@@ -979,32 +1038,103 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            // Save final attended time
-            const timerData = activeTimers.get(student._id.toString());
-            if (timerData) {
-                const elapsedSeconds = Math.floor((Date.now() - timerData.startTime) / 1000);
-                const totalAttendedSeconds = timerData.attendedSeconds + elapsedSeconds;
+            // Calculate final attended time
+            const finalAttendedSeconds = calculateAttendedTime(student);
 
-                await StudentManagement.findByIdAndUpdate(student._id, {
-                    isRunning: false,
-                    status: 'present',
-                    timerValue: totalAttendedSeconds
-                });
+            // Save to database
+            await StudentManagement.findByIdAndUpdate(student._id, {
+                isRunning: false,
+                status: 'present',
+                'attendanceSession.totalAttendedSeconds': finalAttendedSeconds,
+                lastUpdated: new Date()
+            });
 
-                activeTimers.delete(student._id.toString());
-            } else {
-                await StudentManagement.findByIdAndUpdate(student._id, {
-                    isRunning: false,
-                    status: 'present'
-                });
-            }
-
-            console.log(`⏹️  Timer stopped for ${student.name}`);
-            socket.emit('timer_stopped', { success: true });
+            console.log(`⏹️  Timer stopped for ${student.name} - Attended: ${Math.floor(finalAttendedSeconds / 60)} minutes`);
+            socket.emit('timer_stopped', { success: true, attendedSeconds: finalAttendedSeconds });
 
         } catch (error) {
             console.error('❌ Error stopping timer:', error);
             socket.emit('error', { message: 'Failed to stop timer' });
+        }
+    });
+
+    // Pause timer (for Random Ring)
+    socket.on('pause_timer', async (data) => {
+        try {
+            const { studentId, reason } = data;
+            
+            let student;
+            if (mongoose.Types.ObjectId.isValid(studentId)) {
+                student = await StudentManagement.findById(studentId);
+            } else {
+                student = await StudentManagement.findOne({ enrollmentNo: studentId });
+            }
+
+            if (!student) {
+                socket.emit('error', { message: 'Student not found' });
+                return;
+            }
+
+            // Calculate attended time before pausing
+            const attendedSeconds = calculateAttendedTime(student);
+
+            // Pause timer
+            await StudentManagement.findByIdAndUpdate(student._id, {
+                'attendanceSession.isPaused': true,
+                'attendanceSession.lastPauseTime': new Date(),
+                'attendanceSession.pauseReason': reason || 'random_ring',
+                'attendanceSession.totalAttendedSeconds': attendedSeconds,
+                lastUpdated: new Date()
+            });
+
+            console.log(`⏸️  Timer paused for ${student.name} - Reason: ${reason}`);
+            socket.emit('timer_paused', { success: true });
+
+        } catch (error) {
+            console.error('❌ Error pausing timer:', error);
+            socket.emit('error', { message: 'Failed to pause timer' });
+        }
+    });
+
+    // Resume timer (after Random Ring verification)
+    socket.on('resume_timer', async (data) => {
+        try {
+            const { studentId } = data;
+            
+            let student;
+            if (mongoose.Types.ObjectId.isValid(studentId)) {
+                student = await StudentManagement.findById(studentId);
+            } else {
+                student = await StudentManagement.findOne({ enrollmentNo: studentId });
+            }
+
+            if (!student) {
+                socket.emit('error', { message: 'Student not found' });
+                return;
+            }
+
+            // Calculate paused duration
+            const pausedDuration = student.attendanceSession?.pausedDuration || 0;
+            const lastPauseTime = student.attendanceSession?.lastPauseTime;
+            const additionalPausedTime = lastPauseTime 
+                ? Math.floor((Date.now() - lastPauseTime.getTime()) / 1000)
+                : 0;
+
+            // Resume timer
+            await StudentManagement.findByIdAndUpdate(student._id, {
+                'attendanceSession.isPaused': false,
+                'attendanceSession.pauseReason': null,
+                'attendanceSession.pausedDuration': pausedDuration + additionalPausedTime,
+                'attendanceSession.lastPauseTime': null,
+                lastUpdated: new Date()
+            });
+
+            console.log(`▶️  Timer resumed for ${student.name} - Paused for: ${additionalPausedTime}s`);
+            socket.emit('timer_resumed', { success: true });
+
+        } catch (error) {
+            console.error('❌ Error resuming timer:', error);
+            socket.emit('error', { message: 'Failed to resume timer' });
         }
     });
 
@@ -2153,18 +2283,33 @@ const studentManagementSchema = new mongoose.Schema({
     dob: { type: Date, required: true },
     phone: String,
     photoUrl: String,
-    // Timer and attendance tracking fields
-    timerValue: { type: Number, default: 0 },
+    // Timer and attendance tracking fields (SERVER-SIDE ONLY)
+    timerValue: { type: Number, default: 0 }, // Legacy field
     isRunning: { type: Boolean, default: false },
     status: { type: String, default: 'absent' },
+    
+    // Current session tracking
     currentClass: {
         subject: String,
         teacher: String,
         period: Number,
         room: String,
         startTime: String,
-        endTime: String
+        endTime: String,
+        totalDurationSeconds: Number, // Total lecture duration
+        startTimestamp: Date // When student started attending
     },
+    
+    // Attendance tracking (SERVER-CONTROLLED)
+    attendanceSession: {
+        sessionStartTime: Date, // When timer started
+        totalAttendedSeconds: Number, // Total time attended in current session
+        lastPauseTime: Date, // When timer was paused (for Random Ring)
+        pausedDuration: Number, // Total time paused
+        isPaused: Boolean, // Currently paused (Random Ring)
+        pauseReason: String // Why paused (e.g., "random_ring")
+    },
+    
     lastUpdated: Date,
     createdAt: { type: Date, default: Date.now }
 });
@@ -2874,6 +3019,21 @@ app.post('/api/random-ring', async (req, res) => {
             console.log(`💾 Random ring record created: ${randomRingId}`);
         }
 
+        // Pause timers for selected students
+        for (const student of selectedStudents) {
+            if (student.isRunning) {
+                const attendedSeconds = calculateAttendedTime(student);
+                await StudentManagement.findByIdAndUpdate(student._id, {
+                    'attendanceSession.isPaused': true,
+                    'attendanceSession.lastPauseTime': new Date(),
+                    'attendanceSession.pauseReason': 'random_ring',
+                    'attendanceSession.totalAttendedSeconds': attendedSeconds,
+                    lastUpdated: new Date()
+                });
+                console.log(`⏸️  Timer paused for ${student.name} - Random Ring`);
+            }
+        }
+
         // Send notifications via Socket.IO
         selectedStudents.forEach(student => {
             io.emit('random_ring_notification', {
@@ -2971,6 +3131,33 @@ app.post('/api/random-ring/verify', async (req, res) => {
 
             await randomRing.save();
 
+            // Resume student timer
+            const student = await StudentManagement.findOne({
+                $or: [
+                    { _id: studentId },
+                    { enrollmentNo: studentId }
+                ]
+            });
+
+            if (student && student.attendanceSession?.isPaused) {
+                const pausedDuration = student.attendanceSession.pausedDuration || 0;
+                const lastPauseTime = student.attendanceSession.lastPauseTime;
+                const additionalPausedTime = lastPauseTime 
+                    ? Math.floor((Date.now() - lastPauseTime.getTime()) / 1000)
+                    : 0;
+
+                await StudentManagement.findByIdAndUpdate(student._id, {
+                    'attendanceSession.isPaused': false,
+                    'attendanceSession.pauseReason': null,
+                    'attendanceSession.pausedDuration': pausedDuration + additionalPausedTime,
+                    'attendanceSession.lastPauseTime': null,
+                    status: 'attending',
+                    lastUpdated: new Date()
+                });
+
+                console.log(`▶️  Timer resumed for ${student.name} after Random Ring verification`);
+            }
+
             // Notify teacher via Socket.IO
             io.emit('random_ring_student_verified', {
                 teacherId: randomRing.teacherId,
@@ -3054,11 +3241,24 @@ app.post('/api/random-ring/teacher-action', async (req, res) => {
                     ]
                 });
                 
-                if (student) {
+                if (student && student.attendanceSession?.isPaused) {
+                    const pausedDuration = student.attendanceSession.pausedDuration || 0;
+                    const lastPauseTime = student.attendanceSession.lastPauseTime;
+                    const additionalPausedTime = lastPauseTime 
+                        ? Math.floor((Date.now() - lastPauseTime.getTime()) / 1000)
+                        : 0;
+
                     await StudentManagement.findByIdAndUpdate(student._id, {
+                        'attendanceSession.isPaused': false,
+                        'attendanceSession.pauseReason': null,
+                        'attendanceSession.pausedDuration': pausedDuration + additionalPausedTime,
+                        'attendanceSession.lastPauseTime': null,
                         isRunning: true,
-                        status: 'attending'
+                        status: 'attending',
+                        lastUpdated: new Date()
                     });
+                    
+                    console.log(`▶️  Timer resumed for ${student.name} - Teacher accepted`);
                     
                     // Notify student that they were accepted
                     io.emit('random_ring_teacher_accepted', {
@@ -3197,11 +3397,24 @@ app.post('/api/random-ring/verify-after-rejection', async (req, res) => {
                 ]
             });
             
-            if (studentDoc) {
+            if (studentDoc && studentDoc.attendanceSession?.isPaused) {
+                const pausedDuration = studentDoc.attendanceSession.pausedDuration || 0;
+                const lastPauseTime = studentDoc.attendanceSession.lastPauseTime;
+                const additionalPausedTime = lastPauseTime 
+                    ? Math.floor((Date.now() - lastPauseTime.getTime()) / 1000)
+                    : 0;
+
                 await StudentManagement.findByIdAndUpdate(studentDoc._id, {
+                    'attendanceSession.isPaused': false,
+                    'attendanceSession.pauseReason': null,
+                    'attendanceSession.pausedDuration': pausedDuration + additionalPausedTime,
+                    'attendanceSession.lastPauseTime': null,
                     isRunning: true,
-                    status: 'attending'
+                    status: 'attending',
+                    lastUpdated: new Date()
                 });
+                
+                console.log(`▶️  Timer resumed for ${studentDoc.name} - Face verified after rejection`);
             }
             
             // Notify teacher
