@@ -1722,10 +1722,21 @@ export default function App() {
       console.log('Error activating keep awake:', error);
     }
 
-    // Auto-start timer after verification and keep it running
+    // Auto-start timer after verification using server-side system
     setTimeout(() => {
-      setIsRunning(true);
-      updateTimerOnServer(0, true); // Timer value not used anymore
+      if (socketRef.current && socketRef.current.connected) {
+        console.log('▶️  Starting server-side timer...');
+        socketRef.current.emit('start_timer', {
+          studentId: studentId,
+          enrollmentNo: userData?.enrollmentNo,
+          name: studentName || userData?.name,
+          semester: semester,
+          branch: branch
+        });
+        setIsRunning(true);
+      } else {
+        console.error('❌ Socket not connected, cannot start timer');
+      }
     }, 500);
   };
 
@@ -1743,10 +1754,11 @@ export default function App() {
     setAttendedMinutes(0);
     clearInterval(intervalRef.current);
     
-    // Stop timer using centralized server system
+    // Stop timer using server-side system
     if (socketRef.current && socketRef.current.connected) {
+      console.log('⏹️  Stopping server-side timer...');
       socketRef.current.emit('stop_timer', {
-        studentId,
+        studentId: studentId,
         enrollmentNo: userData?.enrollmentNo
       });
       console.log('⏹️ Sent stop_timer to server');
