@@ -33,8 +33,8 @@ import Updates from './Updates';
 import HelpAndSupport from './HelpAndSupport';
 import Feedback from './Feedback';
 
-const API_URL = 'https://google-8j5x.onrender.com/api/config';
-const SOCKET_URL = 'https://google-8j5x.onrender.com';
+const API_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net/api/config';
+const SOCKET_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
 const CACHE_KEY = '@timer_config';
 const ROLE_KEY = '@user_role';
 const STUDENT_ID_KEY = '@student_id';
