@@ -789,12 +789,27 @@ io.on('connection', (socket) => {
                             status,
                             lastUpdated: new Date()
                         });
+                        
+                        // Broadcast with enrollmentNo for teacher matching
+                        io.emit('student_update', { 
+                            studentId: student._id.toString(), 
+                            enrollmentNo: student.enrollmentNo,
+                            name: student.name,
+                            timerValue, 
+                            isRunning, 
+                            status 
+                        });
+                        console.log(`📡 Broadcasted update for ${student.name} (${student.enrollmentNo})`);
                     } else {
                         console.log(`⚠️ Student not found with ID: ${studentId}`);
+                        // Still broadcast with what we have
+                        io.emit('student_update', { studentId, timerValue, isRunning, status });
                     }
                 } catch (dbError) {
                     console.error('❌ Database error in timer update:', dbError.message);
                     // Continue without throwing - don't break the socket connection
+                    // Broadcast with what we have
+                    io.emit('student_update', { studentId, timerValue, isRunning, status });
                 }
             } else {
                 // Handle offline/in-memory students
@@ -815,10 +830,10 @@ io.on('connection', (socket) => {
                     student.isRunning = isRunning;
                     student.status = status;
                 }
+                
+                // Broadcast to all teachers
+                io.emit('student_update', { studentId, timerValue, isRunning, status });
             }
-
-            // Broadcast to all teachers
-            io.emit('student_update', { studentId, timerValue, isRunning, status });
         } catch (error) {
             console.error('❌ Error updating timer:', error);
             socket.emit('error', { message: 'Failed to update timer' });
