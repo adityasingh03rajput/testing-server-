@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import FilterButtons from './FilterButtons';
 
-const StudentList = ({ theme, students = [], onStudentPress }) => {
+const StudentList = ({ theme, students = [], onStudentPress, activeRandomRing = null, onTeacherAction }) => {
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [selectedStudent, setSelectedStudent] = useState(null);
 
@@ -40,13 +40,23 @@ const StudentList = ({ theme, students = [], onStudentPress }) => {
     }
   };
 
-  const renderStudentItem = ({ item: student }) => (
-    <StudentItem
-      student={student}
-      theme={theme}
-      onPress={() => handleStudentPress(student)}
-    />
-  );
+  const renderStudentItem = ({ item: student }) => {
+    // Check if this student is in active random ring
+    const randomRingStudent = activeRandomRing?.selectedStudents?.find(
+      s => s.studentId === student._id || s.enrollmentNo === student.enrollmentNo
+    );
+    
+    return (
+      <StudentItem
+        student={student}
+        theme={theme}
+        onPress={() => handleStudentPress(student)}
+        randomRingStudent={randomRingStudent}
+        onTeacherAction={onTeacherAction}
+        randomRingId={activeRandomRing?._id}
+      />
+    );
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -91,9 +101,10 @@ const StudentList = ({ theme, students = [], onStudentPress }) => {
   );
 };
 
-const StudentItem = ({ student, theme, onPress }) => {
+const StudentItem = ({ student, theme, onPress, randomRingStudent, onTeacherAction, randomRingId }) => {
   const [elapsedTime, setElapsedTime] = useState('00:00');
   const [currentTimerValue, setCurrentTimerValue] = useState(0);
+  const [actionLoading, setActionLoading] = useState(false);
 
   // Update currentTimerValue when student.timerValue changes from socket
   useEffect(() => {
@@ -217,6 +228,58 @@ const StudentItem = ({ student, theme, onPress }) => {
           </Text>
         </View>
       </View>
+      
+      {/* Accept/Reject Buttons for Random Ring */}
+      {randomRingStudent && randomRingStudent.teacherAction === 'pending' && !randomRingStudent.verified && (
+        <View style={styles.actionButtons}>
+          <TouchableOpacity
+            style={[styles.acceptButton, { opacity: actionLoading ? 0.5 : 1 }]}
+            onPress={async () => {
+              if (actionLoading) return;
+              setActionLoading(true);
+              await onTeacherAction(randomRingId, student._id || student.enrollmentNo, 'accepted');
+              setActionLoading(false);
+            }}
+            disabled={actionLoading}
+          >
+            <Text style={styles.acceptButtonText}>✓ Accept</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.rejectButton, { opacity: actionLoading ? 0.5 : 1 }]}
+            onPress={async () => {
+              if (actionLoading) return;
+              setActionLoading(true);
+              await onTeacherAction(randomRingId, student._id || student.enrollmentNo, 'rejected');
+              setActionLoading(false);
+            }}
+            disabled={actionLoading}
+          >
+            <Text style={styles.rejectButtonText}>✕ Reject</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      
+      {/* Show status after teacher action */}
+      {randomRingStudent && randomRingStudent.teacherAction !== 'pending' && (
+        <View style={styles.actionStatus}>
+          {randomRingStudent.teacherAction === 'accepted' && (
+            <Text style={[styles.actionStatusText, { color: '#059669' }]}>
+              ✓ Accepted by teacher
+            </Text>
+          )}
+          {randomRingStudent.teacherAction === 'rejected' && !randomRingStudent.faceVerifiedAfterRejection && (
+            <Text style={[styles.actionStatusText, { color: '#dc2626' }]}>
+              ✕ Rejected - Waiting for face verification
+            </Text>
+          )}
+          {randomRingStudent.faceVerifiedAfterRejection && (
+            <Text style={[styles.actionStatusText, { color: '#059669' }]}>
+              ✓ Face verified after rejection
+            </Text>
+          )}
+        </View>
+      )}
     </TouchableOpacity>
   );
 };
@@ -304,6 +367,51 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  acceptButton: {
+    flex: 1,
+    backgroundColor: '#059669',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  acceptButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  rejectButton: {
+    flex: 1,
+    backgroundColor: '#dc2626',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  rejectButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  actionStatus: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  actionStatusText: {
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });
 

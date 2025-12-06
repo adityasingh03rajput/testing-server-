@@ -2600,7 +2600,14 @@ const randomRingSchema = new mongoose.Schema({
         verificationTime: Date,
         verificationPhoto: String,
         responseTime: Number,
-        failureReason: String
+        failureReason: String,
+        // Manual verification by teacher
+        teacherAction: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'pending' },
+        teacherActionTime: Date,
+        teacherActionReason: String,
+        // Face verification after rejection
+        faceVerifiedAfterRejection: Boolean,
+        faceVerificationTime: Date
     }],
     timestamp: { type: Date, default: Date.now },
     completedAt: Date,
@@ -2987,6 +2994,236 @@ app.post('/api/random-ring/verify', async (req, res) => {
 
     } catch (error) {
         console.error('❌ Error verifying random ring:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Teacher manually accepts/rejects student presence
+app.post('/api/random-ring/teacher-action', async (req, res) => {
+    try {
+        const { randomRingId, studentId, action, reason } = req.body;
+        
+        console.log(`👨‍🏫 Teacher ${action} student ${studentId} in random ring ${randomRingId}`);
+        
+        if (!['accepted', 'rejected'].includes(action)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid action. Must be "accepted" or "rejected"'
+            });
+        }
+        
+        if (mongoose.connection.readyState === 1) {
+            const randomRing = await RandomRing.findById(randomRingId);
+            
+            if (!randomRing) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Random ring not found'
+                });
+            }
+            
+            // Find student in selected students
+            const studentIndex = randomRing.selectedStudents.findIndex(
+                s => s.studentId === studentId || s.enrollmentNo === studentId
+            );
+            
+            if (studentIndex === -1) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Student not found in this random ring'
+                });
+            }
+            
+            const now = new Date();
+            
+            // Update teacher action
+            randomRing.selectedStudents[studentIndex].teacherAction = action;
+            randomRing.selectedStudents[studentIndex].teacherActionTime = now;
+            randomRing.selectedStudents[studentIndex].teacherActionReason = reason || '';
+            
+            if (action === 'accepted') {
+                // If accepted, mark as verified and resume timer
+                randomRing.selectedStudents[studentIndex].verified = true;
+                randomRing.selectedStudents[studentIndex].verificationTime = now;
+                
+                // Resume student timer
+                const student = await StudentManagement.findOne({
+                    $or: [
+                        { _id: studentId },
+                        { enrollmentNo: studentId }
+                    ]
+                });
+                
+                if (student) {
+                    await StudentManagement.findByIdAndUpdate(student._id, {
+                        isRunning: true,
+                        status: 'attending'
+                    });
+                    
+                    // Notify student that they were accepted
+                    io.emit('random_ring_teacher_accepted', {
+                        studentId: student._id.toString(),
+                        enrollmentNo: student.enrollmentNo,
+                        message: 'Teacher verified your presence. Timer resumed.',
+                        randomRingId: randomRingId
+                    });
+                }
+            } else if (action === 'rejected') {
+                // If rejected, give student 5 minutes to verify face
+                // Notify student to verify face
+                const student = await StudentManagement.findOne({
+                    $or: [
+                        { _id: studentId },
+                        { enrollmentNo: studentId }
+                    ]
+                });
+                
+                if (student) {
+                    io.emit('random_ring_teacher_rejected', {
+                        studentId: student._id.toString(),
+                        enrollmentNo: student.enrollmentNo,
+                        message: 'Teacher marked you absent. Verify your face within 5 minutes to resume timer.',
+                        randomRingId: randomRingId,
+                        expiresAt: new Date(now.getTime() + 5 * 60 * 1000) // 5 minutes from now
+                    });
+                }
+            }
+            
+            await randomRing.save();
+            
+            // Notify all teachers about the action
+            io.emit('random_ring_teacher_action_update', {
+                randomRingId: randomRingId,
+                studentId: studentId,
+                action: action,
+                teacherActionTime: now
+            });
+            
+            res.json({
+                success: true,
+                message: `Student ${action}`,
+                action: action
+            });
+        } else {
+            res.json({ success: true, message: 'Action recorded (in-memory)' });
+        }
+        
+    } catch (error) {
+        console.error('❌ Error in teacher action:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Student verifies face after teacher rejection
+app.post('/api/random-ring/verify-after-rejection', async (req, res) => {
+    try {
+        const { randomRingId, studentId, verificationPhoto, bssid } = req.body;
+        
+        console.log(`🔍 Student ${studentId} verifying face after rejection for random ring ${randomRingId}`);
+        
+        if (mongoose.connection.readyState === 1) {
+            const randomRing = await RandomRing.findById(randomRingId);
+            
+            if (!randomRing) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Random ring not found'
+                });
+            }
+            
+            // Find student
+            const studentIndex = randomRing.selectedStudents.findIndex(
+                s => s.studentId === studentId || s.enrollmentNo === studentId
+            );
+            
+            if (studentIndex === -1) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Student not found in this random ring'
+                });
+            }
+            
+            const student = randomRing.selectedStudents[studentIndex];
+            
+            // Check if teacher rejected
+            if (student.teacherAction !== 'rejected') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Teacher did not reject you. No need to verify face.'
+                });
+            }
+            
+            // Check if already verified after rejection
+            if (student.faceVerifiedAfterRejection) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Already verified'
+                });
+            }
+            
+            // Check 5-minute window
+            const now = new Date();
+            const elapsed = (now - student.teacherActionTime) / 1000;
+            
+            if (elapsed > 300) { // 5 minutes
+                return res.status(400).json({
+                    success: false,
+                    error: 'Verification window expired (5 minutes)'
+                });
+            }
+            
+            // Validate BSSID if required
+            if (randomRing.bssid && bssid && bssid !== randomRing.bssid) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Not connected to authorized WiFi'
+                });
+            }
+            
+            // Mark as face verified after rejection
+            randomRing.selectedStudents[studentIndex].faceVerifiedAfterRejection = true;
+            randomRing.selectedStudents[studentIndex].faceVerificationTime = now;
+            randomRing.selectedStudents[studentIndex].verificationPhoto = verificationPhoto;
+            randomRing.selectedStudents[studentIndex].verified = true;
+            randomRing.selectedStudents[studentIndex].verificationTime = now;
+            
+            await randomRing.save();
+            
+            // Resume student timer
+            const studentDoc = await StudentManagement.findOne({
+                $or: [
+                    { _id: studentId },
+                    { enrollmentNo: studentId }
+                ]
+            });
+            
+            if (studentDoc) {
+                await StudentManagement.findByIdAndUpdate(studentDoc._id, {
+                    isRunning: true,
+                    status: 'attending'
+                });
+            }
+            
+            // Notify teacher
+            io.emit('random_ring_face_verified_after_rejection', {
+                teacherId: randomRing.teacherId,
+                randomRingId: randomRingId,
+                studentId: studentId,
+                studentName: student.name,
+                message: 'Student verified face after rejection. Timer resumed.'
+            });
+            
+            res.json({
+                success: true,
+                message: 'Face verification successful. Timer resumed.',
+                responseTime: elapsed
+            });
+        } else {
+            res.json({ success: true, message: 'Verification recorded (in-memory)' });
+        }
+        
+    } catch (error) {
+        console.error('❌ Error verifying face after rejection:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });

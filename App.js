@@ -153,8 +153,9 @@ export default function App() {
   const [showHelpAndSupport, setShowHelpAndSupport] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [randomRingDialogOpen, setRandomRingDialogOpen] = useState(false);
+  const [activeRandomRing, setActiveRandomRing] = useState(null); // Track active random ring for accept/reject
   const [selectedBranchForTimetable, setSelectedBranchForTimetable] = useState(null);
-  const [selectedSemesterForTimetable, setSelectedSemesterForTimetable] = useState(null);
+  const [selectedSemesterForTimetable] = useState(null);
 
   // Login states
   const [showLogin, setShowLogin] = useState(true);
@@ -781,6 +782,75 @@ export default function App() {
         }, 300000); // 5 minutes = 300,000 ms
       } else {
         console.log('❌ Random Ring not for this student (role or ID mismatch)');
+      }
+    });
+
+    // Listen for teacher accept action
+    socketRef.current.on('random_ring_teacher_accepted', (data) => {
+      console.log('✅ Teacher accepted your presence:', data);
+      if (selectedRole === 'student' && (studentId === data.studentId || studentId === data.enrollmentNo)) {
+        alert('✅ Teacher verified your presence!\n\nYour timer has been resumed.');
+        setRandomRingData(null); // Clear random ring data
+      }
+    });
+    
+    // Listen for teacher reject action
+    socketRef.current.on('random_ring_teacher_rejected', (data) => {
+      console.log('❌ Teacher rejected your presence:', data);
+      if (selectedRole === 'student' && (studentId === data.studentId || studentId === data.enrollmentNo)) {
+        alert('❌ Teacher marked you absent!\n\nYou have 5 minutes to verify your face to resume your timer.');
+        
+        // Store random ring data for face verification
+        setRandomRingData({
+          randomRingId: data.randomRingId,
+          teacherId: data.teacherId,
+          timestamp: new Date(),
+          expiresAt: data.expiresAt,
+          isRejection: true
+        });
+        
+        // Auto-open face verification
+        setShowFaceVerification(true);
+      }
+    });
+    
+    // Listen for teacher action updates (for teacher dashboard)
+    socketRef.current.on('random_ring_teacher_action_update', (data) => {
+      console.log('👨‍🏫 Teacher action update:', data);
+      if (selectedRole === 'teacher') {
+        // Update active random ring state
+        setActiveRandomRing(prev => {
+          if (!prev || prev._id !== data.randomRingId) return prev;
+          return {
+            ...prev,
+            selectedStudents: prev.selectedStudents.map(s =>
+              (s.studentId === data.studentId || s.enrollmentNo === data.studentId)
+                ? { ...s, teacherAction: data.action, teacherActionTime: data.teacherActionTime }
+                : s
+            )
+          };
+        });
+      }
+    });
+    
+    // Listen for face verification after rejection (for teacher dashboard)
+    socketRef.current.on('random_ring_face_verified_after_rejection', (data) => {
+      console.log('✅ Student verified face after rejection:', data);
+      if (selectedRole === 'teacher' && loginId === data.teacherId) {
+        // Update active random ring state
+        setActiveRandomRing(prev => {
+          if (!prev || prev._id !== data.randomRingId) return prev;
+          return {
+            ...prev,
+            selectedStudents: prev.selectedStudents.map(s =>
+              (s.studentId === data.studentId || s.enrollmentNo === data.studentId)
+                ? { ...s, faceVerifiedAfterRejection: true, verified: true }
+                : s
+            )
+          };
+        });
+        
+        alert(`✅ ${data.studentName} verified face after rejection. Timer resumed.`);
       }
     });
 
@@ -1579,7 +1649,15 @@ export default function App() {
     if (randomRingData) {
       console.log('🔔 Submitting Random Ring verification to server...');
       try {
-        const response = await fetch(`${SOCKET_URL}/api/random-ring/verify`, {
+        // Check if this is verification after teacher rejection
+        const isAfterRejection = randomRingData.isRejection === true;
+        const endpoint = isAfterRejection 
+          ? `${SOCKET_URL}/api/random-ring/verify-after-rejection`
+          : `${SOCKET_URL}/api/random-ring/verify`;
+        
+        console.log(`📡 Using endpoint: ${endpoint}`);
+        
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2300,6 +2378,46 @@ export default function App() {
     setIsFaceVerified(false);
   };
 
+  // Teacher action handler for random ring accept/reject
+  const handleTeacherAction = async (randomRingId, studentId, action) => {
+    try {
+      console.log(`👨‍🏫 Teacher ${action} student ${studentId}`);
+      
+      const response = await fetch(`${SOCKET_URL}/api/random-ring/teacher-action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          randomRingId,
+          studentId,
+          action
+        })
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        console.log(`✅ Student ${action} successfully`);
+        
+        // Update active random ring state
+        setActiveRandomRing(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            selectedStudents: prev.selectedStudents.map(s => 
+              (s.studentId === studentId || s.enrollmentNo === studentId)
+                ? { ...s, teacherAction: action }
+                : s
+            )
+          };
+        });
+      } else {
+        alert(`❌ Failed to ${action} student: ` + (result.message || result.error));
+      }
+    } catch (error) {
+      console.error(`❌ Error ${action} student:`, error);
+      alert(`❌ Error ${action} student. Please check your connection.`);
+    }
+  };
+
   // Show ViewRecords screen (full screen overlay)
   if (selectedRole === 'teacher' && showViewRecords) {
     return (
@@ -2387,6 +2505,8 @@ export default function App() {
               setSelectedStudent(student);
               fetchStudentDetails(student);
             }}
+            activeRandomRing={activeRandomRing}
+            onTeacherAction={handleTeacherAction}
           />
         </ScrollView>
         <BottomNavigation 
@@ -2441,6 +2561,18 @@ export default function App() {
               if (result.success) {
                 alert(`✅ Random Ring sent to ${result.selectedStudents?.length || 0} student(s)!`);
                 console.log('✅ Random Ring successful:', result);
+                
+                // Track active random ring for accept/reject buttons
+                setActiveRandomRing({
+                  _id: result.randomRingId,
+                  selectedStudents: result.selectedStudents.map(s => ({
+                    studentId: s.id,
+                    enrollmentNo: s.enrollmentNo,
+                    name: s.name,
+                    teacherAction: 'pending',
+                    verified: false
+                  }))
+                });
               } else {
                 alert('❌ Failed to send Random Ring: ' + (result.message || result.error));
                 console.error('❌ Random Ring failed:', result);
