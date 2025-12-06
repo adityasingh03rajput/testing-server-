@@ -2119,6 +2119,34 @@ const holidaySchema = new mongoose.Schema({
 
 const Holiday = mongoose.model('Holiday', holidaySchema);
 
+// Random Ring Schema
+const randomRingSchema = new mongoose.Schema({
+    teacherId: { type: String, required: true },
+    teacherName: String,
+    semester: String,
+    branch: String,
+    subject: String,
+    room: String,
+    bssid: String,
+    type: { type: String, enum: ['all', 'select'], required: true },
+    count: Number,
+    selectedStudents: [{
+        studentId: String,
+        name: String,
+        enrollmentNo: String,
+        notificationSent: Boolean,
+        notificationTime: Date,
+        verified: Boolean,
+        verificationTime: Date,
+        verificationPhoto: String
+    }],
+    status: { type: String, enum: ['pending', 'completed', 'expired'], default: 'pending' },
+    createdAt: { type: Date, default: Date.now },
+    expiresAt: Date
+});
+
+const RandomRing = mongoose.model('RandomRing', randomRingSchema);
+
 // Holiday APIs
 app.get('/api/holidays', async (req, res) => {
     try {
@@ -2294,6 +2322,219 @@ app.delete('/api/classrooms/:id', async (req, res) => {
 });
 
 // ==================== START SERVER ====================
+// Random Ring - Send notifications to selected students
+app.post('/api/random-ring', async (req, res) => {
+    try {
+        const { type, count, teacherId, teacherName, semester, branch, subject, room, bssid } = req.body;
+
+        console.log('🔔 Random Ring initiated:', { type, count, teacherId, semester, branch });
+
+        if (!teacherId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Teacher ID required'
+            });
+        }
+
+        // Get students for the class
+        let students = [];
+        if (mongoose.connection.readyState === 1) {
+            const query = {};
+            if (semester) query.semester = semester;
+            if (branch) query.course = branch;
+            
+            students = await StudentManagement.find(query);
+        } else {
+            students = studentManagementMemory;
+        }
+
+        // Filter students who are currently attending (connected to WiFi)
+        const attendingStudents = students.filter(s => 
+            s.status === 'attending' || s.status === 'active' || s.isRunning
+        );
+
+        console.log(`📊 Found ${attendingStudents.length} attending students out of ${students.length} total`);
+
+        if (attendingStudents.length === 0) {
+            return res.json({
+                success: true,
+                message: 'No students currently attending',
+                selectedStudents: []
+            });
+        }
+
+        // Select students based on type
+        let selectedStudents = [];
+        if (type === 'all') {
+            selectedStudents = attendingStudents;
+        } else if (type === 'select' && count) {
+            // Randomly select N students
+            const shuffled = [...attendingStudents].sort(() => 0.5 - Math.random());
+            selectedStudents = shuffled.slice(0, Math.min(count, attendingStudents.length));
+        }
+
+        console.log(`✅ Selected ${selectedStudents.length} students for random ring`);
+
+        // Create random ring record in database
+        let randomRingId = null;
+        if (mongoose.connection.readyState === 1) {
+            const randomRing = new RandomRing({
+                teacherId,
+                teacherName: teacherName || 'Teacher',
+                semester,
+                branch,
+                subject,
+                room,
+                bssid,
+                type,
+                count: type === 'select' ? count : selectedStudents.length,
+                selectedStudents: selectedStudents.map(s => ({
+                    studentId: s._id ? s._id.toString() : s.enrollmentNo,
+                    name: s.name,
+                    enrollmentNo: s.enrollmentNo,
+                    notificationSent: true,
+                    notificationTime: new Date(),
+                    verified: false
+                })),
+                status: 'pending'
+            });
+
+            await randomRing.save();
+            randomRingId = randomRing._id.toString();
+            console.log(`💾 Random ring record created: ${randomRingId}`);
+        }
+
+        // Send notifications via Socket.IO
+        selectedStudents.forEach(student => {
+            io.emit('random_ring_notification', {
+                randomRingId: randomRingId,
+                studentId: student._id || student.enrollmentNo,
+                enrollmentNo: student.enrollmentNo,
+                studentName: student.name,
+                message: 'Please verify your attendance now!',
+                teacherId: teacherId,
+                teacherName: teacherName,
+                bssid: bssid,
+                timestamp: Date.now()
+            });
+        });
+
+        res.json({
+            success: true,
+            message: `Random ring sent to ${selectedStudents.length} students`,
+            randomRingId: randomRingId,
+            selectedStudents: selectedStudents.map(s => ({
+                id: s._id || s.enrollmentNo,
+                name: s.name,
+                enrollmentNo: s.enrollmentNo
+            }))
+        });
+
+    } catch (error) {
+        console.error('❌ Error in random ring:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Student verifies random ring
+app.post('/api/random-ring/verify', async (req, res) => {
+    try {
+        const { randomRingId, studentId, verificationPhoto, bssid } = req.body;
+
+        console.log('🔔 Random Ring verification:', { randomRingId, studentId });
+
+        if (!randomRingId || !studentId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Random Ring ID and Student ID required'
+            });
+        }
+
+        // Find the random ring record
+        let randomRing = null;
+        if (mongoose.connection.readyState === 1) {
+            randomRing = await RandomRing.findById(randomRingId);
+            
+            if (!randomRing) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Random ring not found'
+                });
+            }
+
+            // Update student verification status
+            const studentIndex = randomRing.selectedStudents.findIndex(
+                s => s.studentId === studentId || s.enrollmentNo === studentId
+            );
+
+            if (studentIndex === -1) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Student not found in this random ring'
+                });
+            }
+
+            randomRing.selectedStudents[studentIndex].verified = true;
+            randomRing.selectedStudents[studentIndex].verificationTime = new Date();
+            randomRing.selectedStudents[studentIndex].verificationPhoto = verificationPhoto;
+
+            // Check if all students have verified
+            const allVerified = randomRing.selectedStudents.every(s => s.verified);
+            if (allVerified) {
+                randomRing.status = 'completed';
+            }
+
+            await randomRing.save();
+            console.log(`✅ Student ${studentId} verified for random ring ${randomRingId}`);
+        }
+
+        res.json({
+            success: true,
+            message: 'Verification successful'
+        });
+
+    } catch (error) {
+        console.error('❌ Error in random ring verification:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Get Random Ring History
+app.get('/api/random-ring/history/:teacherId', async (req, res) => {
+    try {
+        const { teacherId } = req.params;
+
+        if (mongoose.connection.readyState === 1) {
+            const history = await RandomRing.find({ teacherId })
+                .sort({ createdAt: -1 })
+                .limit(50);
+
+            res.json({
+                success: true,
+                history: history
+            });
+        } else {
+            res.json({
+                success: true,
+                history: []
+            });
+        }
+
+    } catch (error) {
+        console.error('❌ Error fetching random ring history:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 // All routes must be registered before starting the server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', async () => {
