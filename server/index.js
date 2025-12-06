@@ -3210,11 +3210,23 @@ app.post('/api/random-ring/teacher-action', async (req, res) => {
             }
             
             // Find student in selected students
+            console.log(`🔍 Looking for student in random ring:`);
+            console.log(`   Student ID to find: ${studentId}`);
+            console.log(`   Selected students:`, randomRing.selectedStudents.map(s => ({
+                studentId: s.studentId,
+                enrollmentNo: s.enrollmentNo,
+                name: s.name
+            })));
+            
             const studentIndex = randomRing.selectedStudents.findIndex(
-                s => s.studentId === studentId || s.enrollmentNo === studentId
+                s => s.studentId === studentId || s.enrollmentNo === studentId || 
+                     s.studentId?.toString() === studentId || s.enrollmentNo?.toString() === studentId
             );
             
+            console.log(`   Found at index: ${studentIndex}`);
+            
             if (studentIndex === -1) {
+                console.error(`❌ Student not found in random ring`);
                 return res.status(404).json({
                     success: false,
                     error: 'Student not found in this random ring'

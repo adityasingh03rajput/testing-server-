@@ -856,8 +856,18 @@ export default function App() {
 
     // Listen for centralized timer broadcasts from server
     socketRef.current.on('timer_broadcast', (data) => {
+      console.log('📡 Timer broadcast received:', {
+        studentId: data.studentId,
+        enrollmentNo: data.enrollmentNo,
+        attendedSeconds: data.attendedSeconds,
+        isRunning: data.isRunning,
+        status: data.status
+      });
+      
       // Update timer data if this broadcast is for current student
-      if (selectedRole === 'student' && studentId && data.studentId === studentId) {
+      if (selectedRole === 'student' && studentId && 
+          (data.studentId === studentId || data.enrollmentNo === studentId)) {
+        console.log('✅ Updating student timer data');
         setServerTimerData({
           totalLectureSeconds: data.totalLectureSeconds || 0,
           elapsedLectureSeconds: data.elapsedLectureSeconds || 0,
@@ -878,11 +888,16 @@ export default function App() {
       
       // Update teacher dashboard with all active students
       if (selectedRole === 'teacher') {
-        // Update students list with timer data
         setStudents(prevStudents => {
           const updated = [...prevStudents];
-          const index = updated.findIndex(s => s._id === data.studentId || s.enrollmentNo === data.enrollmentNo);
+          const index = updated.findIndex(s => 
+            s._id?.toString() === data.studentId || 
+            s.enrollmentNo === data.enrollmentNo ||
+            s._id === data.studentId
+          );
+          
           if (index !== -1) {
+            console.log(`✅ Updating teacher view for student: ${updated[index].name}`);
             updated[index] = {
               ...updated[index],
               timerValue: data.attendedSeconds,
@@ -897,56 +912,6 @@ export default function App() {
               }
             };
           }
-          return updated;
-        });
-      }
-      
-      const { students: oldStudents, serverTime } = data;
-      
-      // For students: Update own timer display
-      if (selectedRole === 'student' && studentId) {
-        const myTimer = students.find(s => 
-          s.studentId === studentId || 
-          s.enrollmentNo === studentId ||
-          s.enrollmentNo === userData?.enrollmentNo
-        );
-        
-        if (myTimer) {
-          // Update attended minutes from server
-          setAttendedMinutes(myTimer.attendedMinutes);
-          
-          // Update current class info
-          setCurrentClassInfo(prev => ({
-            ...prev,
-            subject: myTimer.currentClass,
-            duration: myTimer.lectureDuration,
-            remaining: myTimer.lectureRemaining
-          }));
-        }
-      }
-      
-      // For teachers: Update all student timers
-      if (selectedRole === 'teacher') {
-        setStudents(prev => {
-          const updated = [...prev];
-          students.forEach(timerData => {
-            const index = updated.findIndex(s => 
-              s._id === timerData.studentId ||
-              s.enrollmentNo === timerData.enrollmentNo
-            );
-            
-            if (index >= 0) {
-              updated[index] = {
-                ...updated[index],
-                timerValue: timerData.elapsedSeconds,
-                attendedMinutes: timerData.attendedMinutes,
-                isRunning: timerData.isRunning,
-                status: timerData.status,
-                currentClass: timerData.currentClass,
-                lectureRemaining: timerData.lectureRemaining
-              };
-            }
-          });
           return updated;
         });
       }
@@ -2393,19 +2358,25 @@ export default function App() {
   // Teacher action handler for random ring accept/reject
   const handleTeacherAction = async (randomRingId, studentId, action) => {
     try {
-      console.log(`👨‍🏫 Teacher ${action} student ${studentId}`);
+      console.log(`👨‍🏫 Teacher ${action} student`);
       console.log(`   Random Ring ID: ${randomRingId}`);
       console.log(`   Student ID: ${studentId}`);
+      console.log(`   Action: ${action}`);
       
       if (!randomRingId) {
+        console.error('❌ No randomRingId provided');
         alert('❌ Error: No active random ring found');
         return;
       }
       
       if (!studentId) {
+        console.error('❌ No studentId provided');
         alert('❌ Error: Student ID not found');
         return;
       }
+      
+      console.log(`📡 Sending request to: ${SOCKET_URL}/api/random-ring/teacher-action`);
+      console.log(`📦 Request body:`, { randomRingId, studentId, action });
       
       const response = await fetch(`${SOCKET_URL}/api/random-ring/teacher-action`, {
         method: 'POST',
@@ -2600,12 +2571,17 @@ export default function App() {
                 setActiveRandomRing({
                   _id: result.randomRingId,
                   selectedStudents: result.selectedStudents.map(s => ({
-                    studentId: s.id,
+                    studentId: s.id, // This is _id from MongoDB
                     enrollmentNo: s.enrollmentNo,
                     name: s.name,
                     teacherAction: 'pending',
                     verified: false
                   }))
+                });
+                
+                console.log('📌 Active Random Ring set:', {
+                  randomRingId: result.randomRingId,
+                  studentCount: result.selectedStudents.length
                 });
               } else {
                 alert('❌ Failed to send Random Ring: ' + (result.message || result.error));
