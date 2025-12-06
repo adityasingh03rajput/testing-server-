@@ -782,11 +782,233 @@ function createDefaultTimetable(semester, branch) {
     return { semester, branch, periods, timetable };
 }
 
+// ==================== CENTRALIZED TIMER BROADCAST SYSTEM ====================
+// This system ensures ONE timer for the entire app, broadcast from server
+// Tracks: totalLectureTime, timeRemaining, attendedTime per student
+
+const activeTimers = new Map(); // studentId -> { startTime, lectureEndTime, totalSeconds, attendedSeconds }
+
+// Helper: Get current lecture info for a student
+async function getCurrentLectureInfo(semester, branch) {
+    try {
+        const now = new Date();
+        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const currentDay = days[now.getDay()];
+        const currentTime = now.getHours() * 60 + now.getMinutes();
+
+        const timetable = await Timetable.findOne({ semester, branch });
+        if (!timetable) return null;
+
+        const daySchedule = timetable.timetable[currentDay];
+        if (!daySchedule) return null;
+
+        for (let i = 0; i < daySchedule.length; i++) {
+            const period = daySchedule[i];
+            const periodInfo = timetable.periods[i];
+            if (!periodInfo) continue;
+
+            const periodStart = timeToMinutes(periodInfo.startTime);
+            const periodEnd = timeToMinutes(periodInfo.endTime);
+
+            if (currentTime >= periodStart && currentTime <= periodEnd && !period.isBreak) {
+                return {
+                    subject: period.subject,
+                    teacher: period.teacher,
+                    room: period.room,
+                    startTime: periodInfo.startTime,
+                    endTime: periodInfo.endTime,
+                    totalMinutes: periodEnd - periodStart,
+                    elapsedMinutes: currentTime - periodStart,
+                    remainingMinutes: periodEnd - currentTime
+                };
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error('Error getting lecture info:', error);
+        return null;
+    }
+}
+
+// Broadcast timer updates every second to ALL connected clients
+setInterval(async () => {
+    try {
+        if (mongoose.connection.readyState !== 1) return;
+
+        // Get all students with active timers
+        const activeStudents = await StudentManagement.find({ isRunning: true });
+
+        for (const student of activeStudents) {
+            const studentId = student._id.toString();
+            
+            // Get current lecture info
+            const lectureInfo = await getCurrentLectureInfo(student.semester, student.course);
+            
+            if (!lectureInfo) {
+                // No active lecture, stop timer
+                await StudentManagement.findByIdAndUpdate(student._id, {
+                    isRunning: false,
+                    status: 'absent'
+                });
+                activeTimers.delete(studentId);
+                continue;
+            }
+
+            // Initialize or update timer tracking
+            if (!activeTimers.has(studentId)) {
+                activeTimers.set(studentId, {
+                    startTime: Date.now(),
+                    attendedSeconds: student.timerValue || 0
+                });
+            }
+
+            const timerData = activeTimers.get(studentId);
+            const elapsedSeconds = Math.floor((Date.now() - timerData.startTime) / 1000);
+            const totalAttendedSeconds = timerData.attendedSeconds + elapsedSeconds;
+
+            // Update database
+            await StudentManagement.findByIdAndUpdate(student._id, {
+                timerValue: totalAttendedSeconds,
+                lastUpdated: new Date()
+            });
+
+            // Broadcast to all clients
+            io.emit('timer_broadcast', {
+                studentId: studentId,
+                enrollmentNo: student.enrollmentNo,
+                name: student.name,
+                semester: student.semester,
+                branch: student.course,
+                
+                // Lecture timing
+                lectureSubject: lectureInfo.subject,
+                lectureTeacher: lectureInfo.teacher,
+                lectureRoom: lectureInfo.room,
+                lectureStartTime: lectureInfo.startTime,
+                lectureEndTime: lectureInfo.endTime,
+                
+                // Time tracking (in seconds)
+                totalLectureSeconds: lectureInfo.totalMinutes * 60,
+                elapsedLectureSeconds: lectureInfo.elapsedMinutes * 60,
+                remainingLectureSeconds: lectureInfo.remainingMinutes * 60,
+                attendedSeconds: totalAttendedSeconds,
+                
+                // Status
+                isRunning: true,
+                status: 'attending'
+            });
+        }
+    } catch (error) {
+        console.error('❌ Timer broadcast error:', error);
+    }
+}, 1000); // Broadcast every 1 second
+
 // Socket.IO for real-time updates
 io.on('connection', (socket) => {
     console.log('📱 Client connected:', socket.id);
 
-    // Student updates timer
+    // Student starts timer
+    socket.on('start_timer', async (data) => {
+        try {
+            const { studentId, enrollmentNo, name, semester, branch } = data;
+            
+            console.log(`▶️  Starting timer for ${name}`);
+
+            // Find student
+            let student;
+            if (mongoose.Types.ObjectId.isValid(studentId)) {
+                student = await StudentManagement.findById(studentId);
+            } else {
+                student = await StudentManagement.findOne({ enrollmentNo: studentId });
+            }
+
+            if (!student) {
+                socket.emit('error', { message: 'Student not found' });
+                return;
+            }
+
+            // Check if there's an active lecture
+            const lectureInfo = await getCurrentLectureInfo(student.semester, student.course);
+            if (!lectureInfo) {
+                socket.emit('error', { message: 'No active lecture right now' });
+                return;
+            }
+
+            // Start timer
+            await StudentManagement.findByIdAndUpdate(student._id, {
+                isRunning: true,
+                status: 'attending',
+                currentClass: {
+                    subject: lectureInfo.subject,
+                    teacher: lectureInfo.teacher,
+                    room: lectureInfo.room,
+                    startTime: lectureInfo.startTime,
+                    endTime: lectureInfo.endTime
+                }
+            });
+
+            // Initialize timer tracking
+            activeTimers.set(student._id.toString(), {
+                startTime: Date.now(),
+                attendedSeconds: student.timerValue || 0
+            });
+
+            console.log(`✅ Timer started for ${name} - ${lectureInfo.subject}`);
+            socket.emit('timer_started', { success: true, lectureInfo });
+
+        } catch (error) {
+            console.error('❌ Error starting timer:', error);
+            socket.emit('error', { message: 'Failed to start timer' });
+        }
+    });
+
+    // Student stops timer
+    socket.on('stop_timer', async (data) => {
+        try {
+            const { studentId } = data;
+            
+            let student;
+            if (mongoose.Types.ObjectId.isValid(studentId)) {
+                student = await StudentManagement.findById(studentId);
+            } else {
+                student = await StudentManagement.findOne({ enrollmentNo: studentId });
+            }
+
+            if (!student) {
+                socket.emit('error', { message: 'Student not found' });
+                return;
+            }
+
+            // Save final attended time
+            const timerData = activeTimers.get(student._id.toString());
+            if (timerData) {
+                const elapsedSeconds = Math.floor((Date.now() - timerData.startTime) / 1000);
+                const totalAttendedSeconds = timerData.attendedSeconds + elapsedSeconds;
+
+                await StudentManagement.findByIdAndUpdate(student._id, {
+                    isRunning: false,
+                    status: 'present',
+                    timerValue: totalAttendedSeconds
+                });
+
+                activeTimers.delete(student._id.toString());
+            } else {
+                await StudentManagement.findByIdAndUpdate(student._id, {
+                    isRunning: false,
+                    status: 'present'
+                });
+            }
+
+            console.log(`⏹️  Timer stopped for ${student.name}`);
+            socket.emit('timer_stopped', { success: true });
+
+        } catch (error) {
+            console.error('❌ Error stopping timer:', error);
+            socket.emit('error', { message: 'Failed to stop timer' });
+        }
+    });
+
+    // Legacy: Student updates timer (kept for backward compatibility)
     socket.on('timer_update', async (data) => {
         try {
             const { studentId, timerValue, isRunning, status, studentName, currentClass } = data;
