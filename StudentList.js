@@ -16,20 +16,21 @@ const StudentList = ({ theme, students = [], onStudentPress }) => {
   // Filter students based on selected filter
   const filteredStudents = students.filter((student) => {
     if (selectedFilter === 'all') return true;
+    if (selectedFilter === 'active') return student.isRunning === true; // Only show students with timer running
     return student.status === selectedFilter;
   });
 
   // Calculate counts for each filter
   const filterCounts = {
     all: students.length,
-    active: students.filter((s) => s.status === 'active').length,
+    active: students.filter((s) => s.isRunning === true).length, // Count students with timer running
     present: students.filter((s) => s.status === 'present').length,
     absent: students.filter((s) => s.status === 'absent').length,
     left: students.filter((s) => s.status === 'left').length,
   };
 
   const presentCount = students.filter(
-    (s) => s.status === 'active' || s.status === 'present'
+    (s) => s.isRunning === true || s.status === 'present'
   ).length;
 
   const handleStudentPress = (student) => {

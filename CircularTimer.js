@@ -46,6 +46,8 @@ const DEFAULT_SEGMENTS = [
 export default function CircularTimer({
   theme = {},
   initialTime = 0,
+  totalLectureTime = 0,
+  remainingTime = 0,
   isRunning = false,
   onToggleTimer = () => { },
   onReset = () => { },
@@ -56,6 +58,7 @@ export default function CircularTimer({
   },
   timetable = null,
   currentDay = null,
+  lectureInfo = null,
 }) {
   const safeTheme = {
     primary: theme.primary || '#d97706',
@@ -595,14 +598,52 @@ export default function CircularTimer({
 
         {/* Center controls */}
         <View style={styles.center}>
+          {/* Attended Time (main display) */}
           <Text style={[styles.time, { color: safeTheme.text }]}>
             {formatTime(initialTime)}
           </Text>
+          <Text style={[styles.timeLabel, { color: safeTheme.textSecondary, fontSize: 10, marginTop: -5 }]}>
+            ATTENDED
+          </Text>
+
+          {/* Lecture Info */}
+          {lectureInfo && lectureInfo.subject && (
+            <View style={{ marginTop: 8, alignItems: 'center' }}>
+              <Text style={[styles.lectureSubject, { color: safeTheme.text, fontSize: 12, fontWeight: '600' }]}>
+                {lectureInfo.subject}
+              </Text>
+              <Text style={[styles.lectureTime, { color: safeTheme.textSecondary, fontSize: 10 }]}>
+                {lectureInfo.startTime} - {lectureInfo.endTime}
+              </Text>
+            </View>
+          )}
+
+          {/* Time Stats */}
+          {totalLectureTime > 0 && (
+            <View style={{ marginTop: 10, flexDirection: 'row', gap: 15 }}>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={[styles.statValue, { color: safeTheme.primary, fontSize: 14, fontWeight: 'bold' }]}>
+                  {formatTime(totalLectureTime)}
+                </Text>
+                <Text style={[styles.statLabel, { color: safeTheme.textSecondary, fontSize: 9 }]}>
+                  TOTAL
+                </Text>
+              </View>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={[styles.statValue, { color: '#22c55e', fontSize: 14, fontWeight: 'bold' }]}>
+                  {formatTime(remainingTime)}
+                </Text>
+                <Text style={[styles.statLabel, { color: safeTheme.textSecondary, fontSize: 9 }]}>
+                  REMAINING
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* Only show start button if not running */}
           {!isRunning && (
             <TouchableOpacity
-              style={[styles.playBtn, { backgroundColor: safeTheme.primary }]}
+              style={[styles.playBtn, { backgroundColor: safeTheme.primary, marginTop: 15 }]}
               onPress={onToggleTimer}
               activeOpacity={0.8}
             >
@@ -612,7 +653,7 @@ export default function CircularTimer({
 
           {/* Show running indicator when active */}
           {isRunning && (
-            <View style={[styles.runningBadge, { backgroundColor: '#22c55e' }]}>
+            <View style={[styles.runningBadge, { backgroundColor: '#22c55e', marginTop: 15 }]}>
               <Text style={styles.runningText}>● TRACKING</Text>
             </View>
           )}

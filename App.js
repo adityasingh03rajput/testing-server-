@@ -116,6 +116,19 @@ export default function App() {
   // Removed timeLeft state - attendance is tracked by attendedMinutes based on actual lecture time
   const [isRunning, setIsRunning] = useState(false);
   const [students, setStudents] = useState([]);
+  
+  // Centralized timer data from server (single source of truth)
+  const [serverTimerData, setServerTimerData] = useState({
+    totalLectureSeconds: 0,
+    elapsedLectureSeconds: 0,
+    remainingLectureSeconds: 0,
+    attendedSeconds: 0,
+    lectureSubject: '',
+    lectureTeacher: '',
+    lectureRoom: '',
+    lectureStartTime: '',
+    lectureEndTime: ''
+  });
   const [semester, setSemester] = useState('1');
   const [branch, setBranch] = useState('letsbunk enters');
 
@@ -773,7 +786,52 @@ export default function App() {
 
     // Listen for centralized timer broadcasts from server
     socketRef.current.on('timer_broadcast', (data) => {
-      const { students, serverTime } = data;
+      // Update timer data if this broadcast is for current student
+      if (selectedRole === 'student' && studentId && data.studentId === studentId) {
+        setServerTimerData({
+          totalLectureSeconds: data.totalLectureSeconds || 0,
+          elapsedLectureSeconds: data.elapsedLectureSeconds || 0,
+          remainingLectureSeconds: data.remainingLectureSeconds || 0,
+          attendedSeconds: data.attendedSeconds || 0,
+          lectureSubject: data.lectureSubject || '',
+          lectureTeacher: data.lectureTeacher || '',
+          lectureRoom: data.lectureRoom || '',
+          lectureStartTime: data.lectureStartTime || '',
+          lectureEndTime: data.lectureEndTime || ''
+        });
+        
+        // Update isRunning state
+        if (data.isRunning !== undefined) {
+          setIsRunning(data.isRunning);
+        }
+      }
+      
+      // Update teacher dashboard with all active students
+      if (selectedRole === 'teacher') {
+        // Update students list with timer data
+        setStudents(prevStudents => {
+          const updated = [...prevStudents];
+          const index = updated.findIndex(s => s._id === data.studentId || s.enrollmentNo === data.enrollmentNo);
+          if (index !== -1) {
+            updated[index] = {
+              ...updated[index],
+              timerValue: data.attendedSeconds,
+              isRunning: data.isRunning,
+              status: data.status,
+              currentClass: {
+                subject: data.lectureSubject,
+                teacher: data.lectureTeacher,
+                room: data.lectureRoom,
+                startTime: data.lectureStartTime,
+                endTime: data.lectureEndTime
+              }
+            };
+          }
+          return updated;
+        });
+      }
+      
+      const { students: oldStudents, serverTime } = data;
       
       // For students: Update own timer display
       if (selectedRole === 'student' && studentId) {
@@ -3306,13 +3364,22 @@ export default function App() {
         })()}
         <CircularTimer
           theme={theme}
-          initialTime={attendedMinutes * 60}
+          initialTime={serverTimerData.attendedSeconds}
+          totalLectureTime={serverTimerData.totalLectureSeconds}
+          remainingTime={serverTimerData.remainingLectureSeconds}
           isRunning={isRunning}
           onToggleTimer={handleStartPause}
           onReset={handleReset}
           formatTime={formatTime}
           timetable={timetable}
           currentDay={currentDay}
+          lectureInfo={{
+            subject: serverTimerData.lectureSubject,
+            teacher: serverTimerData.lectureTeacher,
+            room: serverTimerData.lectureRoom,
+            startTime: serverTimerData.lectureStartTime,
+            endTime: serverTimerData.lectureEndTime
+          }}
         />
 
         {/* Current Class Progress */}
