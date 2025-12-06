@@ -756,11 +756,14 @@ io.on('connection', (socket) => {
     socket.on('timer_update', async (data) => {
         try {
             const { studentId, timerValue, isRunning, status, studentName } = data;
+            
+            console.log('🔔 Timer update received:', { studentId, timerValue, isRunning, status, studentName });
 
             // Check if it's an offline ID (starts with "offline_")
             const isOfflineId = studentId && studentId.toString().startsWith('offline_');
 
             if (mongoose.connection.readyState === 1 && !isOfflineId) {
+                console.log('📊 Database connected, processing timer update...');
                 try {
                     // Check if studentId is a valid ObjectId format
                     const isValidObjectId = mongoose.Types.ObjectId.isValid(studentId) &&
@@ -783,11 +786,18 @@ io.on('connection', (socket) => {
 
                     if (student) {
                         console.log(`✅ Found student: ${student.name} (${student.enrollmentNo})`);
-                        await StudentManagement.findByIdAndUpdate(student._id, {
+                        const updateResult = await StudentManagement.findByIdAndUpdate(student._id, {
                             timerValue,
                             isRunning,
                             status,
                             lastUpdated: new Date()
+                        }, { new: true });
+                        
+                        console.log(`💾 Database updated:`, { 
+                            id: student._id, 
+                            isRunning: updateResult.isRunning, 
+                            status: updateResult.status,
+                            timerValue: updateResult.timerValue
                         });
                         
                         // Broadcast with enrollmentNo for teacher matching
