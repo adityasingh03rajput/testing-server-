@@ -214,7 +214,7 @@ class MediaPipeService {
 
             // Combined liveness score
             const livenessScore = (depthScore + blendshapeScore + orientationScore) / 3;
-            const isLive = livenessScore > 0.6; // Threshold
+            const isLive = livenessScore > 0.4; // Threshold (lowered from 0.6 to 0.4 for better usability)
 
             return {
                 isLive,
@@ -224,7 +224,7 @@ class MediaPipeService {
                     blendshape: Math.round(blendshapeScore * 100),
                     orientation: Math.round(orientationScore * 100)
                 },
-                reason: isLive ? 'Real face detected' : 'Possible photo/screen detected'
+                reason: isLive ? 'Real face detected' : `Liveness score too low (${Math.round(livenessScore * 100)}%). Try better lighting or move closer to camera.`
             };
 
         } catch (error) {
