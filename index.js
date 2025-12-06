@@ -859,6 +859,131 @@ io.on('connection', (socket) => {
     });
 });
 
+// Centralized Timer Broadcast System
+// Server is the single source of truth for all timer values
+const activeStudentTimers = new Map(); // studentId -> { startTime, semester, branch, currentClass, enrollmentNo, name }
+
+// Broadcast timer updates every second to all connected clients
+setInterval(async () => {
+    if (activeStudentTimers.size === 0) return;
+
+    const now = Date.now();
+    const updates = [];
+
+    for (const [studentId, timerData] of activeStudentTimers.entries()) {
+        const { startTime, semester, branch, currentClass, enrollmentNo, name, lectureDuration } = timerData;
+        
+        // Calculate elapsed time in seconds
+        const elapsedSeconds = Math.floor((now - startTime) / 1000);
+        const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+        
+        // Calculate remaining time for lecture
+        const remainingSeconds = Math.max(0, (lectureDuration * 60) - elapsedSeconds);
+        const remainingMinutes = Math.floor(remainingSeconds / 60);
+        
+        updates.push({
+            studentId,
+            enrollmentNo,
+            name,
+            semester,
+            branch,
+            currentClass,
+            // Timer values (all in seconds for consistency)
+            elapsedSeconds,
+            elapsedMinutes,
+            attendedMinutes: elapsedMinutes,
+            // Lecture info
+            lectureDuration, // in minutes
+            lectureRemaining: remainingMinutes, // in minutes
+            lectureRemainingSeconds: remainingSeconds,
+            // Status
+            isRunning: true,
+            status: 'attending',
+            // Server timestamp
+            serverTime: now
+        });
+    }
+
+    // Broadcast to all connected clients
+    if (updates.length > 0) {
+        io.emit('timer_broadcast', { students: updates, serverTime: now });
+    }
+}, 1000); // Every second
+
+// Student starts timer
+io.on('connection', (socket) => {
+    socket.on('start_timer', async (data) => {
+        try {
+            const { studentId, enrollmentNo, name, semester, branch, currentClass, lectureDuration } = data;
+            
+            console.log(`⏱️ Starting timer for ${name} (${enrollmentNo}) - ${currentClass}`);
+            
+            // Add to active timers
+            activeStudentTimers.set(studentId, {
+                startTime: Date.now(),
+                semester,
+                branch,
+                currentClass,
+                enrollmentNo,
+                name,
+                lectureDuration: lectureDuration || 60 // default 60 minutes
+            });
+            
+            // Update database
+            if (mongoose.connection.readyState === 1) {
+                await StudentManagement.findOneAndUpdate(
+                    { $or: [{ _id: studentId }, { enrollmentNo }] },
+                    {
+                        isRunning: true,
+                        status: 'attending',
+                        lastUpdated: new Date()
+                    }
+                );
+            }
+            
+            socket.emit('timer_started', { success: true, studentId });
+            console.log(`✅ Timer started for ${name}`);
+        } catch (error) {
+            console.error('❌ Error starting timer:', error);
+            socket.emit('timer_error', { message: 'Failed to start timer' });
+        }
+    });
+    
+    // Student stops timer
+    socket.on('stop_timer', async (data) => {
+        try {
+            const { studentId, enrollmentNo } = data;
+            
+            const timerData = activeStudentTimers.get(studentId);
+            if (timerData) {
+                const elapsedMinutes = Math.floor((Date.now() - timerData.startTime) / 60000);
+                console.log(`⏹️ Stopping timer for ${timerData.name} - Attended: ${elapsedMinutes} min`);
+                
+                // Remove from active timers
+                activeStudentTimers.delete(studentId);
+                
+                // Update database
+                if (mongoose.connection.readyState === 1) {
+                    await StudentManagement.findOneAndUpdate(
+                        { $or: [{ _id: studentId }, { enrollmentNo }] },
+                        {
+                            isRunning: false,
+                            status: 'absent',
+                            timerValue: 0,
+                            lastUpdated: new Date()
+                        }
+                    );
+                }
+                
+                socket.emit('timer_stopped', { success: true, attendedMinutes: elapsedMinutes });
+            }
+        } catch (error) {
+            console.error('❌ Error stopping timer:', error);
+            socket.emit('timer_error', { message: 'Failed to stop timer' });
+        }
+    });
+});
+
 // Attendance Records API
 app.post('/api/attendance/record', async (req, res) => {
     try {

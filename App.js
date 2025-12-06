@@ -770,6 +770,59 @@ export default function App() {
         console.log('❌ Random Ring not for this student (role or ID mismatch)');
       }
     });
+
+    // Listen for centralized timer broadcasts from server
+    socketRef.current.on('timer_broadcast', (data) => {
+      const { students, serverTime } = data;
+      
+      // For students: Update own timer display
+      if (selectedRole === 'student' && studentId) {
+        const myTimer = students.find(s => 
+          s.studentId === studentId || 
+          s.enrollmentNo === studentId ||
+          s.enrollmentNo === userData?.enrollmentNo
+        );
+        
+        if (myTimer) {
+          // Update attended minutes from server
+          setAttendedMinutes(myTimer.attendedMinutes);
+          
+          // Update current class info
+          setCurrentClassInfo(prev => ({
+            ...prev,
+            subject: myTimer.currentClass,
+            duration: myTimer.lectureDuration,
+            remaining: myTimer.lectureRemaining
+          }));
+        }
+      }
+      
+      // For teachers: Update all student timers
+      if (selectedRole === 'teacher') {
+        setStudents(prev => {
+          const updated = [...prev];
+          students.forEach(timerData => {
+            const index = updated.findIndex(s => 
+              s._id === timerData.studentId ||
+              s.enrollmentNo === timerData.enrollmentNo
+            );
+            
+            if (index >= 0) {
+              updated[index] = {
+                ...updated[index],
+                timerValue: timerData.elapsedSeconds,
+                attendedMinutes: timerData.attendedMinutes,
+                isRunning: timerData.isRunning,
+                status: timerData.status,
+                currentClass: timerData.currentClass,
+                lectureRemaining: timerData.lectureRemaining
+              };
+            }
+          });
+          return updated;
+        });
+      }
+    });
   };
 
   // Save lecture attendance when class ends
@@ -1437,9 +1490,25 @@ export default function App() {
       return;
     }
 
-    // Start timer (no toggle, only start)
+    // Start timer using centralized server system
     setIsRunning(true);
-    updateTimerOnServer(0, true); // Timer value not used anymore
+    
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('start_timer', {
+        studentId,
+        enrollmentNo: userData?.enrollmentNo,
+        name: studentName,
+        semester,
+        branch,
+        currentClass: currentClassInfo?.subject,
+        lectureDuration: currentClassInfo?.duration || 60
+      });
+      console.log('⏱️ Sent start_timer to server');
+    } else {
+      console.warn('⚠️ Socket not connected, cannot start centralized timer');
+      // Fallback to old method
+      updateTimerOnServer(0, true);
+    }
   };
 
   const handleVerificationSuccess = async (result) => {
@@ -1537,7 +1606,18 @@ export default function App() {
     setClassStartTime(null);
     setAttendedMinutes(0);
     clearInterval(intervalRef.current);
-    updateTimerOnServer(0, false, 'absent');
+    
+    // Stop timer using centralized server system
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('stop_timer', {
+        studentId,
+        enrollmentNo: userData?.enrollmentNo
+      });
+      console.log('⏹️ Sent stop_timer to server');
+    } else {
+      // Fallback to old method
+      updateTimerOnServer(0, false, 'absent');
+    }
   };
 
   const formatTime = (seconds) => {
