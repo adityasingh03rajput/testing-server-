@@ -332,6 +332,7 @@ export default function TimetableScreen({
         ...updatedTimetable.timetable[dayKey][periodIndex],
         subject: 'Break',
         room: '',
+        teacher: '',
         isBreak: true
       };
       setTimetable(updatedTimetable);
@@ -340,6 +341,7 @@ export default function TimetableScreen({
     setEditingCell(null);
     setEditSubject('');
     setEditRoom('');
+    setEditTeacher('');
   };
 
   const handleClearPeriod = () => {
@@ -420,12 +422,15 @@ export default function TimetableScreen({
     const periodIndex = updatedTimetable.timetable[dayKey].findIndex(p => p.period === periodNumber);
 
     if (periodIndex !== -1) {
+      // If subject is "Break", mark as break, otherwise it's a regular period
+      const isBreakPeriod = editSubject.toLowerCase() === 'break';
+      
       updatedTimetable.timetable[dayKey][periodIndex] = {
         ...updatedTimetable.timetable[dayKey][periodIndex],
         subject: editSubject,
-        room: editRoom,
-        teacher: editTeacher,
-        isBreak: false
+        room: isBreakPeriod ? '' : editRoom,
+        teacher: isBreakPeriod ? '' : editTeacher,
+        isBreak: isBreakPeriod
       };
       setTimetable(updatedTimetable);
     }

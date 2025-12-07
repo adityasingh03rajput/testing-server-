@@ -130,6 +130,10 @@ export default function App() {
     lectureStartTime: '',
     lectureEndTime: ''
   });
+  
+  // UI clock state - updates every second for smooth display
+  const [uiClock, setUiClock] = useState(0);
+  
   const [semester, setSemester] = useState('1');
   const [branch, setBranch] = useState('letsbunk enters');
 
@@ -490,12 +494,24 @@ export default function App() {
     };
 
     updateClassProgress();
-    const progressInterval = setInterval(updateClassProgress, 60000); // Check every minute
+    const progressInterval = setInterval(updateClassProgress, 1000); // Update every second for real-time display
 
     return () => clearInterval(progressInterval);
   }, [timetable, currentDay, selectedRole]);
 
   // Removed 5-minute backup - server handles all attendance tracking via timer broadcasts
+
+  // UI Clock - Force re-render every second for smooth timer display
+  useEffect(() => {
+    if (!isRunning || selectedRole !== 'student') return;
+    
+    // Update UI clock every second to force component re-render
+    const clockInterval = setInterval(() => {
+      setUiClock(prev => prev + 1);
+    }, 1000);
+    
+    return () => clearInterval(clockInterval);
+  }, [isRunning, selectedRole]);
 
   useEffect(() => {
     // Initialize server time synchronization (CRITICAL for security)
@@ -563,34 +579,60 @@ export default function App() {
     });
 
     return () => {
-      if (socketRef.current) socketRef.current.disconnect();
+      if (socketRef.current) {
+        // Clear ping interval
+        if (socketRef.current.pingInterval) {
+          clearInterval(socketRef.current.pingInterval);
+        }
+        socketRef.current.disconnect();
+      }
       subscription.remove();
     };
   }, [isRunning, selectedRole]);
 
   const setupSocket = () => {
-    console.log('🔌 setupSocket() called - Initializing socket connection...');
+    console.log('🔌🔌🔌 setupSocket() called - Initializing socket connection...');
     console.log('🔌 SOCKET_URL:', SOCKET_URL);
+    console.log('🔌 Current role:', selectedRole);
+    console.log('🔌 Current studentId:', studentId);
     
     // Disconnect existing socket if any
     if (socketRef.current) {
       console.log('🔌 Disconnecting existing socket');
       socketRef.current.disconnect();
+      socketRef.current.removeAllListeners();
     }
 
     console.log('🔌 Creating new socket.io connection...');
-    socketRef.current = io(SOCKET_URL, {
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: 10,
-      transports: ['websocket', 'polling']
-    });
+    console.log('🔌 URL:', SOCKET_URL);
+    console.log('🔌 io function exists:', typeof io);
+    console.log('🔌 io function type:', typeof io);
     
-    console.log('🔌 Socket object created:', socketRef.current ? 'YES' : 'NO');
+    try {
+      socketRef.current = io(SOCKET_URL, {
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 10,
+        transports: ['websocket', 'polling'],
+        timeout: 20000,
+        forceNew: true
+      });
+      
+      console.log('🔌 Socket object created:', socketRef.current ? 'YES' : 'NO');
+      console.log('🔌 Socket connecting:', socketRef.current?.connecting);
+      console.log('🔌 Socket connected:', socketRef.current?.connected);
+    } catch (error) {
+      console.error('❌❌❌ FAILED TO CREATE SOCKET:', error);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error stack:', error.stack);
+      return;
+    }
 
     socketRef.current.on('connect', () => {
       console.log('✅✅✅ SOCKET CONNECTED TO SERVER ✅✅✅');
       console.log('✅ Socket ID:', socketRef.current.id);
+      console.log('✅ Transport:', socketRef.current.io.engine.transport.name);
+      console.log('✅ Connected at:', new Date().toISOString());
       
       // Re-send current status if student is active
       if (selectedRole === 'student' && studentId && isRunning) {
@@ -602,13 +644,48 @@ export default function App() {
     socketRef.current.on('disconnect', (reason) => {
       console.log('❌❌❌ SOCKET DISCONNECTED ❌❌❌');
       console.log('❌ Reason:', reason);
+      console.log('❌ Disconnected at:', new Date().toISOString());
     });
 
     socketRef.current.on('connect_error', (error) => {
       console.log('❌❌❌ SOCKET CONNECTION ERROR ❌❌❌');
       console.log('❌ Error:', error.message);
-      console.log('❌ Full error:', JSON.stringify(error));
+      console.log('❌ Error type:', error.type);
+      console.log('❌ Error description:', error.description);
+      console.log('❌ Full error:', JSON.stringify(error, null, 2));
     });
+
+    socketRef.current.on('reconnect_attempt', (attemptNumber) => {
+      console.log(`🔄 Socket reconnect attempt #${attemptNumber}`);
+    });
+
+    socketRef.current.on('reconnect', (attemptNumber) => {
+      console.log(`✅ Socket reconnected after ${attemptNumber} attempts`);
+    });
+
+    socketRef.current.on('reconnect_error', (error) => {
+      console.log('❌ Socket reconnect error:', error.message);
+    });
+
+    socketRef.current.on('reconnect_failed', () => {
+      console.log('❌ Socket reconnect failed - giving up');
+    });
+
+    // Test socket communication with ping/pong
+    socketRef.current.on('pong', (latency) => {
+      console.log('🏓 Pong received - Latency:', latency, 'ms');
+    });
+
+    // Send a test ping every 10 seconds to verify connection
+    const pingInterval = setInterval(() => {
+      if (socketRef.current && socketRef.current.connected) {
+        console.log('🏓 Sending ping to server...');
+        socketRef.current.emit('ping');
+      }
+    }, 10000);
+
+    // Store interval ref for cleanup
+    socketRef.current.pingInterval = pingInterval;
 
     socketRef.current.on('student_update', (data) => {
       console.log('📥 Received student update:', data);
@@ -790,31 +867,52 @@ export default function App() {
 
     // Listen for centralized timer broadcasts from server
     socketRef.current.on('timer_broadcast', (data) => {
-      console.log('📡 Timer broadcast received - RAW DATA:', JSON.stringify(data));
-      console.log('📡 Timer broadcast - studentId:', data.studentId);
-      console.log('📡 Timer broadcast - enrollmentNo:', data.enrollmentNo);
-      console.log('📡 Timer broadcast - attendedSeconds:', data.attendedSeconds);
+      console.log('📡📡📡 TIMER BROADCAST RECEIVED 📡📡📡');
+      console.log('📡 Timestamp:', new Date().toISOString());
+      console.log('📡 Student Name:', data.name);
+      console.log('📡 Student ID:', data.studentId);
+      console.log('📡 Enrollment No:', data.enrollmentNo);
+      console.log('📡 Attended Seconds:', data.attendedSeconds);
+      console.log('📡 Is Running:', data.isRunning);
+      console.log('📡 Subject:', data.lectureSubject);
+      console.log('📡 Current Role:', selectedRole);
+      console.log('📡 Current Student ID:', studentId);
       
       // Update timer data if this broadcast is for current student
-      if (selectedRole === 'student' && studentId && 
-          (data.studentId === studentId || data.enrollmentNo === studentId)) {
-        console.log('✅ Updating student timer data');
-        setServerTimerData({
-          totalLectureSeconds: data.totalLectureSeconds || 0,
-          elapsedLectureSeconds: data.elapsedLectureSeconds || 0,
-          remainingLectureSeconds: data.remainingLectureSeconds || 0,
-          attendedSeconds: data.attendedSeconds || 0,
-          lectureSubject: data.lectureSubject || '',
-          lectureTeacher: data.lectureTeacher || '',
-          lectureRoom: data.lectureRoom || '',
-          lectureStartTime: data.lectureStartTime || '',
-          lectureEndTime: data.lectureEndTime || ''
-        });
+      if (selectedRole === 'student' && studentId) {
+        const isForThisStudent = data.studentId === studentId || data.enrollmentNo === studentId;
+        console.log('📡 Is for this student?', isForThisStudent);
         
-        // Update isRunning state
-        if (data.isRunning !== undefined) {
-          setIsRunning(data.isRunning);
+        if (isForThisStudent) {
+          console.log('✅✅✅ UPDATING STUDENT TIMER DATA ✅✅✅');
+          console.log('   Attended Seconds:', data.attendedSeconds);
+          
+          // Force update by creating new object with timestamp
+          setServerTimerData(prev => ({
+            totalLectureSeconds: data.totalLectureSeconds || 0,
+            elapsedLectureSeconds: data.elapsedLectureSeconds || 0,
+            remainingLectureSeconds: data.remainingLectureSeconds || 0,
+            attendedSeconds: data.attendedSeconds || 0,
+            lectureSubject: data.lectureSubject || '',
+            lectureTeacher: data.lectureTeacher || '',
+            lectureRoom: data.lectureRoom || '',
+            lectureStartTime: data.lectureStartTime || '',
+            lectureEndTime: data.lectureEndTime || '',
+            lastUpdate: Date.now() // Force re-render
+          }));
+          
+          // Update isRunning state
+          if (data.isRunning !== undefined) {
+            console.log('✅ Updating isRunning to:', data.isRunning);
+            setIsRunning(data.isRunning);
+          }
+        } else {
+          console.log('⏭️  Broadcast not for this student, skipping');
         }
+      } else {
+        console.log('⏭️  Not a student or no studentId, skipping timer update');
+        console.log('   selectedRole:', selectedRole);
+        console.log('   studentId:', studentId);
       }
       
       // Update teacher dashboard with all active students
@@ -1460,8 +1558,10 @@ export default function App() {
       return;
     }
 
-    // If trying to start timer and not verified today yet, show face verification
+    // NEW LOGIC: Face verification required when NOT attending (to start attendance)
+    // If student is already attending, only Random Ring can trigger face verification
     if (!verifiedToday) {
+      console.log('🔒 Student not attending - face verification required to start');
       setShowFaceVerification(true);
       return;
     }
@@ -1618,6 +1718,14 @@ export default function App() {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Format time in HH:MM:SS for attendance display
+  const formatTimeHMS = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hours}h ${minutes}m ${secs}s`;
   };
 
   const getInitials = (name) => {
@@ -3266,16 +3374,17 @@ export default function App() {
           />
         }
       >
-        {/* Header with Profile and Theme Toggle */}
+        {/* Header: Profile (left) - LetsBunk (center) - Theme (right) */}
         <View style={{ 
-          width: '100%', 
-          flexDirection: 'row', 
-          justifyContent: 'space-between', 
+          width: '100%',
+          flexDirection: 'row',
           alignItems: 'center',
-          marginBottom: 20,
-          paddingTop: 30,
+          justifyContent: 'space-between',
+          paddingHorizontal: 20,
+          paddingTop: 20,
+          paddingBottom: 10,
         }}>
-          {/* Profile Picture - Shows Lanyard */}
+          {/* Profile Picture - Left */}
           <TouchableOpacity onPress={() => setShowLanyard(true)} activeOpacity={0.8}>
             <View style={{
               width: 50,
@@ -3293,11 +3402,6 @@ export default function App() {
                   source={{ uri: userData.photoUrl }}
                   style={{ width: '100%', height: '100%' }}
                   resizeMode="cover"
-                  onError={(e) => {
-                    console.log('❌ Failed to load student photo:', userData.photoUrl);
-                    console.log('Error:', e.nativeEvent.error);
-                  }}
-                  onLoad={() => console.log('✅ Student photo loaded:', userData.photoUrl)}
                 />
               ) : (
                 <Text style={{ fontSize: 20, color: isDarkTheme ? '#0a1628' : '#ffffff', fontWeight: 'bold' }}>
@@ -3307,41 +3411,58 @@ export default function App() {
             </View>
           </TouchableOpacity>
 
-          {/* Theme Toggle */}
-          <TouchableOpacity onPress={toggleTheme} style={[styles.iconButton, { backgroundColor: '#fbbf24' }]}>
+          {/* LetsBunk - Center */}
+          <Text style={{ 
+            fontSize: 24, 
+            fontWeight: 'bold', 
+            color: theme.primary,
+            letterSpacing: 1,
+          }}>
+            LetsBunk
+          </Text>
+
+          {/* Theme Toggle - Right */}
+          <TouchableOpacity 
+            onPress={toggleTheme} 
+            style={{
+              backgroundColor: theme.primary + '20',
+              width: 50,
+              height: 50,
+              borderRadius: 25,
+              justifyContent: 'center',
+              alignItems: 'center',
+              borderWidth: 2,
+              borderColor: theme.border,
+            }}
+          >
             {themeMode === 'system' ? (
-              <RefreshIcon size={20} color="#fff" />
+              <RefreshIcon size={20} color={theme.primary} />
             ) : isDarkTheme ? (
-              <SunIcon size={20} color="#fff" />
+              <SunIcon size={20} color={theme.primary} />
             ) : (
-              <MoonIcon size={20} color="#fff" />
+              <MoonIcon size={20} color={theme.primary} />
             )}
           </TouchableOpacity>
         </View>
 
-        {/* Title */}
-        <Text style={{
-          fontSize: 28,
-          fontWeight: 'bold',
-          color: theme.primary,
-          marginBottom: 15,
-          textAlign: 'center',
-        }}>
-          Countdown Timer
-        </Text>
+        {/* Title Section - REMOVED per user request */}
 
         {/* Student Info Card */}
         <View style={{
+          width: '100%',
+          maxWidth: 400,
           backgroundColor: theme.cardBackground,
           borderRadius: 12,
           padding: 14,
-          marginBottom: 10,
           borderWidth: 2,
           borderColor: theme.border,
-          width: '100%',
-          maxWidth: 400,
+          marginBottom: 10,
         }}>
-          <Text style={[styles.studentNameDisplay, { color: theme.text, fontSize: 17, marginBottom: 6 }]}>
+          <Text style={{ 
+            color: theme.text, 
+            fontSize: 17, 
+            marginBottom: 6,
+          }}>
             👋 {studentName}
           </Text>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -3350,7 +3471,7 @@ export default function App() {
                 {userData?.enrollmentNo || 'Student'}
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 11 }}>
-                {semester && branch ? `Sem ${semester} • ${branch}` : ''}
+                Sem {semester} • {branch}
               </Text>
             </View>
             <View style={{
@@ -3392,6 +3513,22 @@ export default function App() {
           isRunning={isRunning}
           onToggleTimer={handleStartPause}
           onReset={handleReset}
+          onLongPressCenter={() => {
+            // NEW LOGIC: Face verification behavior based on attendance status
+            if (randomRingData) {
+              // Random Ring active - allow face verification
+              console.log('🔔 Random Ring active - opening face verification');
+              setShowFaceVerification(true);
+            } else if (isRunning) {
+              // Student is attending - only Random Ring can trigger verification
+              console.log('⚠️ Already attending - face verification only available during Random Ring');
+              alert('Face verification is only available during Random Ring when you are attending class.');
+            } else {
+              // Student NOT attending - allow face verification to start attendance
+              console.log('🔒 Not attending - opening face verification to start attendance');
+              setShowFaceVerification(true);
+            }
+          }}
           formatTime={formatTime}
           timetable={timetable}
           currentDay={currentDay}
@@ -3404,10 +3541,9 @@ export default function App() {
           }}
         />
 
-        {/* Current Class Progress */}
+        {/* Current Class Progress Card - Matches frontend_home.md */}
         {currentClassInfo && (
           <View style={{
-            marginTop: 10,
             width: '100%',
             maxWidth: 400,
             backgroundColor: theme.cardBackground,
@@ -3415,83 +3551,105 @@ export default function App() {
             padding: 14,
             borderWidth: 2,
             borderColor: theme.primary,
+            marginTop: 10,
           }}>
-            <Text style={{ color: theme.primary, fontSize: 14, fontWeight: 'bold', marginBottom: 8 }}>
+            {/* A. Class Header */}
+            <Text style={{ 
+              fontSize: 14, 
+              fontWeight: 'bold', 
+              color: theme.primary,
+              marginBottom: 8,
+            }}>
               📚 Current Class: {currentClassInfo.subject}
             </Text>
-            <Text style={{ color: theme.textSecondary, fontSize: 11, marginBottom: 10 }}>
-              {currentClassInfo.startTime} - {currentClassInfo.endTime} • {currentClassInfo.room}
+
+            {/* B. Class Details */}
+            <Text style={{ 
+              fontSize: 11, 
+              color: theme.textSecondary,
+              marginBottom: 10,
+            }}>
+              {currentClassInfo.startTime} - {currentClassInfo.endTime}{currentClassInfo.room ? ` • ${currentClassInfo.room}` : ''}
             </Text>
 
-            {/* Countdown Timer Display */}
+            {/* C. Countdown Timer Display */}
             <View style={{
               backgroundColor: theme.background,
               borderRadius: 12,
               padding: 15,
-              marginBottom: 10,
-              alignItems: 'center',
               borderWidth: 2,
               borderColor: isRunning ? '#22c55e' : theme.border,
+              marginBottom: 10,
+              alignItems: 'center',
             }}>
-              <Text style={{ color: theme.textSecondary, fontSize: 11, marginBottom: 5 }}>
+              <Text style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 5 }}>
                 Time Remaining
               </Text>
-              <Text style={{
-                color: isRunning ? '#22c55e' : theme.text,
-                fontSize: 36,
-                fontWeight: 'bold',
-                fontFamily: 'monospace'
-              }}>
+              <Text 
+                key={`countdown-${uiClock}`}
+                style={{
+                  fontSize: 36,
+                  fontWeight: 'bold',
+                  fontFamily: 'monospace',
+                  color: isRunning ? '#22c55e' : theme.text,
+                }}
+              >
                 {Math.floor(currentClassInfo.remainingSeconds / 60)}:{(currentClassInfo.remainingSeconds % 60).toString().padStart(2, '0')}
               </Text>
-              <Text style={{ color: theme.textSecondary, fontSize: 10, marginTop: 5 }}>
+              <Text style={{ fontSize: 10, color: theme.textSecondary, marginTop: 5 }}>
                 {currentClassInfo.elapsedMinutes} min elapsed • {currentClassInfo.totalMinutes} min total
               </Text>
             </View>
 
-            {/* Attendance Status */}
+            {/* D. Attendance Status */}
             <View style={{
               backgroundColor: theme.background,
               borderRadius: 8,
               padding: 10,
-              marginBottom: 8
+              marginBottom: 8,
             }}>
-              {!verifiedToday && (
-                <Text style={{ color: '#fbbf24', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>
+              {!verifiedToday ? (
+                <Text style={{ fontSize: 12, fontWeight: 'bold', textAlign: 'center', color: '#fbbf24' }}>
                   ⚠️ Face verification required to start attendance
                 </Text>
-              )}
-              {verifiedToday && isRunning && (
-                <Text style={{ color: '#22c55e', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>
-                  ✅ Attendance tracking: {Math.floor(serverTimerData.attendedSeconds / 60)} min recorded
+              ) : isRunning ? (
+                <Text 
+                  key={`timer-${uiClock}`}
+                  style={{ fontSize: 12, fontWeight: 'bold', textAlign: 'center', color: '#22c55e' }}
+                >
+                  ✅ Attendance tracking: {(() => {
+                    const hours = Math.floor(serverTimerData.attendedSeconds / 3600);
+                    const minutes = Math.floor((serverTimerData.attendedSeconds % 3600) / 60);
+                    const seconds = serverTimerData.attendedSeconds % 60;
+                    return `${hours}h ${minutes}m ${seconds}s`;
+                  })()} recorded
                 </Text>
-              )}
-              {verifiedToday && !isRunning && (
-                <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>
+              ) : (
+                <Text style={{ fontSize: 12, fontWeight: 'bold', textAlign: 'center', color: '#ef4444' }}>
                   ⏸️ Attendance paused
                 </Text>
               )}
             </View>
 
-            {/* Progress Bar */}
+            {/* E. Progress Bar */}
             <View style={{
               height: 6,
               backgroundColor: theme.border,
               borderRadius: 3,
-              overflow: 'hidden'
+              overflow: 'hidden',
             }}>
               <View style={{
                 height: '100%',
-                width: `${(currentClassInfo.elapsedSeconds / currentClassInfo.totalSeconds) * 100}%`,
+                width: `${(currentClassInfo.elapsedMinutes / currentClassInfo.totalMinutes) * 100}%`,
                 backgroundColor: isRunning ? '#22c55e' : theme.primary,
               }} />
             </View>
           </View>
         )}
 
+        {/* Leave Day Message - Matches frontend_home.md */}
         {!currentClassInfo && (
           <View style={{
-            marginTop: 10,
             width: '100%',
             maxWidth: 400,
             backgroundColor: theme.cardBackground,
@@ -3499,8 +3657,10 @@ export default function App() {
             padding: 14,
             borderWidth: 2,
             borderColor: theme.border,
+            marginTop: 10,
+            alignItems: 'center',
           }}>
-            <Text style={{ color: theme.textSecondary, fontSize: 13, textAlign: 'center' }}>
+            <Text style={{ fontSize: 13, color: theme.textSecondary, textAlign: 'center' }}>
               🏖️ It's a leave
             </Text>
           </View>
@@ -3540,7 +3700,7 @@ export default function App() {
                 {todayAttendance.dayPresent ? '✅ Present' : '❌ Absent'} • {todayAttendance.dayPercentage}%
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 11, textAlign: 'center', marginTop: 3 }}>
-                {todayAttendance.totalAttended} min attended / {todayAttendance.totalClassTime} min total
+                {formatTimeHMS(todayAttendance.totalAttended * 60)} attended / {formatTimeHMS(todayAttendance.totalClassTime * 60)} total
               </Text>
             </View>
 
@@ -3570,7 +3730,7 @@ export default function App() {
                   </Text>
                 </View>
                 <Text style={{ color: theme.textSecondary, fontSize: 10, marginTop: 2 }}>
-                  {lecture.attended} min / {lecture.total} min • {lecture.startTime}-{lecture.endTime}
+                  {formatTimeHMS(lecture.attended * 60)} / {formatTimeHMS(lecture.total * 60)} • {lecture.startTime}-{lecture.endTime}
                 </Text>
               </View>
             ))}
@@ -4300,6 +4460,7 @@ const styles = StyleSheet.create({
   dataCell: {
     width: 90,
     backgroundColor: '#0a1628',
+
   },
   breakCell: {
     backgroundColor: '#1a2a3a',
