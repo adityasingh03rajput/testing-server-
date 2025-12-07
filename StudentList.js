@@ -42,9 +42,17 @@ const StudentList = ({ theme, students = [], onStudentPress, activeRandomRing = 
 
   const renderStudentItem = ({ item: student }) => {
     // Check if this student is in active random ring
-    const randomRingStudent = activeRandomRing?.selectedStudents?.find(
-      s => s.studentId === student._id || s.enrollmentNo === student.enrollmentNo
-    );
+    // Convert student._id to string for comparison
+    const studentIdStr = student._id ? student._id.toString() : null;
+    const randomRingStudent = activeRandomRing?.selectedStudents?.find(s => {
+      // Try multiple matching strategies
+      if (s.studentId === studentIdStr) return true;
+      if (s.studentId === student._id) return true;
+      if (s.studentId === student.enrollmentNo) return true;
+      if (s.enrollmentNo === student.enrollmentNo) return true;
+      if (s.enrollmentNo === studentIdStr) return true;
+      return false;
+    });
     
     return (
       <StudentItem
@@ -106,52 +114,28 @@ const StudentItem = ({ student, theme, onPress, randomRingStudent, onTeacherActi
   const [currentTimerValue, setCurrentTimerValue] = useState(0);
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Update currentTimerValue when student.timerValue changes from socket
+  // Single useEffect to handle timer display - synced with server broadcasts
   useEffect(() => {
-    if (student.timerValue !== undefined && student.timerValue !== null) {
-      setCurrentTimerValue(student.timerValue);
-      // Also update display immediately
-      const minutes = Math.floor(student.timerValue / 60);
-      const seconds = student.timerValue % 60;
-      setElapsedTime(
-        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-      );
-    }
-  }, [student.timerValue]);
-
-  useEffect(() => {
+    // Handle absent status
     if (student.status === 'absent') {
       setElapsedTime('00:00');
       setCurrentTimerValue(0);
       return;
     }
 
-    // Use timerValue from student object if available
-    if (student.timerValue !== undefined) {
-      // If timer is running, increment every second
-      if (student.isRunning) {
-        const interval = setInterval(() => {
-          setCurrentTimerValue(prev => {
-            const newValue = prev + 1;
-            const mins = Math.floor(newValue / 60);
-            const secs = newValue % 60;
-            setElapsedTime(
-              `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-            );
-            return newValue;
-          });
-        }, 1000);
-        return () => clearInterval(interval);
-      } else {
-        // Timer not running, just display current value
-        const minutes = Math.floor(currentTimerValue / 60);
-        const seconds = currentTimerValue % 60;
-        setElapsedTime(
-          `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-        );
-      }
+    // Use timerValue from server broadcasts (single source of truth)
+    if (student.timerValue !== undefined && student.timerValue !== null) {
+      // Update local state with server value
+      setCurrentTimerValue(student.timerValue);
+      
+      // Update display
+      const minutes = Math.floor(student.timerValue / 60);
+      const seconds = student.timerValue % 60;
+      setElapsedTime(
+        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+      );
     } else {
-      // Fallback: calculate from joinTime
+      // Fallback: calculate from joinTime (only if no timerValue from server)
       const updateTimer = () => {
         const now = new Date();
         const joinTime = student.joinTime ? new Date(student.joinTime) : new Date();
@@ -167,7 +151,7 @@ const StudentItem = ({ student, theme, onPress, randomRingStudent, onTeacherActi
       const interval = setInterval(updateTimer, 1000);
       return () => clearInterval(interval);
     }
-  }, [student.joinTime, student.status, student.isRunning, currentTimerValue]);
+  }, [student.timerValue, student.status, student.joinTime]);
 
   const getStatusStyle = (status) => {
     switch (status) {
