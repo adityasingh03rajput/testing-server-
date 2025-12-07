@@ -1,3 +1,4 @@
+// Azure deployment trigger - Updated December 7, 2024 - Timer system deployment
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
