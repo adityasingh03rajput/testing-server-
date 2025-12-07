@@ -856,13 +856,10 @@ export default function App() {
 
     // Listen for centralized timer broadcasts from server
     socketRef.current.on('timer_broadcast', (data) => {
-      console.log('📡 Timer broadcast received:', {
-        studentId: data.studentId,
-        enrollmentNo: data.enrollmentNo,
-        attendedSeconds: data.attendedSeconds,
-        isRunning: data.isRunning,
-        status: data.status
-      });
+      console.log('📡 Timer broadcast received - RAW DATA:', JSON.stringify(data));
+      console.log('📡 Timer broadcast - studentId:', data.studentId);
+      console.log('📡 Timer broadcast - enrollmentNo:', data.enrollmentNo);
+      console.log('📡 Timer broadcast - attendedSeconds:', data.attendedSeconds);
       
       // Update timer data if this broadcast is for current student
       if (selectedRole === 'student' && studentId && 

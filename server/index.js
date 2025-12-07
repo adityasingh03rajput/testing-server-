@@ -917,7 +917,7 @@ setInterval(async () => {
                 const timeWastedSeconds = Math.max(0, lectureInfo.elapsedSeconds - attendedSeconds);
                 
                 // Broadcast to all clients (teacher dashboard + student app)
-                io.emit('timer_broadcast', {
+                const broadcastData = {
                     studentId: studentId,
                     enrollmentNo: student.enrollmentNo,
                     name: student.name,
@@ -944,7 +944,16 @@ setInterval(async () => {
                     isPaused: student.attendanceSession?.isPaused || false,
                     pauseReason: student.attendanceSession?.pauseReason || null,
                     status: student.attendanceSession?.isPaused ? 'paused' : 'attending'
+                };
+                
+                console.log(`📡 Broadcasting timer for ${student.name}:`, {
+                    studentId: broadcastData.studentId,
+                    enrollmentNo: broadcastData.enrollmentNo,
+                    attendedSeconds: broadcastData.attendedSeconds,
+                    subject: broadcastData.lectureSubject
                 });
+                
+                io.emit('timer_broadcast', broadcastData);
                 
             } catch (studentError) {
                 console.error(`❌ Error processing student ${student.name}:`, studentError);
