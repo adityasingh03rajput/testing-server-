@@ -1,4 +1,6 @@
- const path = require('path');
+// Server-side timer system - 100% centralized attendance tracking
+// Last updated: December 7, 2024 - Timer system fully implemented
+const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
