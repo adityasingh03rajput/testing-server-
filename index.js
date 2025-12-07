@@ -2025,6 +2025,52 @@ const studentManagementSchema = new mongoose.Schema({
 
 const StudentManagement = mongoose.model('StudentManagement', studentManagementSchema);
 
+// Debug endpoint to test timer calculation
+app.get('/api/debug/timer-calc/:enrollmentNo', async (req, res) => {
+    try {
+        const student = await StudentManagement.findOne({ enrollmentNo: req.params.enrollmentNo });
+        if (!student) {
+            return res.json({ error: 'Student not found' });
+        }
+        
+        const now = Date.now();
+        const session = student.attendanceSession;
+        
+        if (!session || !session.sessionStartTime) {
+            return res.json({
+                error: 'No session data',
+                student: student.name,
+                hasSession: !!session,
+                hasStartTime: !!session?.sessionStartTime
+            });
+        }
+        
+        const startTime = new Date(session.sessionStartTime).getTime();
+        const sessionDuration = Math.floor((now - startTime) / 1000);
+        const pausedDuration = session.pausedDuration || 0;
+        const attended = Math.max(0, sessionDuration - pausedDuration);
+        
+        res.json({
+            student: student.name,
+            enrollmentNo: student.enrollmentNo,
+            now: new Date(now).toISOString(),
+            sessionStartTime: session.sessionStartTime,
+            sessionStartTimeType: typeof session.sessionStartTime,
+            startTimeConverted: new Date(session.sessionStartTime).toISOString(),
+            startTimeMs: startTime,
+            nowMs: now,
+            sessionDurationSeconds: sessionDuration,
+            pausedDurationSeconds: pausedDuration,
+            attendedSeconds: attended,
+            attendedMinutes: Math.floor(attended / 60),
+            isPaused: session.isPaused,
+            totalAttendedSecondsInDB: session.totalAttendedSeconds
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.get('/api/students', async (req, res) => {
     try {
         if (mongoose.connection.readyState === 1) {
