@@ -1,4 +1,4 @@
-// Azure deployment trigger - Updated December 7, 2024 - Timer system deployment
+// Azure deployment trigger - Updated December 8, 2024 - Attendance History System with Admin Panel
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
