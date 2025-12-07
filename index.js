@@ -2965,6 +2965,52 @@ app.post('/api/attendance/history/period', async (req, res) => {
     }
 });
 
+// Get date range of available attendance data
+app.get('/api/attendance/date-range', async (req, res) => {
+    try {
+        if (mongoose.connection.readyState !== 1) {
+            return res.json({ 
+                success: true, 
+                dateRange: null,
+                message: 'Database not connected'
+            });
+        }
+        
+        // Get earliest and latest dates from AttendanceHistory
+        const result = await AttendanceHistory.aggregate([
+            {
+                $group: {
+                    _id: null,
+                    earliest: { $min: '$date' },
+                    latest: { $max: '$date' },
+                    totalRecords: { $sum: 1 }
+                }
+            }
+        ]);
+        
+        if (result.length > 0 && result[0].earliest) {
+            res.json({
+                success: true,
+                dateRange: {
+                    earliest: result[0].earliest,
+                    latest: result[0].latest,
+                    totalRecords: result[0].totalRecords
+                }
+            });
+        } else {
+            res.json({
+                success: true,
+                dateRange: null,
+                message: 'No attendance data available yet'
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ Error fetching date range:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Get attendance summary for a student
 app.get('/api/attendance/summary/:studentId', async (req, res) => {
     try {

@@ -1,9 +1,9 @@
 
 // Configuration
 // Server URL - can be changed in Settings
-// Priority: 1. Saved in localStorage, 2. Render URL, 3. Local IP
+// Priority: 1. Saved in localStorage, 2. Azure URL, 3. Local IP
 let SERVER_URL = localStorage.getItem('serverUrl') ||
-    'https://google-8j5x.onrender.com' || // Your Render URL
+    'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net' || // Azure URL
     'http://192.168.9.31:3000'; // Fallback to local
 
 // State
@@ -4836,3 +4836,760 @@ async function resetPeriodsToDefault() {
     renderPeriods();
     showNotification('Periods reset to default. Click "Save" to apply changes.', 'warning');
 }
+
+
+// ==================== ATTENDANCE HISTORY FUNCTIONS ====================
+
+// Load Attendance Date Range
+async function loadAttendanceDateRange() {
+    try {
+        console.log('📅 Loading attendance date range...');
+        
+        // Get all attendance history records to find date range
+        const response = await fetch(`${SERVER_URL}/api/attendance/date-range`);
+        
+        if (response.ok) {
+            const data = await response.json();
+            
+            if (data.success && data.dateRange) {
+                const startDate = new Date(data.dateRange.earliest);
+                const endDate = new Date(data.dateRange.latest);
+                const totalRecords = data.dateRange.totalRecords || 0;
+                
+                document.getElementById('dataStartDate').textContent = startDate.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+                
+                document.getElementById('dataEndDate').textContent = endDate.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+                
+                document.getElementById('totalRecordsCount').textContent = totalRecords;
+                
+                console.log(`✅ Data available from ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`);
+                console.log(`   Total records: ${totalRecords}`);
+                
+                // Always set date filters to the full available range
+                document.getElementById('attendanceStartDate').value = startDate.toISOString().split('T')[0];
+                document.getElementById('attendanceEndDate').value = endDate.toISOString().split('T')[0];
+                
+                console.log(`📅 Date filters set to: ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`);
+            } else {
+                // No data available yet
+                document.getElementById('dataStartDate').textContent = 'No data yet';
+                document.getElementById('dataEndDate').textContent = 'No data yet';
+                document.getElementById('totalRecordsCount').textContent = '0';
+            }
+        } else {
+            // Endpoint might not exist, try alternative method
+            console.log('⚠️ Date range endpoint not available, using alternative method');
+            await loadAttendanceDateRangeAlternative();
+        }
+        
+    } catch (error) {
+        console.error('❌ Error loading date range:', error);
+        // Try alternative method
+        await loadAttendanceDateRangeAlternative();
+    }
+}
+
+// Alternative method to get date range (query all students)
+async function loadAttendanceDateRangeAlternative() {
+    try {
+        // Get all students
+        const studentsResponse = await fetch(`${SERVER_URL}/api/student-management`);
+        const studentsData = await studentsResponse.json();
+        
+        if (!studentsData.success || !studentsData.students || studentsData.students.length === 0) {
+            document.getElementById('dataStartDate').textContent = 'No data yet';
+            document.getElementById('dataEndDate').textContent = 'No data yet';
+            document.getElementById('totalRecordsCount').textContent = '0';
+            return;
+        }
+        
+        // Get first student's history to check date range
+        const firstStudent = studentsData.students[0];
+        const historyResponse = await fetch(`${SERVER_URL}/api/attendance/history/${firstStudent.enrollmentNo}`);
+        const historyData = await historyResponse.json();
+        
+        if (historyData.success && historyData.history && historyData.history.length > 0) {
+            const dates = historyData.history.map(h => new Date(h.date));
+            const earliest = new Date(Math.min(...dates));
+            const latest = new Date(Math.max(...dates));
+            
+            document.getElementById('dataStartDate').textContent = earliest.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            
+            document.getElementById('dataEndDate').textContent = latest.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            
+            document.getElementById('totalRecordsCount').textContent = historyData.history.length;
+            
+            // Auto-set date filters
+            if (!document.getElementById('attendanceStartDate').value) {
+                document.getElementById('attendanceStartDate').value = earliest.toISOString().split('T')[0];
+            }
+            if (!document.getElementById('attendanceEndDate').value) {
+                document.getElementById('attendanceEndDate').value = latest.toISOString().split('T')[0];
+            }
+        } else {
+            document.getElementById('dataStartDate').textContent = 'No data yet';
+            document.getElementById('dataEndDate').textContent = 'No data yet';
+            document.getElementById('totalRecordsCount').textContent = '0';
+        }
+        
+    } catch (error) {
+        console.error('❌ Error in alternative date range method:', error);
+        document.getElementById('dataStartDate').textContent = 'Error loading';
+        document.getElementById('dataEndDate').textContent = 'Error loading';
+        document.getElementById('totalRecordsCount').textContent = '0';
+    }
+}
+
+// Load Attendance History
+async function loadAttendanceHistory() {
+    try {
+        console.log('📊 Loading attendance history...');
+        
+        // Get filters
+        const semesterFilter = document.getElementById('attendanceSemesterFilter').value;
+        const courseFilter = document.getElementById('attendanceCourseFilter').value;
+        
+        // Check if required filters are selected
+        if (!semesterFilter || !courseFilter) {
+            console.log('⚠️ Branch and Semester must be selected');
+            const tbody = document.getElementById('attendanceHistoryTableBody');
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="9" style="text-align: center; padding: 60px;">
+                        <div style="font-size: 48px; margin-bottom: 20px;">📊</div>
+                        <h3 style="color: var(--text-primary); margin-bottom: 10px;">Select Branch and Semester</h3>
+                        <p style="color: var(--text-secondary);">Please select a branch and semester to view attendance data</p>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        // First, get the date range of available data
+        await loadAttendanceDateRange();
+        
+        // Get all students
+        const studentsResponse = await fetch(`${SERVER_URL}/api/student-management`);
+        const studentsData = await studentsResponse.json();
+        
+        if (!studentsData.success) {
+            throw new Error('Failed to load students');
+        }
+        
+        const students = studentsData.students || [];
+        console.log(`✅ Loaded ${students.length} students`);
+        
+        const startDate = document.getElementById('attendanceStartDate').value;
+        const endDate = document.getElementById('attendanceEndDate').value;
+        const searchQuery = document.getElementById('attendanceStudentSearch').value.toLowerCase();
+        
+        // Filter students
+        let filteredStudents = students.filter(student => {
+            if (semesterFilter && student.semester !== semesterFilter) return false;
+            if (courseFilter && student.course !== courseFilter) return false;
+            if (searchQuery && !student.name.toLowerCase().includes(searchQuery) && 
+                !student.enrollmentNo.toLowerCase().includes(searchQuery)) return false;
+            return true;
+        });
+        
+        console.log(`📋 Filtered to ${filteredStudents.length} students`);
+        
+        // Load attendance summary for each student
+        const attendancePromises = filteredStudents.map(async (student) => {
+            try {
+                let url = `${SERVER_URL}/api/attendance/summary/${student.enrollmentNo}`;
+                if (startDate && endDate) {
+                    url += `?startDate=${startDate}&endDate=${endDate}`;
+                }
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.success && data.summary) {
+                    return {
+                        ...student,
+                        summary: data.summary
+                    };
+                }
+                return {
+                    ...student,
+                    summary: {
+                        totalDays: 0,
+                        presentDays: 0,
+                        totalAttendedMinutes: 0,
+                        totalClassMinutes: 0,
+                        overallPercentage: 0,
+                        subjects: []
+                    }
+                };
+            } catch (error) {
+                console.error(`Error loading attendance for ${student.name}:`, error);
+                return {
+                    ...student,
+                    summary: {
+                        totalDays: 0,
+                        presentDays: 0,
+                        totalAttendedMinutes: 0,
+                        totalClassMinutes: 0,
+                        overallPercentage: 0,
+                        subjects: []
+                    }
+                };
+            }
+        });
+        
+        const studentsWithAttendance = await Promise.all(attendancePromises);
+        
+        // Update summary cards
+        const totalStudents = studentsWithAttendance.length;
+        const avgAttendance = totalStudents > 0 
+            ? Math.round(studentsWithAttendance.reduce((sum, s) => sum + s.summary.overallPercentage, 0) / totalStudents)
+            : 0;
+        const totalDays = Math.max(...studentsWithAttendance.map(s => s.summary.totalDays), 0);
+        const totalHours = Math.floor(studentsWithAttendance.reduce((sum, s) => sum + s.summary.totalAttendedMinutes, 0) / 60);
+        
+        document.getElementById('totalStudentsAttendance').textContent = totalStudents;
+        document.getElementById('avgAttendanceRate').textContent = `${avgAttendance}%`;
+        document.getElementById('totalDaysTracked').textContent = totalDays;
+        document.getElementById('totalHoursAttended').textContent = `${totalHours}h`;
+        
+        // Render table
+        renderAttendanceHistoryTable(studentsWithAttendance);
+        
+    } catch (error) {
+        console.error('❌ Error loading attendance history:', error);
+        showNotification('Failed to load attendance history', 'error');
+    }
+}
+
+// Render Attendance History Table
+function renderAttendanceHistoryTable(students) {
+    const tbody = document.getElementById('attendanceHistoryTableBody');
+    tbody.innerHTML = '';
+    
+    if (students.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 40px;">No attendance records found</td></tr>';
+        return;
+    }
+    
+    students.forEach(student => {
+        const summary = student.summary;
+        const totalHours = Math.floor(summary.totalAttendedMinutes / 60);
+        const totalMinutes = summary.totalAttendedMinutes % 60;
+        
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${student.enrollmentNo}</td>
+            <td>${student.name}</td>
+            <td>${student.course}</td>
+            <td>${student.semester}</td>
+            <td>${summary.totalDays}</td>
+            <td>${summary.presentDays}</td>
+            <td>
+                <span class="attendance-badge ${getAttendanceBadgeClass(summary.overallPercentage)}">
+                    ${summary.overallPercentage}%
+                </span>
+            </td>
+            <td>${totalHours}h ${totalMinutes}m</td>
+            <td>
+                <button class="btn-icon" onclick="viewDetailedAttendance('${student.enrollmentNo}')" title="View Details">
+                    👁️
+                </button>
+                <button class="btn-icon" onclick="exportStudentAttendance('${student.enrollmentNo}')" title="Export">
+                    📥
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+// Get Attendance Badge Class
+function getAttendanceBadgeClass(percentage) {
+    if (percentage >= 75) return 'badge-success';
+    if (percentage >= 60) return 'badge-warning';
+    return 'badge-danger';
+}
+
+// View Detailed Attendance
+async function viewDetailedAttendance(enrollmentNo) {
+    try {
+        console.log(`📊 Loading detailed attendance for ${enrollmentNo}...`);
+        
+        // Get student info
+        const studentsResponse = await fetch(`${SERVER_URL}/api/student-management`);
+        const studentsData = await studentsResponse.json();
+        const student = studentsData.students.find(s => s.enrollmentNo === enrollmentNo);
+        
+        if (!student) {
+            throw new Error('Student not found');
+        }
+        
+        // Get date range
+        const startDate = document.getElementById('attendanceStartDate').value;
+        const endDate = document.getElementById('attendanceEndDate').value;
+        
+        // Get attendance history
+        let url = `${SERVER_URL}/api/attendance/history/${enrollmentNo}`;
+        if (startDate && endDate) {
+            url += `?startDate=${startDate}&endDate=${endDate}`;
+        }
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error('Failed to load attendance history');
+        }
+        
+        const history = data.history || [];
+        console.log(`✅ Loaded ${history.length} days of attendance`);
+        
+        // Render detailed view
+        renderDetailedAttendanceModal(student, history);
+        
+    } catch (error) {
+        console.error('❌ Error loading detailed attendance:', error);
+        showNotification('Failed to load detailed attendance', 'error');
+    }
+}
+
+// Render Detailed Attendance Modal
+function renderDetailedAttendanceModal(student, history) {
+    const modal = document.getElementById('detailedAttendanceModal');
+    const modalBody = document.getElementById('detailedAttendanceModalBody');
+    
+    // Calculate totals
+    const totalDays = history.length;
+    const presentDays = history.filter(d => d.dayPresent).length;
+    const totalAttendedMinutes = history.reduce((sum, d) => sum + d.totalAttendedMinutes, 0);
+    const totalClassMinutes = history.reduce((sum, d) => sum + d.totalClassMinutes, 0);
+    const overallPercentage = totalClassMinutes > 0 
+        ? Math.round((totalAttendedMinutes / totalClassMinutes) * 100)
+        : 0;
+    
+    const totalHours = Math.floor(totalAttendedMinutes / 60);
+    const totalMinutes = totalAttendedMinutes % 60;
+    const totalSeconds = Math.round((totalAttendedMinutes * 60) % 60);
+    
+    const classHours = Math.floor(totalClassMinutes / 60);
+    const classMinutes = totalClassMinutes % 60;
+    
+    // Group by subject
+    const subjectStats = {};
+    history.forEach(day => {
+        day.periods.forEach(period => {
+            if (!subjectStats[period.subject]) {
+                subjectStats[period.subject] = {
+                    subject: period.subject,
+                    totalAttendedMinutes: 0,
+                    totalClassMinutes: 0,
+                    periodsAttended: 0,
+                    totalPeriods: 0,
+                    periods: []
+                };
+            }
+            subjectStats[period.subject].totalAttendedMinutes += period.attendedMinutes || 0;
+            subjectStats[period.subject].totalClassMinutes += period.totalMinutes || 0;
+            subjectStats[period.subject].totalPeriods++;
+            if (period.present) {
+                subjectStats[period.subject].periodsAttended++;
+            }
+            subjectStats[period.subject].periods.push({
+                date: day.date,
+                ...period
+            });
+        });
+    });
+    
+    // Calculate percentage for each subject
+    Object.values(subjectStats).forEach(stat => {
+        stat.percentage = stat.totalClassMinutes > 0
+            ? Math.round((stat.totalAttendedMinutes / stat.totalClassMinutes) * 100)
+            : 0;
+    });
+    
+    modalBody.innerHTML = `
+        <div class="detailed-attendance-header">
+            <h2>📊 Detailed Attendance Report</h2>
+            <div class="student-info-card">
+                <h3>${student.name}</h3>
+                <p><strong>Enrollment:</strong> ${student.enrollmentNo}</p>
+                <p><strong>Course:</strong> ${student.course} | <strong>Semester:</strong> ${student.semester}</p>
+            </div>
+        </div>
+        
+        <div class="attendance-summary-grid">
+            <div class="summary-item">
+                <div class="summary-label">Overall Attendance</div>
+                <div class="summary-value ${getAttendanceBadgeClass(overallPercentage)}">${overallPercentage}%</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">Days Present</div>
+                <div class="summary-value">${presentDays} / ${totalDays}</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">Total Time Attended</div>
+                <div class="summary-value">${totalHours}h ${totalMinutes}m ${totalSeconds}s</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">Total Class Time</div>
+                <div class="summary-value">${classHours}h ${classMinutes}m</div>
+            </div>
+        </div>
+        
+        <div class="subject-wise-attendance">
+            <h3>📚 Subject-wise Attendance</h3>
+            <div class="subject-cards">
+                ${Object.values(subjectStats).map(stat => `
+                    <div class="subject-card">
+                        <div class="subject-header">
+                            <h4>${stat.subject}</h4>
+                            <span class="attendance-badge ${getAttendanceBadgeClass(stat.percentage)}">
+                                ${stat.percentage}%
+                            </span>
+                        </div>
+                        <div class="subject-stats">
+                            <div class="stat-row">
+                                <span>Periods Attended:</span>
+                                <strong>${stat.periodsAttended} / ${stat.totalPeriods}</strong>
+                            </div>
+                            <div class="stat-row">
+                                <span>Time Attended:</span>
+                                <strong>${Math.floor(stat.totalAttendedMinutes / 60)}h ${stat.totalAttendedMinutes % 60}m</strong>
+                            </div>
+                            <div class="stat-row">
+                                <span>Total Class Time:</span>
+                                <strong>${Math.floor(stat.totalClassMinutes / 60)}h ${stat.totalClassMinutes % 60}m</strong>
+                            </div>
+                        </div>
+                        <button class="btn btn-sm" onclick="viewSubjectPeriods('${stat.subject}', ${JSON.stringify(stat.periods).replace(/"/g, '&quot;')})">
+                            View All Periods
+                        </button>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+        
+        <div class="day-wise-attendance">
+            <h3>📅 Day-wise Attendance</h3>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Day</th>
+                            <th>Periods Attended</th>
+                            <th>Time Attended</th>
+                            <th>Total Class Time</th>
+                            <th>Percentage</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${history.map(day => {
+                            const date = new Date(day.date);
+                            const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+                            const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                            const attendedHours = Math.floor(day.totalAttendedMinutes / 60);
+                            const attendedMinutes = day.totalAttendedMinutes % 60;
+                            const attendedSeconds = Math.round((day.totalAttendedSeconds || 0) % 60);
+                            const classHours = Math.floor(day.totalClassMinutes / 60);
+                            const classMinutes = day.totalClassMinutes % 60;
+                            
+                            return `
+                                <tr>
+                                    <td>${dateStr}</td>
+                                    <td>${dayName}</td>
+                                    <td>${day.periods.length}</td>
+                                    <td>${attendedHours}h ${attendedMinutes}m ${attendedSeconds}s</td>
+                                    <td>${classHours}h ${classMinutes}m</td>
+                                    <td>
+                                        <span class="attendance-badge ${getAttendanceBadgeClass(day.dayPercentage)}">
+                                            ${day.dayPercentage}%
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="status-badge ${day.dayPresent ? 'badge-success' : 'badge-danger'}">
+                                            ${day.dayPresent ? '✓ Present' : '✗ Absent'}
+                                        </span>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="exportDetailedAttendance('${student.enrollmentNo}')">
+                📥 Export Report
+            </button>
+            <button class="btn btn-primary" onclick="closeDetailedAttendanceModal()">
+                Close
+            </button>
+        </div>
+    `;
+    
+    modal.style.display = 'block';
+}
+
+// View Subject Periods
+function viewSubjectPeriods(subject, periods) {
+    const periodsData = typeof periods === 'string' ? JSON.parse(periods.replace(/&quot;/g, '"')) : periods;
+    
+    const modal = document.getElementById('modal');
+    const modalBody = document.getElementById('modalBody');
+    
+    modalBody.innerHTML = `
+        <h2>📚 ${subject} - All Periods</h2>
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Room</th>
+                        <th>Attended</th>
+                        <th>Total</th>
+                        <th>%</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${periodsData.map(period => {
+                        const date = new Date(period.date);
+                        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        const attendedHours = Math.floor((period.attendedMinutes || 0) / 60);
+                        const attendedMinutes = (period.attendedMinutes || 0) % 60;
+                        const attendedSeconds = Math.round((period.attendedSeconds || 0) % 60);
+                        const totalHours = Math.floor((period.totalMinutes || 0) / 60);
+                        const totalMinutes = (period.totalMinutes || 0) % 60;
+                        
+                        return `
+                            <tr>
+                                <td>${dateStr}</td>
+                                <td>${period.startTime} - ${period.endTime}</td>
+                                <td>${period.room || '-'}</td>
+                                <td>${attendedHours}h ${attendedMinutes}m ${attendedSeconds}s</td>
+                                <td>${totalHours}h ${totalMinutes}m</td>
+                                <td>
+                                    <span class="attendance-badge ${getAttendanceBadgeClass(period.percentage || 0)}">
+                                        ${period.percentage || 0}%
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="status-badge ${period.present ? 'badge-success' : 'badge-danger'}">
+                                        ${period.present ? '✓' : '✗'}
+                                    </span>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    modal.style.display = 'block';
+}
+
+// Close Detailed Attendance Modal
+function closeDetailedAttendanceModal() {
+    document.getElementById('detailedAttendanceModal').style.display = 'none';
+}
+
+// Export Student Attendance
+async function exportStudentAttendance(enrollmentNo) {
+    try {
+        const startDate = document.getElementById('attendanceStartDate').value;
+        const endDate = document.getElementById('attendanceEndDate').value;
+        
+        let url = `${SERVER_URL}/api/attendance/history/${enrollmentNo}`;
+        if (startDate && endDate) {
+            url += `?startDate=${startDate}&endDate=${endDate}`;
+        }
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error('Failed to load attendance data');
+        }
+        
+        // Convert to CSV
+        const csv = convertAttendanceToCSV(data.history);
+        
+        // Download
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url2 = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url2;
+        a.download = `attendance_${enrollmentNo}_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        
+        showNotification('Attendance exported successfully', 'success');
+        
+    } catch (error) {
+        console.error('❌ Error exporting attendance:', error);
+        showNotification('Failed to export attendance', 'error');
+    }
+}
+
+// Convert Attendance to CSV
+function convertAttendanceToCSV(history) {
+    let csv = 'Date,Day,Periods,Time Attended (min),Total Class Time (min),Percentage,Status\n';
+    
+    history.forEach(day => {
+        const date = new Date(day.date);
+        const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+        const dateStr = date.toLocaleDateString('en-US');
+        
+        csv += `${dateStr},${dayName},${day.periods.length},${day.totalAttendedMinutes},${day.totalClassMinutes},${day.dayPercentage}%,${day.dayPresent ? 'Present' : 'Absent'}\n`;
+    });
+    
+    return csv;
+}
+
+// Setup Attendance History Event Listeners
+function setupAttendanceHistoryListeners() {
+    const refreshBtn = document.getElementById('refreshAttendanceBtn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            const fetchBtn = document.getElementById('fetchAttendanceBtn');
+            if (fetchBtn && !fetchBtn.disabled) {
+                loadAttendanceHistory();
+            }
+        });
+    }
+    
+    const exportBtn = document.getElementById('exportAttendanceBtn');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', exportAllAttendance);
+    }
+    
+    // Enable fetch button when both branch and semester are selected
+    const courseFilter = document.getElementById('attendanceCourseFilter');
+    const semesterFilter = document.getElementById('attendanceSemesterFilter');
+    const fetchBtn = document.getElementById('fetchAttendanceBtn');
+    
+    function checkRequiredFilters() {
+        const courseSelected = courseFilter && courseFilter.value !== '';
+        const semesterSelected = semesterFilter && semesterFilter.value !== '';
+        
+        if (fetchBtn) {
+            fetchBtn.disabled = !(courseSelected && semesterSelected);
+            
+            if (courseSelected && semesterSelected) {
+                fetchBtn.textContent = `📊 Fetch ${courseFilter.options[courseFilter.selectedIndex].text} - Semester ${semesterFilter.value}`;
+            } else {
+                fetchBtn.textContent = '📊 Fetch Attendance Data';
+            }
+        }
+    }
+    
+    if (courseFilter) {
+        courseFilter.addEventListener('change', checkRequiredFilters);
+    }
+    
+    if (semesterFilter) {
+        semesterFilter.addEventListener('change', checkRequiredFilters);
+    }
+    
+    // Fetch button click
+    if (fetchBtn) {
+        fetchBtn.addEventListener('click', async () => {
+            if (!fetchBtn.disabled) {
+                // Show secondary filters
+                const secondaryFilters = document.getElementById('secondaryFilters');
+                if (secondaryFilters) {
+                    secondaryFilters.style.display = 'flex';
+                }
+                
+                // Load attendance data
+                await loadAttendanceHistory();
+            }
+        });
+    }
+    
+    // Search input (only works after data is loaded)
+    const searchInput = document.getElementById('attendanceStudentSearch');
+    if (searchInput) {
+        searchInput.addEventListener('input', debounce(() => {
+            const secondaryFilters = document.getElementById('secondaryFilters');
+            if (secondaryFilters && secondaryFilters.style.display !== 'none') {
+                loadAttendanceHistory();
+            }
+        }, 500));
+    }
+}
+
+// Export All Attendance
+async function exportAllAttendance() {
+    showNotification('Exporting all attendance data...', 'info');
+    // Implementation for bulk export
+}
+
+// Debounce function
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Initialize attendance history when section is shown
+document.addEventListener('DOMContentLoaded', () => {
+    setupAttendanceHistoryListeners();
+    
+    // Show instruction message when attendance section is clicked
+    const attendanceNavBtn = document.querySelector('[data-section="attendance"]');
+    if (attendanceNavBtn) {
+        attendanceNavBtn.addEventListener('click', () => {
+            setTimeout(() => {
+                // Show initial instruction if no data loaded
+                const tbody = document.getElementById('attendanceHistoryTableBody');
+                if (tbody && tbody.children.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="9" style="text-align: center; padding: 60px;">
+                                <div style="font-size: 48px; margin-bottom: 20px;">📊</div>
+                                <h3 style="color: var(--text-primary); margin-bottom: 10px;">Welcome to Attendance History</h3>
+                                <p style="color: var(--text-secondary); margin-bottom: 20px;">Select a branch and semester above to view detailed attendance records</p>
+                                <div style="display: flex; gap: 10px; justify-content: center; align-items: center; color: var(--text-secondary); font-size: 14px;">
+                                    <span>1️⃣ Select Branch</span>
+                                    <span>→</span>
+                                    <span>2️⃣ Select Semester</span>
+                                    <span>→</span>
+                                    <span>3️⃣ Click Fetch</span>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }
+            }, 100);
+        });
+    }
+});
