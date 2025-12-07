@@ -990,6 +990,7 @@ async function getCurrentLectureInfo(semester, branch) {
 // Helper: Calculate attended time for a student
 function calculateAttendedTime(student) {
     if (!student.attendanceSession || !student.attendanceSession.sessionStartTime) {
+        console.log(`⚠️  No session data for ${student.name}`);
         return 0;
     }
     
@@ -999,6 +1000,7 @@ function calculateAttendedTime(student) {
     // If paused, don't count time since pause
     if (session.isPaused && session.lastPauseTime) {
         const timeBeforePause = session.totalAttendedSeconds || 0;
+        console.log(`⏸️  ${student.name} is paused - returning ${timeBeforePause}s`);
         return timeBeforePause;
     }
     
@@ -1006,9 +1008,12 @@ function calculateAttendedTime(student) {
     const startTime = new Date(session.sessionStartTime).getTime();
     const sessionDuration = Math.floor((now - startTime) / 1000);
     const pausedDuration = session.pausedDuration || 0;
+    const attended = Math.max(0, sessionDuration - pausedDuration);
+    
+    console.log(`⏱️  ${student.name}: now=${now}, start=${startTime}, duration=${sessionDuration}s, paused=${pausedDuration}s, attended=${attended}s`);
     
     // Total attended = session duration - paused duration
-    return Math.max(0, sessionDuration - pausedDuration);
+    return attended;
 }
 
 // Server-side timer broadcast (every 1 second)
