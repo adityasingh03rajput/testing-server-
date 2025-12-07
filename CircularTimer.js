@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -51,6 +51,7 @@ export default function CircularTimer({
   isRunning = false,
   onToggleTimer = () => { },
   onReset = () => { },
+  onLongPressCenter = () => { },
   formatTime = (time) => {
     const mins = Math.floor(time / 60);
     const secs = time % 60;
@@ -72,16 +73,18 @@ export default function CircularTimer({
   const [segments, setSegments] = useState(DEFAULT_SEGMENTS);
   const [activeSegment, setActiveSegment] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isLongPressing, setIsLongPressing] = useState(false);
   const currentTime = useServerTime(1000); // Use server time hook
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const segmentOpacity = useRef(new Animated.Value(1)).current;
   const circleScale = useRef(new Animated.Value(0)).current;
+  const longPressAnim = useRef(new Animated.Value(0)).current;
 
   // Generate segments from timetable
   useEffect(() => {
-    console.log('🔄 CircularTimer useEffect triggered');
+    console.log('≡ƒöä CircularTimer useEffect triggered');
     console.log('  - Current Day:', currentDay);
     console.log('  - Current Day type:', typeof currentDay);
     console.log('  - Timetable exists:', !!timetable);
@@ -90,7 +93,7 @@ export default function CircularTimer({
     // If timetable hasn't loaded yet, don't set DEFAULT_SEGMENTS
     // Keep waiting for the timetable to load
     if (!timetable || !timetable.schedule) {
-      console.log('⏳ Waiting for timetable to load... (not setting defaults)');
+      console.log('ΓÅ│ Waiting for timetable to load... (not setting defaults)');
       return;
     }
     
@@ -103,7 +106,7 @@ export default function CircularTimer({
 
     if (timetable.schedule[currentDay]) {
       const schedule = timetable.schedule[currentDay];
-      console.log('✅ CircularTimer - Found schedule with', schedule.length, 'periods');
+      console.log('Γ£à CircularTimer - Found schedule with', schedule.length, 'periods');
       if (Array.isArray(schedule) && schedule.length > 0) {
         const angleStep = 360 / schedule.length;
 
@@ -226,7 +229,7 @@ export default function CircularTimer({
         console.log('CircularTimer - Schedule is not an array or empty');
       }
     } else {
-      console.log('⚠️ CircularTimer - No schedule found for current day:', currentDay);
+      console.log('ΓÜá∩╕Å CircularTimer - No schedule found for current day:', currentDay);
       console.log('  Available days:', timetable.schedule ? Object.keys(timetable.schedule) : 'none');
       console.log('  This might be an old timetable without Sunday support!');
       console.log('  Using DEFAULT_SEGMENTS as fallback');
@@ -382,7 +385,7 @@ export default function CircularTimer({
       // Calculate progress through current class
       const progress = currentClass.elapsed / currentClass.duration;
       const elapsedAngle = progress * 360; // Full circle for elapsed time
-      const remainingAngle = 180; // Fixed at 180° (opposite direction)
+      const remainingAngle = 180; // Fixed at 180┬░ (opposite direction)
 
       return { elapsedAngle, remainingAngle };
     }
@@ -465,6 +468,7 @@ export default function CircularTimer({
           height={TIMER_SIZE}
           viewBox={`0 0 ${TIMER_SIZE} ${TIMER_SIZE}`}
           style={{ overflow: 'visible', backgroundColor: 'transparent' }}
+          pointerEvents="box-none"
         >
           <Defs>
             <LinearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -560,85 +564,55 @@ export default function CircularTimer({
             transform={`rotate(-90 ${CENTER} ${CENTER})`}
           />
 
-          {/* Clock hands - show class progress */}
-          {(() => {
-            const { elapsedAngle, remainingAngle } = getClassProgressAngles();
-            return (
-              <G>
-                {/* Elapsed time hand (green - shows time done) */}
-                <Path
-                  d={createClockHand(elapsedAngle, 50, 3)}
-                  stroke="#22c55e"
-                  strokeWidth="4"
-                  strokeLinecap="round"
-                  opacity="0.9"
-                />
-
-                {/* Remaining time hand (red - shows time left) */}
-                <Path
-                  d={createClockHand(remainingAngle, 50, 3)}
-                  stroke="#ef4444"
-                  strokeWidth="4"
-                  strokeLinecap="round"
-                  opacity="0.9"
-                />
-
-                {/* Center dot */}
-                <Circle
-                  cx={CENTER}
-                  cy={CENTER}
-                  r="6"
-                  fill={safeTheme.text}
-                  opacity="0.9"
-                />
-              </G>
-            );
-          })()}
+          {/* No clock hands - clean design */}
         </Svg>
 
         {/* Center controls */}
-        <View style={styles.center}>
-          {/* Attended Time (main display) */}
-          <Text style={[styles.time, { color: safeTheme.text }]}>
-            {formatTime(initialTime)}
-          </Text>
-          <Text style={[styles.timeLabel, { color: safeTheme.textSecondary, fontSize: 10, marginTop: -5 }]}>
-            ATTENDED
+        <TouchableOpacity
+          style={styles.center}
+          onPressIn={() => {
+            setIsLongPressing(true);
+            Animated.timing(longPressAnim, {
+              toValue: 1,
+              duration: 800,
+              useNativeDriver: true,
+            }).start();
+          }}
+          onPressOut={() => {
+            setIsLongPressing(false);
+            Animated.timing(longPressAnim, {
+              toValue: 0,
+              duration: 200,
+              useNativeDriver: true,
+            }).start();
+          }}
+          onLongPress={() => {
+            console.log('🔒 Long press detected on timer center - triggering face verification');
+            Vibration.vibrate(50);
+            setIsLongPressing(false);
+            longPressAnim.setValue(0);
+            onLongPressCenter();
+          }}
+          delayLongPress={800}
+          activeOpacity={1}
+        >
+          {/* Attendance Percentage (smaller) */}
+          <Text style={[styles.time, { color: safeTheme.text, fontSize: 32 }]}>
+            {totalLectureTime > 0 ? Math.round((initialTime / totalLectureTime) * 100) : 0}%
           </Text>
 
-          {/* Lecture Info */}
-          {lectureInfo && lectureInfo.subject && (
-            <View style={{ marginTop: 8, alignItems: 'center' }}>
-              <Text style={[styles.lectureSubject, { color: safeTheme.text, fontSize: 12, fontWeight: '600' }]}>
-                {lectureInfo.subject}
-              </Text>
-              <Text style={[styles.lectureTime, { color: safeTheme.textSecondary, fontSize: 10 }]}>
-                {lectureInfo.startTime} - {lectureInfo.endTime}
-              </Text>
-            </View>
-          )}
-
-          {/* Time Stats */}
-          {totalLectureTime > 0 && (
-            <View style={{ marginTop: 10, flexDirection: 'row', gap: 15 }}>
-              <View style={{ alignItems: 'center' }}>
-                <Text style={[styles.statValue, { color: safeTheme.primary, fontSize: 14, fontWeight: 'bold' }]}>
-                  {formatTime(totalLectureTime)}
-                </Text>
-                <Text style={[styles.statLabel, { color: safeTheme.textSecondary, fontSize: 9 }]}>
-                  TOTAL
-                </Text>
-              </View>
-              <View style={{ alignItems: 'center' }}>
-                <Text style={[styles.statValue, { color: '#22c55e', fontSize: 14, fontWeight: 'bold' }]}>
-                  {formatTime(remainingTime)}
-                </Text>
-                <Text style={[styles.statLabel, { color: safeTheme.textSecondary, fontSize: 9 }]}>
-                  REMAINING
-                </Text>
-              </View>
-            </View>
-          )}
+          {/* Time Display in HH:MM:SS format */}
+          <Text style={{ color: safeTheme.text, fontSize: 20, fontWeight: 'bold', marginTop: 8 }}>
+            {(() => {
+              const hours = Math.floor(initialTime / 3600);
+              const minutes = Math.floor((initialTime % 3600) / 60);
+              const seconds = initialTime % 60;
+              return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            })()}
+          </Text>
+          <Text style={[styles.timeLabel, { color: safeTheme.textSecondary, fontSize: 10, marginTop: 3 }]}>
+            TIME ATTENDED
+          </Text>
 
           {/* Only show start button if not running */}
           {!isRunning && (
@@ -654,7 +628,7 @@ export default function CircularTimer({
           {/* Show running indicator when active */}
           {isRunning && (
             <View style={[styles.runningBadge, { backgroundColor: '#22c55e', marginTop: 15 }]}>
-              <Text style={styles.runningText}>● TRACKING</Text>
+              <Text style={styles.runningText}>🔴 TRACKING</Text>
             </View>
           )}
 
@@ -670,13 +644,61 @@ export default function CircularTimer({
               </Text>
             </TouchableOpacity>
           )}
-        </View>
+
+          {/* Long Press Loader */}
+          {isLongPressing && (
+            <Animated.View
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                justifyContent: 'center',
+                alignItems: 'center',
+                backgroundColor: safeTheme.primary + '20',
+                borderRadius: 100,
+                opacity: longPressAnim,
+              }}
+            >
+              <Animated.View
+                style={{
+                  width: 60,
+                  height: 60,
+                  borderRadius: 30,
+                  borderWidth: 4,
+                  borderColor: safeTheme.primary,
+                  borderTopColor: 'transparent',
+                  transform: [
+                    {
+                      rotate: longPressAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0deg', '360deg'],
+                      }),
+                    },
+                  ],
+                }}
+              />
+              <Text
+                style={{
+                  position: 'absolute',
+                  color: safeTheme.primary,
+                  fontSize: 12,
+                  fontWeight: 'bold',
+                  marginTop: 80,
+                }}
+              >
+                🔒 Hold to Verify
+              </Text>
+            </Animated.View>
+          )}
+        </TouchableOpacity>
       </Animated.View>
 
       {/* Hint */}
       <View style={styles.hint}>
         <Text style={[styles.hintText, { color: safeTheme.textSecondary }]}>
-          {isDragging ? '✨ Drag around the circle' : '👆 Tap or drag segments'}
+          {isDragging ? 'Γ£¿ Drag around the circle' : '≡ƒæå Tap or drag segments'}
         </Text>
       </View>
     </View>
