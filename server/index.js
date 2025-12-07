@@ -297,6 +297,58 @@ app.post('/api/student/register', async (req, res) => {
     }
 });
 
+// Get student data (for resume functionality)
+app.get('/api/student/:studentId', async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        
+        console.log(`📥 Getting student data for: ${studentId}`);
+        
+        if (mongoose.connection.readyState === 1) {
+            let student;
+            
+            // Try finding by ObjectId first
+            if (mongoose.Types.ObjectId.isValid(studentId)) {
+                student = await StudentManagement.findById(studentId);
+            }
+            
+            // If not found, try by enrollmentNo
+            if (!student) {
+                student = await StudentManagement.findOne({ enrollmentNo: studentId });
+            }
+            
+            if (student) {
+                console.log(`✅ Found student: ${student.name}`);
+                console.log(`   isRunning: ${student.isRunning}`);
+                console.log(`   attendedSeconds: ${student.attendanceSession?.totalAttendedSeconds || 0}`);
+                
+                res.json({ 
+                    success: true, 
+                    student: {
+                        _id: student._id,
+                        name: student.name,
+                        enrollmentNo: student.enrollmentNo,
+                        semester: student.semester,
+                        course: student.course,
+                        isRunning: student.isRunning,
+                        status: student.status,
+                        attendanceSession: student.attendanceSession,
+                        currentClass: student.currentClass
+                    }
+                });
+            } else {
+                console.log(`❌ Student not found: ${studentId}`);
+                res.status(404).json({ success: false, error: 'Student not found' });
+            }
+        } else {
+            res.status(503).json({ success: false, error: 'Database not connected' });
+        }
+    } catch (error) {
+        console.error('❌ Error getting student:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Timetable APIs
 app.get('/api/timetable/:semester/:branch', async (req, res) => {
     try {

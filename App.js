@@ -921,49 +921,54 @@ export default function App() {
     try {
       console.log('📥 Loading today\'s attendance for student:', studentIdValue);
       
-      // Get today's date using server time
-      let todayDate;
-      let serverTime;
-      try {
-        serverTime = getServerTime();
-        todayDate = serverTime.nowDate().toISOString().split('T')[0]; // YYYY-MM-DD
-      } catch {
-        todayDate = new Date().toISOString().split('T')[0];
-      }
-
-      const response = await fetch(`${SOCKET_URL}/api/attendance/records?studentId=${studentIdValue}&startDate=${todayDate}&endDate=${todayDate}`);
+      // Load from StudentManagement (server-side timer system)
+      const response = await fetch(`${SOCKET_URL}/api/student/${studentIdValue}`);
       const data = await response.json();
 
-      if (data.success && data.records && data.records.length > 0) {
-        const todayRecord = data.records[0];
-        console.log('✅ Found today\'s attendance record:', todayRecord);
-
-        // Restore attendance data
-        setTodayAttendance({
-          date: new Date(todayRecord.date).toDateString(),
-          lectures: todayRecord.lectures || [],
-          totalAttended: todayRecord.totalAttended || 0,
-          totalClassTime: todayRecord.totalClassTime || 0,
-          dayPercentage: todayRecord.dayPercentage || 0,
-          dayPresent: todayRecord.dayPercentage >= 75
+      if (data.success && data.student) {
+        const student = data.student;
+        console.log('✅ Found student data:', {
+          name: student.name,
+          isRunning: student.isRunning,
+          attendedSeconds: student.attendanceSession?.totalAttendedSeconds || 0
         });
 
-        console.log(`✅ Restored attendance: ${todayRecord.totalAttended} minutes total today`);
+        // Restore timer data from server
+        const attendedSeconds = student.attendanceSession?.totalAttendedSeconds || 0;
         
-        // If user was verified today, restore verification status
-        // This allows attendance to continue tracking after logout/login
-        if (todayRecord.totalAttended > 0 && serverTime) {
-          const todayDateStr = serverTime.nowDate().toDateString();
-          await AsyncStorage.setItem(DAILY_VERIFICATION_KEY, JSON.stringify({
-            date: todayDateStr,
-            verified: true
+        if (attendedSeconds > 0) {
+          console.log(`✅ Restoring timer: ${attendedSeconds} seconds (${Math.floor(attendedSeconds / 60)} minutes)`);
+          
+          // Update serverTimerData to show attended time
+          setServerTimerData(prev => ({
+            ...prev,
+            attendedSeconds: attendedSeconds
           }));
-          setVerifiedToday(true);
-          setIsFaceVerified(true);
-          console.log('✅ Restored face verification status');
+          
+          // If student was running timer, restore verification status
+          if (student.isRunning) {
+            console.log('✅ Student timer was running, restoring verification status');
+            setVerifiedToday(true);
+            setIsFaceVerified(true);
+            setIsRunning(true);
+            
+            // Save verification status
+            try {
+              const serverTime = getServerTime();
+              const todayDateStr = serverTime.nowDate().toDateString();
+              await AsyncStorage.setItem(DAILY_VERIFICATION_KEY, JSON.stringify({
+                date: todayDateStr,
+                verified: true
+              }));
+            } catch (err) {
+              console.log('Error saving verification status:', err);
+            }
+          }
+        } else {
+          console.log('ℹ️  No attended time recorded yet');
         }
       } else {
-        console.log('ℹ️  No attendance record found for today');
+        console.log('ℹ️  Student data not found');
       }
     } catch (error) {
       console.error('❌ Error loading today\'s attendance:', error);
