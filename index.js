@@ -1002,12 +1002,13 @@ function calculateAttendedTime(student) {
         return timeBeforePause;
     }
     
-    // Calculate time since session start
-    const sessionDuration = Math.floor((now - session.sessionStartTime.getTime()) / 1000);
+    // Calculate time since session start (ensure proper Date conversion)
+    const startTime = new Date(session.sessionStartTime).getTime();
+    const sessionDuration = Math.floor((now - startTime) / 1000);
     const pausedDuration = session.pausedDuration || 0;
     
     // Total attended = session duration - paused duration
-    return sessionDuration - pausedDuration;
+    return Math.max(0, sessionDuration - pausedDuration);
 }
 
 // Server-side timer broadcast (every 1 second)
