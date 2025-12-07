@@ -128,7 +128,8 @@ export default function App() {
     lectureTeacher: '',
     lectureRoom: '',
     lectureStartTime: '',
-    lectureEndTime: ''
+    lectureEndTime: '',
+    isRunning: false  // Server's tracking status
   });
   const [semester, setSemester] = useState('1');
   const [branch, setBranch] = useState('letsbunk enters');
@@ -808,10 +809,11 @@ export default function App() {
           lectureTeacher: data.lectureTeacher || '',
           lectureRoom: data.lectureRoom || '',
           lectureStartTime: data.lectureStartTime || '',
-          lectureEndTime: data.lectureEndTime || ''
+          lectureEndTime: data.lectureEndTime || '',
+          isRunning: data.isRunning || false  // Store server's isRunning status
         });
         
-        // Update isRunning state
+        // Update local isRunning state to match server
         if (data.isRunning !== undefined) {
           setIsRunning(data.isRunning);
         }
@@ -3389,7 +3391,7 @@ export default function App() {
           initialTime={serverTimerData.attendedSeconds}
           totalLectureTime={serverTimerData.totalLectureSeconds}
           remainingTime={serverTimerData.remainingLectureSeconds}
-          isRunning={isRunning}
+          isRunning={serverTimerData.isRunning}
           onToggleTimer={handleStartPause}
           onReset={handleReset}
           formatTime={formatTime}
@@ -3461,7 +3463,7 @@ export default function App() {
                   ⚠️ Face verification required to start attendance
                 </Text>
               )}
-              {verifiedToday && isRunning && (
+              {verifiedToday && serverTimerData.isRunning && (
                 <Text style={{ color: '#22c55e', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>
                   ✅ Attendance tracking: {Math.floor(serverTimerData.attendedSeconds / 60)} min recorded
                 </Text>
