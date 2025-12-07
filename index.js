@@ -2763,6 +2763,132 @@ app.get('/api/random-ring/history/:teacherId', async (req, res) => {
     }
 });
 
+// Teacher manually accepts/rejects student presence
+app.post('/api/random-ring/teacher-action', async (req, res) => {
+    try {
+        const { randomRingId, studentId, action, reason } = req.body;
+        
+        console.log(`👨‍🏫 Teacher ${action} student ${studentId} in random ring ${randomRingId}`);
+        
+        if (!['accepted', 'rejected'].includes(action)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid action. Must be "accepted" or "rejected"'
+            });
+        }
+        
+        if (mongoose.connection.readyState === 1) {
+            const randomRing = await RandomRing.findById(randomRingId);
+            
+            if (!randomRing) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Random ring not found'
+                });
+            }
+            
+            // Find student in selected students
+            const studentIndex = randomRing.selectedStudents.findIndex(s => {
+                if (s.studentId === studentId) return true;
+                if (s.enrollmentNo === studentId) return true;
+                if (s.studentId?.toString() === studentId?.toString()) return true;
+                if (s.enrollmentNo?.toString() === studentId?.toString()) return true;
+                return false;
+            });
+            
+            if (studentIndex === -1) {
+                console.error(`❌ Student not found in random ring`);
+                return res.status(404).json({
+                    success: false,
+                    error: 'Student not found in this random ring'
+                });
+            }
+            
+            const now = new Date();
+            
+            // Update teacher action
+            randomRing.selectedStudents[studentIndex].teacherAction = action;
+            randomRing.selectedStudents[studentIndex].teacherActionTime = now;
+            randomRing.selectedStudents[studentIndex].teacherActionReason = reason || '';
+            
+            if (action === 'accepted') {
+                // Mark as verified and resume timer
+                randomRing.selectedStudents[studentIndex].verified = true;
+                randomRing.selectedStudents[studentIndex].verificationTime = now;
+                
+                // Resume student timer
+                const student = await StudentManagement.findOne({
+                    $or: [{ _id: studentId }, { enrollmentNo: studentId }]
+                });
+                
+                if (student && student.attendanceSession?.isPaused) {
+                    const pausedDuration = student.attendanceSession.pausedDuration || 0;
+                    const lastPauseTime = student.attendanceSession.lastPauseTime;
+                    const additionalPausedTime = lastPauseTime 
+                        ? Math.floor((Date.now() - lastPauseTime.getTime()) / 1000)
+                        : 0;
+
+                    await StudentManagement.findByIdAndUpdate(student._id, {
+                        'attendanceSession.isPaused': false,
+                        'attendanceSession.pauseReason': null,
+                        'attendanceSession.pausedDuration': pausedDuration + additionalPausedTime,
+                        'attendanceSession.lastPauseTime': null,
+                        isRunning: true,
+                        status: 'attending',
+                        lastUpdated: new Date()
+                    });
+                    
+                    console.log(`▶️  Timer resumed for ${student.name} - Teacher accepted`);
+                    
+                    io.emit('random_ring_teacher_accepted', {
+                        studentId: student._id.toString(),
+                        enrollmentNo: student.enrollmentNo,
+                        message: 'Teacher verified your presence. Timer resumed.',
+                        randomRingId: randomRingId
+                    });
+                }
+            } else if (action === 'rejected') {
+                // Notify student to verify face
+                const student = await StudentManagement.findOne({
+                    $or: [{ _id: studentId }, { enrollmentNo: studentId }]
+                });
+                
+                if (student) {
+                    io.emit('random_ring_teacher_rejected', {
+                        studentId: student._id.toString(),
+                        enrollmentNo: student.enrollmentNo,
+                        message: 'Teacher marked you absent. Verify your face within 5 minutes to resume timer.',
+                        randomRingId: randomRingId,
+                        expiresAt: new Date(now.getTime() + 5 * 60 * 1000)
+                    });
+                }
+            }
+            
+            await randomRing.save();
+            
+            // Notify all teachers about the action
+            io.emit('random_ring_teacher_action_update', {
+                randomRingId: randomRingId,
+                studentId: studentId,
+                action: action,
+                teacherActionTime: now
+            });
+            
+            res.json({
+                success: true,
+                message: `Student ${action}`,
+                action: action
+            });
+        } else {
+            res.json({ success: true, message: 'Action recorded (in-memory)' });
+        }
+        
+    } catch (error) {
+        console.error('❌ Error in teacher action:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // All routes must be registered before starting the server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', async () => {
