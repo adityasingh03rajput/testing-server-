@@ -628,11 +628,58 @@ export default function App() {
       return;
     }
 
-    socketRef.current.on('connect', () => {
+    socketRef.current.on('connect', async () => {
       console.log('✅✅✅ SOCKET CONNECTED TO SERVER ✅✅✅');
       console.log('✅ Socket ID:', socketRef.current.id);
       console.log('✅ Transport:', socketRef.current.io.engine.transport.name);
       console.log('✅ Connected at:', new Date().toISOString());
+      
+      // Check for offline session and sync
+      try {
+        const offlineSessionData = await AsyncStorage.getItem('offline_session');
+        if (offlineSessionData) {
+          const data = JSON.parse(offlineSessionData);
+          const offlineDuration = Math.floor((Date.now() - data.startTime) / 1000);
+          
+          console.log('🔄 Syncing offline attendance...');
+          console.log(`   Offline duration: ${offlineDuration}s (${Math.floor(offlineDuration / 60)}m)`);
+          
+          // Sync with server
+          const response = await fetch(`${SOCKET_URL}/api/attendance/sync-offline`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              studentId,
+              offlineStartTime: data.startTime,
+              offlineEndTime: Date.now(),
+              offlineDuration,
+              lastKnownSeconds: data.lastKnownSeconds,
+              lectureSubject: data.lectureSubject
+            })
+          });
+          
+          const result = await response.json();
+          
+          if (result.success) {
+            if (result.randomRingMissed) {
+              // Random Ring was missed during offline
+              alert(`⚠️ Random Ring Missed\n\nA Random Ring was triggered while you were offline.\n\nYour attendance has been capped at ${result.cappedMinutes} minutes.`);
+              setIsRunning(false);
+            } else if (result.teacherAccepted) {
+              // Teacher accepted during offline
+              alert(`✅ Teacher Accepted\n\nYour teacher accepted you during offline period.\n\nFull offline time (${Math.floor(offlineDuration / 60)} minutes) has been counted.`);
+            } else {
+              // Normal sync
+              console.log(`✅ Offline time synced: ${Math.floor(offlineDuration / 60)} minutes`);
+            }
+          }
+          
+          // Clear offline session
+          await AsyncStorage.removeItem('offline_session');
+        }
+      } catch (error) {
+        console.error('❌ Error syncing offline session:', error);
+      }
       
       // Re-send current status if student is active
       if (selectedRole === 'student' && studentId && isRunning) {
@@ -641,10 +688,31 @@ export default function App() {
       }
     });
 
-    socketRef.current.on('disconnect', (reason) => {
+    socketRef.current.on('disconnect', async (reason) => {
       console.log('❌❌❌ SOCKET DISCONNECTED ❌❌❌');
       console.log('❌ Reason:', reason);
       console.log('❌ Disconnected at:', new Date().toISOString());
+      
+      // Start offline tracking if timer is running
+      if (isRunning && selectedRole === 'student' && currentClassInfo) {
+        console.log('📴 Going offline - starting offline timer');
+        
+        const offlineData = {
+          startTime: Date.now(),
+          lastKnownSeconds: serverTimerData.attendedSeconds,
+          sessionStartTime: serverTimerData.sessionStartTime,
+          lectureSubject: currentClassInfo.subject,
+          lectureStartTime: currentClassInfo.startTime,
+          lectureEndTime: currentClassInfo.endTime
+        };
+        
+        try {
+          await AsyncStorage.setItem('offline_session', JSON.stringify(offlineData));
+          console.log('💾 Offline session saved to storage');
+        } catch (error) {
+          console.error('❌ Error saving offline session:', error);
+        }
+      }
     });
 
     socketRef.current.on('connect_error', (error) => {
@@ -761,20 +829,28 @@ export default function App() {
       console.log('   Current role:', selectedRole);
       console.log('   Current studentId:', studentId);
       console.log('   Notification for:', data.studentId, data.enrollmentNo);
+      console.log('   Timer Paused:', data.timerPaused);
       
       if (selectedRole === 'student' && (studentId === data.studentId || studentId === data.enrollmentNo)) {
         console.log('✅ Random Ring is for this student!');
+        
+        // PAUSE TIMER IMMEDIATELY
+        if (data.timerPaused) {
+          console.log('⏸️  Pausing timer for Random Ring');
+          setIsRunning(false);
+        }
         
         // Store random ring data for verification submission
         setRandomRingData({
           randomRingId: data.randomRingId,
           teacherId: data.teacherId,
           timestamp: data.timestamp,
-          bssid: data.bssid
+          bssid: data.bssid,
+          timerPaused: data.timerPaused
         });
         
         // Show alert to student
-        alert(`🔔 Random Ring!\n\nYou have been selected for attendance verification.\n\nPlease verify your attendance now!`);
+        alert(`🔔 Random Ring!\n\n⏸️  Your timer has been PAUSED.\n\nVerify your presence to resume!`);
         
         // Auto-trigger face verification
         console.log('📸 Auto-opening face verification for random ring');
@@ -785,7 +861,8 @@ export default function App() {
           setRandomRingData(prev => {
             if (prev && prev.randomRingId === data.randomRingId) {
               console.log('⏰ Random ring verification timeout');
-              alert('⏰ Random Ring verification expired. You did not verify in time.');
+              alert('⏰ Random Ring verification expired.\n\n❌ Your timer has been stopped.');
+              setIsRunning(false);
               return null;
             }
             return prev;
