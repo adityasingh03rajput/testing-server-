@@ -858,7 +858,7 @@ io.on('connection', (socket) => {
             
             console.log(`⏱️ Starting timer for ${name} (${enrollmentNo}) - ${currentClass}`);
             
-            // Add to active timers
+            // Add to active timers (legacy support)
             activeStudentTimers.set(studentId, {
                 startTime: Date.now(),
                 semester,
@@ -869,16 +869,26 @@ io.on('connection', (socket) => {
                 lectureDuration: lectureDuration || 60 // default 60 minutes
             });
             
-            // Update database
+            // Update database with NEW attendance session system
             if (mongoose.connection.readyState === 1) {
+                const now = new Date();
+                
                 await StudentManagement.findOneAndUpdate(
                     { $or: [{ _id: studentId }, { enrollmentNo }] },
                     {
                         isRunning: true,
                         status: 'attending',
-                        lastUpdated: new Date()
+                        lastUpdated: now,
+                        // CRITICAL: Set up attendance session for timer broadcast
+                        'attendanceSession.sessionStartTime': now,
+                        'attendanceSession.totalAttendedSeconds': 0,
+                        'attendanceSession.isPaused': false,
+                        'attendanceSession.pausedDuration': 0,
+                        'attendanceSession.lastPauseTime': null
                     }
                 );
+                
+                console.log(`✅ Attendance session created for ${name} at ${now.toISOString()}`);
             }
             
             socket.emit('timer_started', { success: true, studentId });
