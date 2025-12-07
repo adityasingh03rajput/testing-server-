@@ -932,56 +932,177 @@ io.on('connection', (socket) => {
     });
 });
 
-// Centralized Timer Broadcast System
-// Server is the single source of truth for all timer values
-const activeStudentTimers = new Map(); // studentId -> { startTime, semester, branch, currentClass, enrollmentNo, name }
+// Helper: Convert time string to minutes
+function timeToMinutes(timeStr) {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+}
 
-// Broadcast timer updates every second to all connected clients
-setInterval(async () => {
-    if (activeStudentTimers.size === 0) return;
+// Helper: Get current lecture info from timetable
+async function getCurrentLectureInfo(semester, branch) {
+    try {
+        const now = new Date();
+        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const currentDay = days[now.getDay()];
+        const currentTime = now.getHours() * 60 + now.getMinutes();
 
+        const timetable = await Timetable.findOne({ semester, branch });
+        if (!timetable) return null;
+
+        const daySchedule = timetable.timetable[currentDay];
+        if (!daySchedule) return null;
+
+        for (let i = 0; i < daySchedule.length; i++) {
+            const period = daySchedule[i];
+            const periodInfo = timetable.periods[i];
+            if (!periodInfo) continue;
+
+            const periodStart = timeToMinutes(periodInfo.startTime);
+            const periodEnd = timeToMinutes(periodInfo.endTime);
+
+            if (currentTime >= periodStart && currentTime <= periodEnd && !period.isBreak) {
+                const totalSeconds = (periodEnd - periodStart) * 60;
+                const elapsedSeconds = (currentTime - periodStart) * 60;
+                const remainingSeconds = (periodEnd - currentTime) * 60;
+                
+                return {
+                    subject: period.subject,
+                    teacher: period.teacher,
+                    room: period.room,
+                    period: i + 1,
+                    startTime: periodInfo.startTime,
+                    endTime: periodInfo.endTime,
+                    totalSeconds,
+                    elapsedSeconds,
+                    remainingSeconds,
+                    periodStart,
+                    periodEnd
+                };
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error('❌ Error getting lecture info:', error);
+        return null;
+    }
+}
+
+// Helper: Calculate attended time for a student
+function calculateAttendedTime(student) {
+    if (!student.attendanceSession || !student.attendanceSession.sessionStartTime) {
+        return 0;
+    }
+    
+    const session = student.attendanceSession;
     const now = Date.now();
-    const updates = [];
-
-    for (const [studentId, timerData] of activeStudentTimers.entries()) {
-        const { startTime, semester, branch, currentClass, enrollmentNo, name, lectureDuration } = timerData;
-        
-        // Calculate elapsed time in seconds
-        const elapsedSeconds = Math.floor((now - startTime) / 1000);
-        const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-        
-        // Calculate remaining time for lecture
-        const remainingSeconds = Math.max(0, (lectureDuration * 60) - elapsedSeconds);
-        const remainingMinutes = Math.floor(remainingSeconds / 60);
-        
-        updates.push({
-            studentId,
-            enrollmentNo,
-            name,
-            semester,
-            branch,
-            currentClass,
-            // Timer values (all in seconds for consistency)
-            elapsedSeconds,
-            elapsedMinutes,
-            attendedMinutes: elapsedMinutes,
-            // Lecture info
-            lectureDuration, // in minutes
-            lectureRemaining: remainingMinutes, // in minutes
-            lectureRemainingSeconds: remainingSeconds,
-            // Status
-            isRunning: true,
-            status: 'attending',
-            // Server timestamp
-            serverTime: now
-        });
+    
+    // If paused, don't count time since pause
+    if (session.isPaused && session.lastPauseTime) {
+        const timeBeforePause = session.totalAttendedSeconds || 0;
+        return timeBeforePause;
     }
+    
+    // Calculate time since session start
+    const sessionDuration = Math.floor((now - session.sessionStartTime.getTime()) / 1000);
+    const pausedDuration = session.pausedDuration || 0;
+    
+    // Total attended = session duration - paused duration
+    return sessionDuration - pausedDuration;
+}
 
-    // Broadcast to all connected clients
-    if (updates.length > 0) {
-        io.emit('timer_broadcast', { students: updates, serverTime: now });
+// Server-side timer broadcast (every 1 second)
+setInterval(async () => {
+    try {
+        if (mongoose.connection.readyState !== 1) return;
+
+        // Get all students with active timers
+        const activeStudents = await StudentManagement.find({ isRunning: true });
+
+        for (const student of activeStudents) {
+            try {
+                const studentId = student._id.toString();
+                
+                // Get current lecture info from timetable
+                const lectureInfo = await getCurrentLectureInfo(student.semester, student.course);
+                
+                if (!lectureInfo) {
+                    // No active lecture, stop timer and save final attendance
+                    const finalAttendedSeconds = calculateAttendedTime(student);
+                    
+                    await StudentManagement.findByIdAndUpdate(student._id, {
+                        isRunning: false,
+                        status: 'present',
+                        'attendanceSession.totalAttendedSeconds': finalAttendedSeconds,
+                        lastUpdated: new Date()
+                    });
+                    
+                    console.log(`⏹️  Timer stopped for ${student.name} - No active lecture`);
+                    
+                    // Broadcast stop event
+                    io.emit('timer_broadcast', {
+                        studentId: studentId,
+                        enrollmentNo: student.enrollmentNo,
+                        name: student.name,
+                        isRunning: false,
+                        status: 'present',
+                        attendedSeconds: finalAttendedSeconds
+                    });
+                    continue;
+                }
+                
+                // Calculate current attended time
+                const attendedSeconds = calculateAttendedTime(student);
+                
+                // Update database with current attended time (persistent storage)
+                await StudentManagement.findByIdAndUpdate(student._id, {
+                    'attendanceSession.totalAttendedSeconds': attendedSeconds,
+                    'currentClass.totalDurationSeconds': lectureInfo.totalSeconds,
+                    lastUpdated: new Date()
+                });
+                
+                // Calculate time wasted (lecture elapsed - attended)
+                const timeWastedSeconds = Math.max(0, lectureInfo.elapsedSeconds - attendedSeconds);
+                
+                // Broadcast to all clients (teacher dashboard + student app)
+                const broadcastData = {
+                    studentId: studentId,
+                    enrollmentNo: student.enrollmentNo,
+                    name: student.name,
+                    semester: student.semester,
+                    branch: student.course,
+                    
+                    // Lecture info
+                    lectureSubject: lectureInfo.subject,
+                    lectureTeacher: lectureInfo.teacher,
+                    lectureRoom: lectureInfo.room,
+                    lecturePeriod: lectureInfo.period,
+                    lectureStartTime: lectureInfo.startTime,
+                    lectureEndTime: lectureInfo.endTime,
+                    
+                    // Time tracking (all in seconds, server-calculated)
+                    totalLectureSeconds: lectureInfo.totalSeconds,
+                    elapsedLectureSeconds: lectureInfo.elapsedSeconds,
+                    remainingLectureSeconds: lectureInfo.remainingSeconds,
+                    attendedSeconds: attendedSeconds,
+                    timeWastedSeconds: timeWastedSeconds,
+                    
+                    // Status
+                    isRunning: true,
+                    isPaused: student.attendanceSession?.isPaused || false,
+                    pauseReason: student.attendanceSession?.pauseReason || null,
+                    status: student.attendanceSession?.isPaused ? 'paused' : 'attending'
+                };
+                
+                io.emit('timer_broadcast', broadcastData);
+                
+            } catch (studentError) {
+                console.error(`❌ Error processing student ${student.name}:`, studentError);
+            }
+        }
+    } catch (error) {
+        console.error('❌ Timer broadcast error:', error);
     }
-}, 1000); // Every second
+}, 1000); // Broadcast every 1 second
 
 
 
