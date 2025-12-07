@@ -108,6 +108,7 @@ const getDefaultConfig = () => ({
 });
 
 export default function App() {
+  console.log('🚀🚀🚀 APP COMPONENT LOADED 🚀🚀🚀');
   const [config, setConfig] = useState(getDefaultConfig());
   const [selectedRole, setSelectedRole] = useState(null);
   const [studentName, setStudentName] = useState('');
@@ -602,8 +603,11 @@ export default function App() {
     // Initialize face cache
     initializeFaceCache();
 
+    console.log('📋 About to load config and setup socket...');
     loadConfig();
+    console.log('📋 Config loaded, now calling setupSocket()...');
     setupSocket();
+    console.log('📋 setupSocket() called!');
 
     // Handle app state changes (background/foreground)
     const subscription = AppState.addEventListener('change', nextAppState => {
@@ -647,19 +651,28 @@ export default function App() {
   }, [isRunning, selectedRole]);
 
   const setupSocket = () => {
+    console.log('🔌 setupSocket() called - Initializing socket connection...');
+    console.log('🔌 SOCKET_URL:', SOCKET_URL);
+    
     // Disconnect existing socket if any
     if (socketRef.current) {
+      console.log('🔌 Disconnecting existing socket');
       socketRef.current.disconnect();
     }
 
+    console.log('🔌 Creating new socket.io connection...');
     socketRef.current = io(SOCKET_URL, {
       reconnection: true,
       reconnectionDelay: 1000,
-      reconnectionAttempts: 10
+      reconnectionAttempts: 10,
+      transports: ['websocket', 'polling']
     });
+    
+    console.log('🔌 Socket object created:', socketRef.current ? 'YES' : 'NO');
 
     socketRef.current.on('connect', () => {
-      console.log('✅ Connected to server, socket ID:', socketRef.current.id);
+      console.log('✅✅✅ SOCKET CONNECTED TO SERVER ✅✅✅');
+      console.log('✅ Socket ID:', socketRef.current.id);
       
       // Re-send current status if student is active
       if (selectedRole === 'student' && studentId && isRunning) {
@@ -669,11 +682,14 @@ export default function App() {
     });
 
     socketRef.current.on('disconnect', (reason) => {
-      console.log('❌ Disconnected from server:', reason);
+      console.log('❌❌❌ SOCKET DISCONNECTED ❌❌❌');
+      console.log('❌ Reason:', reason);
     });
 
     socketRef.current.on('connect_error', (error) => {
-      console.log('❌ Connection error:', error.message);
+      console.log('❌❌❌ SOCKET CONNECTION ERROR ❌❌❌');
+      console.log('❌ Error:', error.message);
+      console.log('❌ Full error:', JSON.stringify(error));
     });
 
     socketRef.current.on('student_update', (data) => {
