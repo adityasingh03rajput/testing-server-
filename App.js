@@ -3601,7 +3601,7 @@ export default function App() {
               )}
               {verifiedToday && isRunning && (
                 <Text style={{ color: '#22c55e', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>
-                  ✅ Attendance tracking: {attendedMinutes} min recorded
+                  ✅ Attendance tracking: {Math.floor(serverTimerData.attendedSeconds / 60)} min recorded
                 </Text>
               )}
               {verifiedToday && !isRunning && (
