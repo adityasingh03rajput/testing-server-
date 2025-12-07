@@ -42,6 +42,10 @@
                     <span class="icon">📆</span>
                     <span>Calendar</span>
                 </button>
+                <button class="nav-item" data-section="attendance">
+                    <span class="icon">📊</span>
+                    <span>Attendance History</span>
+                </button>
                 <button class="nav-item" data-section="periods">
                     <span class="icon">⏰</span>
                     <span>Period Settings</span>
@@ -372,6 +376,139 @@
                     </div>
                 </section>
 
+                <!-- Attendance History Section -->
+                <section id="attendance-section" class="section">
+                    <div class="section-header">
+                        <h2 class="section-title">📊 Attendance History</h2>
+                        <div class="action-buttons">
+                            <button class="btn btn-secondary" id="exportAttendanceBtn">📤 Export Report</button>
+                            <button class="btn btn-primary" id="refreshAttendanceBtn">🔄 Refresh</button>
+                        </div>
+                    </div>
+
+                    <div class="primary-filters">
+                        <div class="filter-group-required">
+                            <label class="filter-label">
+                                <span class="required-star">*</span> Select Branch:
+                            </label>
+                            <select id="attendanceCourseFilter" class="filter-select filter-required">
+                                <option value="">-- Select Branch --</option>
+                                <option value="CSE">Computer Science (CSE)</option>
+                                <option value="ECE">Electronics (ECE)</option>
+                                <option value="ME">Mechanical (ME)</option>
+                                <option value="CE">Civil (CE)</option>
+                            </select>
+                        </div>
+                        <div class="filter-group-required">
+                            <label class="filter-label">
+                                <span class="required-star">*</span> Select Semester:
+                            </label>
+                            <select id="attendanceSemesterFilter" class="filter-select filter-required">
+                                <option value="">-- Select Semester --</option>
+                                <option value="1">Semester 1</option>
+                                <option value="2">Semester 2</option>
+                                <option value="3">Semester 3</option>
+                                <option value="4">Semester 4</option>
+                                <option value="5">Semester 5</option>
+                                <option value="6">Semester 6</option>
+                                <option value="7">Semester 7</option>
+                                <option value="8">Semester 8</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" id="fetchAttendanceBtn" disabled>
+                            📊 Fetch Attendance Data
+                        </button>
+                    </div>
+
+                    <div class="secondary-filters" style="display: none;" id="secondaryFilters">
+                        <div class="date-filter-group">
+                            <label>From:</label>
+                            <input type="date" id="attendanceStartDate" class="filter-select" title="Start date (auto-set to earliest available data)" readonly>
+                        </div>
+                        <div class="date-filter-group">
+                            <label>To:</label>
+                            <input type="date" id="attendanceEndDate" class="filter-select" title="End date (auto-set to latest available data)" readonly>
+                        </div>
+                        <input type="text" id="attendanceStudentSearch" class="search-input" placeholder="Search by name or enrollment...">
+                    </div>
+
+                    <div class="data-range-info">
+                        <div class="info-card">
+                            <span class="info-icon">📅</span>
+                            <div class="info-content">
+                                <strong>Data Available From:</strong>
+                                <span id="dataStartDate">Loading...</span>
+                            </div>
+                        </div>
+                        <div class="info-card">
+                            <span class="info-icon">📆</span>
+                            <div class="info-content">
+                                <strong>Data Available To:</strong>
+                                <span id="dataEndDate">Loading...</span>
+                            </div>
+                        </div>
+                        <div class="info-card">
+                            <span class="info-icon">📊</span>
+                            <div class="info-content">
+                                <strong>Total Records:</strong>
+                                <span id="totalRecordsCount">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="attendance-summary-cards">
+                        <div class="summary-card">
+                            <div class="summary-icon">👥</div>
+                            <div class="summary-info">
+                                <h3 id="totalStudentsAttendance">0</h3>
+                                <p>Total Students</p>
+                            </div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-icon">✅</div>
+                            <div class="summary-info">
+                                <h3 id="avgAttendanceRate">0%</h3>
+                                <p>Average Attendance</p>
+                            </div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-icon">📅</div>
+                            <div class="summary-info">
+                                <h3 id="totalDaysTracked">0</h3>
+                                <p>Days Tracked</p>
+                            </div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-icon">⏱️</div>
+                            <div class="summary-info">
+                                <h3 id="totalHoursAttended">0h</h3>
+                                <p>Total Hours</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Enrollment No</th>
+                                    <th>Name</th>
+                                    <th>Course</th>
+                                    <th>Semester</th>
+                                    <th>Total Days</th>
+                                    <th>Present Days</th>
+                                    <th>Attendance %</th>
+                                    <th>Total Hours</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="attendanceHistoryTableBody">
+                                <!-- Attendance rows will be added here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
                 <!-- Period Settings Section -->
                 <section id="periods-section" class="section">
                     <div class="section-header">
@@ -417,10 +554,10 @@
                             <h3>Server Configuration</h3>
                             <div class="form-group">
                                 <label>Server URL</label>
-                                <input type="text" id="serverUrl" value="https://google-8j5x.onrender.com"
-                                    class="form-input" placeholder="https://your-server.onrender.com">
+                                <input type="text" id="serverUrl" value="https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net"
+                                    class="form-input" placeholder="https://your-server.azurewebsites.net">
                                 <small style="color: #888; display: block; margin-top: 5px;">
-                                    Cloud: https://google-8j5x.onrender.com<br>
+                                    Azure: https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net<br>
                                     Local: http://192.168.9.31:3000
                                 </small>
                             </div>
@@ -462,6 +599,16 @@
             <span class="modal-close" onclick="closeAttendanceModal()">&times;</span>
             <div id="attendanceModalBody">
                 <!-- Attendance report will be rendered here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Detailed Attendance Modal -->
+    <div id="detailedAttendanceModal" class="modal">
+        <div class="modal-content modal-xlarge">
+            <span class="modal-close" onclick="closeDetailedAttendanceModal()">&times;</span>
+            <div id="detailedAttendanceModalBody">
+                <!-- Detailed attendance will be rendered here -->
             </div>
         </div>
     </div>
