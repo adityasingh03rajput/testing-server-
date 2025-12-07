@@ -1069,6 +1069,86 @@ setInterval(async () => {
                 // Calculate current attended time
                 const attendedSeconds = calculateAttendedTime(student);
                 
+                // Check if lecture is ending (last 5 seconds) - save to history
+                if (lectureInfo.remainingSeconds <= 5 && lectureInfo.remainingSeconds > 0) {
+                    // Save period attendance to history
+                    const attendedMinutes = Math.floor(attendedSeconds / 60);
+                    const totalMinutes = Math.floor(lectureInfo.totalSeconds / 60);
+                    const percentage = lectureInfo.totalSeconds > 0 
+                        ? Math.round((attendedSeconds / lectureInfo.totalSeconds) * 100)
+                        : 0;
+                    
+                    const periodData = {
+                        subject: lectureInfo.subject,
+                        room: lectureInfo.room,
+                        teacher: lectureInfo.teacher,
+                        startTime: lectureInfo.startTime,
+                        endTime: lectureInfo.endTime,
+                        attendedSeconds: attendedSeconds,
+                        totalSeconds: lectureInfo.totalSeconds,
+                        attendedMinutes: attendedMinutes,
+                        totalMinutes: totalMinutes,
+                        percentage: percentage,
+                        present: percentage >= 75,
+                        verifiedFace: true,
+                        randomRingTriggered: student.attendanceSession?.randomRingId ? true : false,
+                        randomRingPassed: student.attendanceSession?.randomRingId ? 
+                            (student.attendanceSession?.randomRingPassed || false) : null,
+                        offlineTime: student.attendanceSession?.offlineAttendedSeconds || 0
+                    };
+                    
+                    // Save to AttendanceHistory
+                    try {
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        
+                        let attendance = await AttendanceHistory.findOne({
+                            enrollmentNo: student.enrollmentNo,
+                            date: today
+                        });
+                        
+                        if (!attendance) {
+                            attendance = new AttendanceHistory({
+                                studentId: student._id,
+                                enrollmentNo: student.enrollmentNo,
+                                studentName: student.name,
+                                date: today,
+                                semester: student.semester,
+                                branch: student.course,
+                                periods: []
+                            });
+                        }
+                        
+                        // Check if period already saved
+                        const existingPeriodIndex = attendance.periods.findIndex(p => 
+                            p.subject === periodData.subject && 
+                            p.startTime === periodData.startTime
+                        );
+                        
+                        if (existingPeriodIndex >= 0) {
+                            attendance.periods[existingPeriodIndex] = periodData;
+                        } else {
+                            attendance.periods.push(periodData);
+                        }
+                        
+                        // Recalculate daily totals
+                        attendance.totalAttendedSeconds = attendance.periods.reduce((sum, p) => sum + p.attendedSeconds, 0);
+                        attendance.totalClassSeconds = attendance.periods.reduce((sum, p) => sum + p.totalSeconds, 0);
+                        attendance.totalAttendedMinutes = Math.floor(attendance.totalAttendedSeconds / 60);
+                        attendance.totalClassMinutes = Math.floor(attendance.totalClassSeconds / 60);
+                        attendance.dayPercentage = attendance.totalClassSeconds > 0 
+                            ? Math.round((attendance.totalAttendedSeconds / attendance.totalClassSeconds) * 100)
+                            : 0;
+                        attendance.dayPresent = attendance.dayPercentage >= 75;
+                        attendance.updatedAt = new Date();
+                        
+                        await attendance.save();
+                        console.log(`💾 Saved period attendance for ${student.name} - ${lectureInfo.subject}`);
+                    } catch (historyError) {
+                        console.error('❌ Error saving attendance history:', historyError);
+                    }
+                }
+                
                 // Update database with current attended time (persistent storage)
                 await StudentManagement.findByIdAndUpdate(student._id, {
                     'attendanceSession.totalAttendedSeconds': attendedSeconds,
@@ -2709,6 +2789,263 @@ const randomRingSchema = new mongoose.Schema({
 });
 
 const RandomRing = mongoose.model('RandomRing', randomRingSchema);
+
+// AttendanceHistory Schema - Detailed per-period, per-day, per-subject tracking
+const attendanceHistorySchema = new mongoose.Schema({
+    studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'StudentManagement', required: true },
+    enrollmentNo: { type: String, required: true },
+    studentName: { type: String, required: true },
+    date: { type: Date, required: true },
+    semester: String,
+    branch: String,
+    
+    // Per-period attendance
+    periods: [{
+        subject: String,
+        room: String,
+        teacher: String,
+        startTime: String,
+        endTime: String,
+        attendedSeconds: Number,
+        totalSeconds: Number,
+        attendedMinutes: Number,
+        totalMinutes: Number,
+        percentage: Number,
+        present: Boolean, // true if >= 75%
+        verifiedFace: Boolean,
+        randomRingTriggered: Boolean,
+        randomRingPassed: Boolean,
+        offlineTime: Number, // seconds attended offline
+        timestamp: { type: Date, default: Date.now }
+    }],
+    
+    // Daily summary
+    totalAttendedSeconds: { type: Number, default: 0 },
+    totalClassSeconds: { type: Number, default: 0 },
+    totalAttendedMinutes: { type: Number, default: 0 },
+    totalClassMinutes: { type: Number, default: 0 },
+    dayPercentage: { type: Number, default: 0 },
+    dayPresent: { type: Boolean, default: false },
+    
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+});
+
+// Index for fast queries
+attendanceHistorySchema.index({ studentId: 1, date: -1 });
+attendanceHistorySchema.index({ enrollmentNo: 1, date: -1 });
+attendanceHistorySchema.index({ date: -1 });
+
+const AttendanceHistory = mongoose.model('AttendanceHistory', attendanceHistorySchema);
+
+// Attendance History APIs
+
+// Get attendance history for a student
+app.get('/api/attendance/history/:studentId', async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        const { startDate, endDate, subject } = req.query;
+        
+        if (mongoose.connection.readyState !== 1) {
+            return res.json({ success: true, history: [] });
+        }
+        
+        const query = {
+            $or: [
+                { studentId: studentId },
+                { enrollmentNo: studentId }
+            ]
+        };
+        
+        if (startDate && endDate) {
+            query.date = {
+                $gte: new Date(startDate),
+                $lte: new Date(endDate)
+            };
+        }
+        
+        let history = await AttendanceHistory.find(query).sort({ date: -1 });
+        
+        // Filter by subject if specified
+        if (subject) {
+            history = history.map(day => ({
+                ...day.toObject(),
+                periods: day.periods.filter(p => p.subject === subject)
+            })).filter(day => day.periods.length > 0);
+        }
+        
+        res.json({ success: true, history });
+        
+    } catch (error) {
+        console.error('❌ Error fetching attendance history:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Save/Update attendance for a period
+app.post('/api/attendance/history/period', async (req, res) => {
+    try {
+        const { 
+            studentId, 
+            enrollmentNo, 
+            studentName, 
+            date, 
+            semester, 
+            branch, 
+            period 
+        } = req.body;
+        
+        if (mongoose.connection.readyState !== 1) {
+            return res.json({ success: true, message: 'Database not connected' });
+        }
+        
+        const dateObj = new Date(date);
+        dateObj.setHours(0, 0, 0, 0);
+        
+        // Find or create attendance record for the day
+        let attendance = await AttendanceHistory.findOne({
+            $or: [
+                { studentId: studentId },
+                { enrollmentNo: enrollmentNo }
+            ],
+            date: dateObj
+        });
+        
+        if (!attendance) {
+            attendance = new AttendanceHistory({
+                studentId,
+                enrollmentNo,
+                studentName,
+                date: dateObj,
+                semester,
+                branch,
+                periods: []
+            });
+        }
+        
+        // Check if period already exists
+        const existingPeriodIndex = attendance.periods.findIndex(p => 
+            p.subject === period.subject && 
+            p.startTime === period.startTime
+        );
+        
+        if (existingPeriodIndex >= 0) {
+            // Update existing period
+            attendance.periods[existingPeriodIndex] = {
+                ...attendance.periods[existingPeriodIndex].toObject(),
+                ...period,
+                timestamp: new Date()
+            };
+        } else {
+            // Add new period
+            attendance.periods.push({
+                ...period,
+                timestamp: new Date()
+            });
+        }
+        
+        // Recalculate daily totals
+        attendance.totalAttendedSeconds = attendance.periods.reduce((sum, p) => sum + (p.attendedSeconds || 0), 0);
+        attendance.totalClassSeconds = attendance.periods.reduce((sum, p) => sum + (p.totalSeconds || 0), 0);
+        attendance.totalAttendedMinutes = Math.floor(attendance.totalAttendedSeconds / 60);
+        attendance.totalClassMinutes = Math.floor(attendance.totalClassSeconds / 60);
+        attendance.dayPercentage = attendance.totalClassSeconds > 0 
+            ? Math.round((attendance.totalAttendedSeconds / attendance.totalClassSeconds) * 100)
+            : 0;
+        attendance.dayPresent = attendance.dayPercentage >= 75;
+        attendance.updatedAt = new Date();
+        
+        await attendance.save();
+        
+        res.json({ success: true, attendance });
+        
+    } catch (error) {
+        console.error('❌ Error saving period attendance:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get attendance summary for a student
+app.get('/api/attendance/summary/:studentId', async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        const { startDate, endDate } = req.query;
+        
+        if (mongoose.connection.readyState !== 1) {
+            return res.json({ success: true, summary: {} });
+        }
+        
+        const query = {
+            $or: [
+                { studentId: studentId },
+                { enrollmentNo: studentId }
+            ]
+        };
+        
+        if (startDate && endDate) {
+            query.date = {
+                $gte: new Date(startDate),
+                $lte: new Date(endDate)
+            };
+        }
+        
+        const history = await AttendanceHistory.find(query);
+        
+        // Calculate overall statistics
+        const totalDays = history.length;
+        const presentDays = history.filter(d => d.dayPresent).length;
+        const totalAttendedMinutes = history.reduce((sum, d) => sum + d.totalAttendedMinutes, 0);
+        const totalClassMinutes = history.reduce((sum, d) => sum + d.totalClassMinutes, 0);
+        const overallPercentage = totalClassMinutes > 0 
+            ? Math.round((totalAttendedMinutes / totalClassMinutes) * 100)
+            : 0;
+        
+        // Per-subject statistics
+        const subjectStats = {};
+        history.forEach(day => {
+            day.periods.forEach(period => {
+                if (!subjectStats[period.subject]) {
+                    subjectStats[period.subject] = {
+                        subject: period.subject,
+                        totalAttendedMinutes: 0,
+                        totalClassMinutes: 0,
+                        periodsAttended: 0,
+                        totalPeriods: 0
+                    };
+                }
+                subjectStats[period.subject].totalAttendedMinutes += period.attendedMinutes || 0;
+                subjectStats[period.subject].totalClassMinutes += period.totalMinutes || 0;
+                subjectStats[period.subject].totalPeriods++;
+                if (period.present) {
+                    subjectStats[period.subject].periodsAttended++;
+                }
+            });
+        });
+        
+        // Calculate percentage for each subject
+        Object.values(subjectStats).forEach(stat => {
+            stat.percentage = stat.totalClassMinutes > 0
+                ? Math.round((stat.totalAttendedMinutes / stat.totalClassMinutes) * 100)
+                : 0;
+        });
+        
+        res.json({
+            success: true,
+            summary: {
+                totalDays,
+                presentDays,
+                totalAttendedMinutes,
+                totalClassMinutes,
+                overallPercentage,
+                subjects: Object.values(subjectStats)
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Error fetching attendance summary:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
 // Holiday APIs
 app.get('/api/holidays', async (req, res) => {
