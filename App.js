@@ -114,7 +114,7 @@ export default function App() {
   const [studentName, setStudentName] = useState('');
   const [studentId, setStudentId] = useState(null);
   const [showNameInput, setShowNameInput] = useState(false);
-  // Removed timeLeft state - attendance is tracked by attendedMinutes based on actual lecture time
+  // Removed timeLeft state - attendance is tracked by server
   const [isRunning, setIsRunning] = useState(false);
   const [students, setStudents] = useState([]);
   
@@ -219,10 +219,8 @@ export default function App() {
     }
   });
 
-  // Class progress tracking
+  // Class progress tracking (display only - server handles timing)
   const [currentClassInfo, setCurrentClassInfo] = useState(null);
-  const [classStartTime, setClassStartTime] = useState(null);
-  const [attendedMinutes, setAttendedMinutes] = useState(0);
 
   // Detailed attendance tracking (using server time)
   const [todayAttendance, setTodayAttendance] = useState({
@@ -487,96 +485,17 @@ export default function App() {
         }
       }
 
-      // Update class info and attendance tracking
-      setCurrentClassInfo(prevClass => {
-        // Detect class change - new class started
-        if (foundClass && prevClass && foundClass.subject !== prevClass.subject) {
-          // Save attendance for previous class
-          if (attendedMinutes > 0) {
-            saveLectureAttendance(prevClass, attendedMinutes);
-          }
-          // Reset attendance tracking for new class, but keep verification status
-          setClassStartTime(null);
-          setAttendedMinutes(0);
-          // Timer continues running if already verified today
-        }
-        // Detect class end
-        else if (!foundClass && prevClass && attendedMinutes > 0) {
-          saveLectureAttendance(prevClass, attendedMinutes);
-          setClassStartTime(null);
-          setAttendedMinutes(0);
-          // Keep timer running if verified, it will auto-start for next class
-        }
-        return foundClass;
-      });
-
-      // Track attendance time when timer is running
-      if (foundClass && isRunning) {
-        try {
-          const serverTime = getServerTime();
-          const currentServerTime = serverTime.now();
-          setClassStartTime(prev => prev || currentServerTime);
-          setAttendedMinutes(prev => {
-            const startTime = classStartTime || currentServerTime;
-            return Math.floor((currentServerTime - startTime) / 60000);
-          });
-        } catch {
-          // If server time fails, don't track attendance - security measure
-          console.error('⚠️ Cannot track attendance without server time');
-        }
-      }
+      // Update class info (display only - server handles all timing)
+      setCurrentClassInfo(foundClass);
     };
 
     updateClassProgress();
-    const progressInterval = setInterval(updateClassProgress, 1000);
+    const progressInterval = setInterval(updateClassProgress, 60000); // Check every minute
 
     return () => clearInterval(progressInterval);
-  }, [timetable, currentDay, selectedRole, isRunning, classStartTime, attendedMinutes]);
+  }, [timetable, currentDay, selectedRole]);
 
-  // 5-minute backup: Save attended minutes to database every 5 minutes
-  useEffect(() => {
-    if (!isRunning || !currentClassInfo || !studentId || selectedRole !== 'student') {
-      return;
-    }
-
-    const saveBackup = async () => {
-      try {
-        const serverTime = getServerTime();
-        const currentServerTime = serverTime.nowISO();
-        
-        console.log('💾 5-min backup: Saving attended minutes:', attendedMinutes);
-        
-        await fetch(`${SOCKET_URL}/api/attendance/backup`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            studentId,
-            enrollmentNo: userData?.enrollmentNo,
-            studentName,
-            semester,
-            branch,
-            attendedMinutes,
-            currentClass: currentClassInfo?.subject,
-            timestamp: currentServerTime,
-            isRunning: true,
-            status: 'attending'
-          })
-        });
-        
-        console.log('✅ Backup saved successfully');
-      } catch (error) {
-        console.error('❌ Failed to save backup:', error);
-      }
-    };
-
-    // Save immediately on first run
-    saveBackup();
-
-    // Then save every 5 minutes (300000ms)
-    const backupInterval = setInterval(saveBackup, 300000);
-
-    return () => clearInterval(backupInterval);
-  }, [isRunning, currentClassInfo, studentId, attendedMinutes, selectedRole, studentName, semester, branch, userData]);
+  // Removed 5-minute backup - server handles all attendance tracking via timer broadcasts
 
   useEffect(() => {
     // Initialize server time synchronization (CRITICAL for security)
@@ -617,9 +536,8 @@ export default function App() {
           try {
             const serverTime = getServerTime();
             const currentServerTime = serverTime.now();
-            // Attendance continues tracking in background based on server time
-            // No need to update timer value - attendance is calculated from classStartTime
-            updateTimerOnServer(0, true);
+            // Attendance continues tracking on server
+            // No action needed - server handles everything
           } catch {
             // If server time fails, stop tracking - security measure
             console.error('⚠️ Cannot calculate background time without server time');
@@ -991,59 +909,7 @@ export default function App() {
     }
   };
 
-  const saveLectureAttendance = (lectureInfo, attendedMin) => {
-    const totalMin = lectureInfo.totalMinutes;
-    const attendancePercentage = (attendedMin / totalMin) * 100;
-    const isPresent = attendancePercentage >= 75;
-
-    const lectureRecord = {
-      subject: lectureInfo.subject,
-      room: lectureInfo.room,
-      startTime: lectureInfo.startTime,
-      endTime: lectureInfo.endTime,
-      attended: attendedMin,
-      total: totalMin,
-      percentage: Math.round(attendancePercentage),
-      present: isPresent
-    };
-
-    setTodayAttendance(prev => {
-      const updatedLectures = [...prev.lectures];
-      const existingIndex = updatedLectures.findIndex(l =>
-        l.subject === lectureInfo.subject && l.startTime === lectureInfo.startTime
-      );
-
-      if (existingIndex >= 0) {
-        updatedLectures[existingIndex] = lectureRecord;
-      } else {
-        updatedLectures.push(lectureRecord);
-      }
-
-      const totalAttended = updatedLectures.reduce((sum, l) => sum + l.attended, 0);
-      const totalClassTime = updatedLectures.reduce((sum, l) => sum + l.total, 0);
-      const dayPercentage = totalClassTime > 0 ? (totalAttended / totalClassTime) * 100 : 0;
-      const dayPresent = dayPercentage >= 75;
-
-      // CRITICAL: Use server time for attendance date to prevent manipulation
-      let attendanceDate;
-      try {
-        const serverTime = getServerTime();
-        attendanceDate = serverTime.nowDate().toDateString();
-      } catch {
-        console.warn('⚠️ Server time not available for attendance date, using device time');
-        attendanceDate = new Date().toDateString();
-      }
-
-      return {
-        date: attendanceDate,
-        lectures: updatedLectures,
-        totalAttended,
-        totalClassTime,
-        dayPercentage: Math.round(dayPercentage),
-        dayPresent
-      };
-    });
-  };
+  // Removed saveLectureAttendance - server handles all attendance tracking
 
   // Calculate attendance statistics
   const getAttendanceStats = () => {
@@ -1518,8 +1384,7 @@ export default function App() {
   }, [isRunning]);
 
   const updateTimerOnServer = async (timer, running, status = null) => {
-    // NOTE: timer parameter is legacy - actual attendance is tracked by attendedMinutes
-    // based on real lecture time from timetable
+    // Legacy function - kept for compatibility but server handles all tracking
     if (!studentId) {
       console.log('⚠️ No studentId for timer update');
       return;
@@ -1690,7 +1555,7 @@ export default function App() {
       try {
         const serverTime = getServerTime();
         const currentServerTime = serverTime.now();
-        setClassStartTime(currentServerTime);
+        // Removed classStartTime - server handles timing
       } catch {
         // If server time fails, don't mark class start - security measure
         console.error('⚠️ Cannot mark class start without server time');
@@ -1733,8 +1598,6 @@ export default function App() {
     setIsRunning(false);
     setVerifiedToday(false);
     setIsFaceVerified(false);
-    setClassStartTime(null);
-    setAttendedMinutes(0);
     clearInterval(intervalRef.current);
     
     // Stop timer using server-side system
@@ -1936,7 +1799,6 @@ export default function App() {
       }
       await refreshUserProfile();
       // Reset timer state
-      setAttendedMinutes(0);
       setIsRunning(false);
       setIsOffline(false);
     } catch (error) {
