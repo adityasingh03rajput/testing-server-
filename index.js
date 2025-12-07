@@ -1993,6 +1993,25 @@ const studentManagementSchema = new mongoose.Schema({
     isRunning: { type: Boolean, default: false },
     status: { type: String, enum: ['attending', 'absent', 'present'], default: 'absent' },
     lastUpdated: { type: Date, default: Date.now },
+    // Attendance session tracking (server-side timer)
+    attendanceSession: {
+        sessionStartTime: { type: Date },
+        totalAttendedSeconds: { type: Number, default: 0 },
+        lastPauseTime: { type: Date },
+        pausedDuration: { type: Number, default: 0 },
+        isPaused: { type: Boolean, default: false },
+        pauseReason: { type: String }
+    },
+    // Current class info
+    currentClass: {
+        subject: String,
+        teacher: String,
+        room: String,
+        period: Number,
+        startTime: String,
+        endTime: String,
+        totalDurationSeconds: Number
+    },
     // 5-minute backup data for recovery
     attendanceBackup: [{
         date: { type: Date, required: true },
