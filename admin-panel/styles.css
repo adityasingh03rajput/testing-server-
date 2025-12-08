@@ -4179,3 +4179,54 @@ ture Details Styles */
 .threshold-slider:focus {
     background: linear-gradient(to right, var(--primary) 0%, var(--border) 100%);
 }
+
+
+/* Subject Type Badges */
+.badge-theory {
+    background-color: #3b82f6;
+    color: white;
+}
+
+.badge-lab {
+    background-color: #8b5cf6;
+    color: white;
+}
+
+.badge-practical {
+    background-color: #10b981;
+    color: white;
+}
+
+.badge-training {
+    background-color: #f59e0b;
+    color: white;
+}
+
+.badge-success {
+    background-color: #10b981;
+    color: white;
+}
+
+.badge-danger {
+    background-color: #ef4444;
+    color: white;
+}
+
+.badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    display: inline-block;
+}
+
+/* Form Row for side-by-side inputs */
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.form-row .form-group {
+    margin-bottom: 0;
+}

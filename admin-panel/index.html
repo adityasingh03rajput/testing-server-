@@ -34,6 +34,10 @@
                     <span class="icon">📅</span>
                     <span>Timetable</span>
                 </button>
+                <button class="nav-item" data-section="subjects">
+                    <span class="icon">📚</span>
+                    <span>Subjects</span>
+                </button>
                 <button class="nav-item" data-section="classrooms">
                     <span class="icon">🏫</span>
                     <span>Classrooms</span>
@@ -313,6 +317,71 @@
 
                     <div id="timetableEditor" class="timetable-editor">
                         <!-- Timetable grid will be rendered here -->
+                    </div>
+                </section>
+
+                <!-- Subjects Section -->
+                <section id="subjects-section" class="section">
+                    <div class="section-header">
+                        <h2 class="section-title">Subject Management</h2>
+                        <div class="action-buttons">
+                            <button class="btn btn-secondary" id="exportSubjectsBtn">📤 Export</button>
+                            <button class="btn btn-primary" id="addSubjectBtn">➕ Add Subject</button>
+                        </div>
+                    </div>
+
+                    <div class="filters">
+                        <select id="subjectSemesterFilter" class="filter-select">
+                            <option value="">All Semesters</option>
+                            <option value="1">Semester 1</option>
+                            <option value="2">Semester 2</option>
+                            <option value="3">Semester 3</option>
+                            <option value="4">Semester 4</option>
+                            <option value="5">Semester 5</option>
+                            <option value="6">Semester 6</option>
+                            <option value="7">Semester 7</option>
+                            <option value="8">Semester 8</option>
+                        </select>
+                        <select id="subjectBranchFilter" class="filter-select">
+                            <option value="">All Branches</option>
+                            <option value="B.Tech Computer Science">Computer Science (CS)</option>
+                            <option value="B.Tech Data Science">Data Science (DS)</option>
+                            <option value="B.Tech Information Technology">Information Technology (IT)</option>
+                            <option value="B.Tech Artificial Intelligence">Artificial Intelligence (AI)</option>
+                            <option value="B.Tech Electronics">Electronics (EC)</option>
+                            <option value="B.Tech Mechanical">Mechanical (ME)</option>
+                            <option value="B.Tech Civil">Civil (CE)</option>
+                        </select>
+                        <select id="subjectTypeFilter" class="filter-select">
+                            <option value="">All Types</option>
+                            <option value="Theory">Theory</option>
+                            <option value="Lab">Lab</option>
+                            <option value="Practical">Practical</option>
+                            <option value="Training">Training</option>
+                        </select>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Subject Code</th>
+                                    <th>Subject Name</th>
+                                    <th>Short Name</th>
+                                    <th>Semester</th>
+                                    <th>Branch</th>
+                                    <th>Credits</th>
+                                    <th>Type</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="subjectsTableBody">
+                                <tr>
+                                    <td colspan="9" class="text-center">Loading subjects...</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </section>
 

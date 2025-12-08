@@ -181,6 +181,7 @@ function switchSection(sectionName) {
     switch (sectionName) {
         case 'students': loadStudents(); break;
         case 'teachers': loadTeachers(); break;
+        case 'subjects': loadSubjects(); break;
         case 'classrooms': loadClassrooms(); break;
         case 'calendar': loadCalendar(); break;
         case 'periods': loadPeriods(); break;
@@ -6081,3 +6082,353 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+
+// ========================================
+// Subject Management
+// ========================================
+
+let subjects = [];
+
+async function loadSubjects() {
+    try {
+        const semester = document.getElementById('subjectSemesterFilter').value;
+        const branch = document.getElementById('subjectBranchFilter').value;
+        const type = document.getElementById('subjectTypeFilter').value;
+        
+        let url = `${SERVER_URL}/api/subjects?`;
+        if (semester) url += `semester=${semester}&`;
+        if (branch) url += `branch=${encodeURIComponent(branch)}&`;
+        if (type) url += `type=${type}&`;
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.success) {
+            subjects = data.subjects;
+            renderSubjectsTable();
+        }
+    } catch (error) {
+        console.error('Error loading subjects:', error);
+        showNotification('Failed to load subjects', 'error');
+    }
+}
+
+function renderSubjectsTable() {
+    const tbody = document.getElementById('subjectsTableBody');
+    
+    if (subjects.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center">No subjects found</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = subjects.map(subject => `
+        <tr>
+            <td><strong>${subject.subjectCode}</strong></td>
+            <td>${subject.subjectName}</td>
+            <td>${subject.shortName || '-'}</td>
+            <td>Sem ${subject.semester}</td>
+            <td>${subject.branch}</td>
+            <td>${subject.credits}</td>
+            <td><span class="badge badge-${subject.type.toLowerCase()}">${subject.type}</span></td>
+            <td><span class="badge badge-${subject.isActive ? 'success' : 'danger'}">${subject.isActive ? 'Active' : 'Inactive'}</span></td>
+            <td>
+                <button class="btn-icon" onclick="editSubject('${subject.subjectCode}')" title="Edit">✏️</button>
+                <button class="btn-icon" onclick="deleteSubject('${subject.subjectCode}')" title="Delete">🗑️</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function showAddSubjectDialog() {
+    const dialog = document.createElement('div');
+    dialog.className = 'modal-overlay';
+    dialog.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add New Subject</h3>
+                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+            </div>
+            <div class="modal-body">
+                <form id="addSubjectForm">
+                    <div class="form-group">
+                        <label>Subject Code *</label>
+                        <input type="text" id="subjectCode" required placeholder="e.g., CS301">
+                    </div>
+                    <div class="form-group">
+                        <label>Subject Name *</label>
+                        <input type="text" id="subjectName" required placeholder="e.g., Data Structures">
+                    </div>
+                    <div class="form-group">
+                        <label>Short Name</label>
+                        <input type="text" id="shortName" placeholder="e.g., DS">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Semester *</label>
+                            <select id="semester" required>
+                                <option value="">Select Semester</option>
+                                <option value="1">Semester 1</option>
+                                <option value="2">Semester 2</option>
+                                <option value="3">Semester 3</option>
+                                <option value="4">Semester 4</option>
+                                <option value="5">Semester 5</option>
+                                <option value="6">Semester 6</option>
+                                <option value="7">Semester 7</option>
+                                <option value="8">Semester 8</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Branch *</label>
+                            <select id="branch" required>
+                                <option value="">Select Branch</option>
+                                <option value="B.Tech Computer Science">Computer Science (CS)</option>
+                                <option value="B.Tech Data Science">Data Science (DS)</option>
+                                <option value="B.Tech Information Technology">Information Technology (IT)</option>
+                                <option value="B.Tech Artificial Intelligence">Artificial Intelligence (AI)</option>
+                                <option value="B.Tech Electronics">Electronics (EC)</option>
+                                <option value="B.Tech Mechanical">Mechanical (ME)</option>
+                                <option value="B.Tech Civil">Civil (CE)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Credits</label>
+                            <input type="number" id="credits" value="3" min="1" max="6">
+                        </div>
+                        <div class="form-group">
+                            <label>Type *</label>
+                            <select id="type" required>
+                                <option value="Theory">Theory</option>
+                                <option value="Lab">Lab</option>
+                                <option value="Practical">Practical</option>
+                                <option value="Training">Training</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea id="description" rows="3" placeholder="Subject description..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveNewSubject()">Add Subject</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(dialog);
+}
+
+async function saveNewSubject() {
+    const subjectCode = document.getElementById('subjectCode').value;
+    const subjectName = document.getElementById('subjectName').value;
+    const shortName = document.getElementById('shortName').value;
+    const semester = document.getElementById('semester').value;
+    const branch = document.getElementById('branch').value;
+    const credits = document.getElementById('credits').value;
+    const type = document.getElementById('type').value;
+    const description = document.getElementById('description').value;
+    
+    if (!subjectCode || !subjectName || !semester || !branch) {
+        showNotification('Please fill all required fields', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${SERVER_URL}/api/subjects`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                subjectCode,
+                subjectName,
+                shortName: shortName || subjectName,
+                semester,
+                branch,
+                credits: parseInt(credits),
+                type,
+                description
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification('Subject added successfully', 'success');
+            document.querySelector('.modal-overlay').remove();
+            loadSubjects();
+        } else {
+            showNotification(data.error || 'Failed to add subject', 'error');
+        }
+    } catch (error) {
+        console.error('Error adding subject:', error);
+        showNotification('Failed to add subject', 'error');
+    }
+}
+
+async function editSubject(subjectCode) {
+    try {
+        const response = await fetch(`${SERVER_URL}/api/subjects/${subjectCode}`);
+        const data = await response.json();
+        
+        if (!data.success) {
+            showNotification('Subject not found', 'error');
+            return;
+        }
+        
+        const subject = data.subject;
+        
+        const dialog = document.createElement('div');
+        dialog.className = 'modal-overlay';
+        dialog.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Edit Subject</h3>
+                    <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <form id="editSubjectForm">
+                        <div class="form-group">
+                            <label>Subject Code</label>
+                            <input type="text" value="${subject.subjectCode}" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label>Subject Name *</label>
+                            <input type="text" id="editSubjectName" value="${subject.subjectName}" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Short Name</label>
+                            <input type="text" id="editShortName" value="${subject.shortName || ''}">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Semester *</label>
+                                <select id="editSemester" required>
+                                    ${[1,2,3,4,5,6,7,8].map(s => `<option value="${s}" ${s == subject.semester ? 'selected' : ''}>Semester ${s}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Branch *</label>
+                                <select id="editBranch" required>
+                                    <option value="B.Tech Computer Science" ${subject.branch === 'B.Tech Computer Science' ? 'selected' : ''}>Computer Science (CS)</option>
+                                    <option value="B.Tech Data Science" ${subject.branch === 'B.Tech Data Science' ? 'selected' : ''}>Data Science (DS)</option>
+                                    <option value="B.Tech Information Technology" ${subject.branch === 'B.Tech Information Technology' ? 'selected' : ''}>Information Technology (IT)</option>
+                                    <option value="B.Tech Artificial Intelligence" ${subject.branch === 'B.Tech Artificial Intelligence' ? 'selected' : ''}>Artificial Intelligence (AI)</option>
+                                    <option value="B.Tech Electronics" ${subject.branch === 'B.Tech Electronics' ? 'selected' : ''}>Electronics (EC)</option>
+                                    <option value="B.Tech Mechanical" ${subject.branch === 'B.Tech Mechanical' ? 'selected' : ''}>Mechanical (ME)</option>
+                                    <option value="B.Tech Civil" ${subject.branch === 'B.Tech Civil' ? 'selected' : ''}>Civil (CE)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Credits</label>
+                                <input type="number" id="editCredits" value="${subject.credits}" min="1" max="6">
+                            </div>
+                            <div class="form-group">
+                                <label>Type *</label>
+                                <select id="editType" required>
+                                    <option value="Theory" ${subject.type === 'Theory' ? 'selected' : ''}>Theory</option>
+                                    <option value="Lab" ${subject.type === 'Lab' ? 'selected' : ''}>Lab</option>
+                                    <option value="Practical" ${subject.type === 'Practical' ? 'selected' : ''}>Practical</option>
+                                    <option value="Training" ${subject.type === 'Training' ? 'selected' : ''}>Training</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Description</label>
+                            <textarea id="editDescription" rows="3">${subject.description || ''}</textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="editIsActive" ${subject.isActive ? 'checked' : ''}>
+                                Active
+                            </label>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveEditedSubject('${subjectCode}')">Save Changes</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(dialog);
+    } catch (error) {
+        console.error('Error loading subject:', error);
+        showNotification('Failed to load subject', 'error');
+    }
+}
+
+async function saveEditedSubject(subjectCode) {
+    const subjectName = document.getElementById('editSubjectName').value;
+    const shortName = document.getElementById('editShortName').value;
+    const semester = document.getElementById('editSemester').value;
+    const branch = document.getElementById('editBranch').value;
+    const credits = document.getElementById('editCredits').value;
+    const type = document.getElementById('editType').value;
+    const description = document.getElementById('editDescription').value;
+    const isActive = document.getElementById('editIsActive').checked;
+    
+    try {
+        const response = await fetch(`${SERVER_URL}/api/subjects/${subjectCode}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                subjectName,
+                shortName,
+                semester,
+                branch,
+                credits: parseInt(credits),
+                type,
+                description,
+                isActive
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification('Subject updated successfully', 'success');
+            document.querySelector('.modal-overlay').remove();
+            loadSubjects();
+        } else {
+            showNotification(data.error || 'Failed to update subject', 'error');
+        }
+    } catch (error) {
+        console.error('Error updating subject:', error);
+        showNotification('Failed to update subject', 'error');
+    }
+}
+
+async function deleteSubject(subjectCode) {
+    if (!confirm(`Are you sure you want to delete subject ${subjectCode}?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${SERVER_URL}/api/subjects/${subjectCode}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification('Subject deleted successfully', 'success');
+            loadSubjects();
+        } else {
+            showNotification(data.error || 'Failed to delete subject', 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting subject:', error);
+        showNotification('Failed to delete subject', 'error');
+    }
+}
+
+// Event listeners for subject filters
+document.getElementById('subjectSemesterFilter')?.addEventListener('change', loadSubjects);
+document.getElementById('subjectBranchFilter')?.addEventListener('change', loadSubjects);
+document.getElementById('subjectTypeFilter')?.addEventListener('change', loadSubjects);
+document.getElementById('addSubjectBtn')?.addEventListener('click', showAddSubjectDialog);
