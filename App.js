@@ -163,7 +163,6 @@ export default function App() {
   const [selectedBranchForTimetable, setSelectedBranchForTimetable] = useState(null);
   const [showSemesterSelector, setShowSemesterSelector] = useState(false);
   const [manualSelection, setManualSelection] = useState({ semester: 'auto', branch: null });
-  const [allowedBranches, setAllowedBranches] = useState([]);
   const [selectedSemesterForTimetable] = useState(null);
 
   // Login states
@@ -421,24 +420,7 @@ export default function App() {
     }
   }, [todayAttendance.lectures.length]);
 
-  // Fetch allowed branches for teacher
-  useEffect(() => {
-    if (selectedRole === 'teacher' && loginId) {
-      const fetchAllowedBranches = async () => {
-        try {
-          const response = await fetch(`${SOCKET_URL}/api/teacher/allowed-branches/${loginId}`);
-          const data = await response.json();
-          if (data.success) {
-            console.log(`✅ Teacher allowed branches:`, data.allowedBranches);
-            setAllowedBranches(data.allowedBranches);
-          }
-        } catch (error) {
-          console.log('Error fetching allowed branches:', error);
-        }
-      };
-      fetchAllowedBranches();
-    }
-  }, [selectedRole, loginId]);
+  // Branch restrictions removed - teachers can see all branches
 
   // Periodic refresh for teacher to see real-time student updates
   useEffect(() => {
@@ -2843,7 +2825,6 @@ export default function App() {
           }}
           currentSelection={manualSelection}
           theme={theme}
-          allowedBranches={allowedBranches}
         />
         {/* Offline Toast Message */}
         {isOffline && (
