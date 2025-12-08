@@ -6,8 +6,7 @@ const SemesterSelector = ({
   onClose, 
   onSelect, 
   currentSelection,
-  theme,
-  allowedBranches = [] // NEW: List of branches teacher is allowed to see
+  theme
 }) => {
   const semesters = [
     { value: 'auto', label: '📚 Current Lecture (Auto)', description: 'Based on timetable' },
@@ -21,7 +20,8 @@ const SemesterSelector = ({
     { value: '8', label: 'Semester 8', description: 'Eighth semester' },
   ];
 
-  const allBranches = [
+  // All branches available to all teachers (no restrictions)
+  const branches = [
     { value: 'B.Tech Data Science', label: 'Data Science (DS)' },
     { value: 'B.Tech Computer Science', label: 'Computer Science (CS)' },
     { value: 'B.Tech Information Technology', label: 'Information Technology (IT)' },
@@ -29,11 +29,6 @@ const SemesterSelector = ({
     { value: 'B.Tech Mechanical', label: 'Mechanical (ME)' },
     { value: 'B.Tech Civil', label: 'Civil (CE)' },
   ];
-
-  // Filter branches based on teacher's allowed branches
-  const branches = allowedBranches.length > 0
-    ? allBranches.filter(b => allowedBranches.includes(b.value))
-    : allBranches;
 
   return (
     <Modal
@@ -102,13 +97,6 @@ const SemesterSelector = ({
                 <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 24 }]}>
                   Branch
                 </Text>
-                {branches.length === 0 && (
-                  <View style={{ padding: 16, backgroundColor: theme.background, borderRadius: 12 }}>
-                    <Text style={{ color: theme.textSecondary, textAlign: 'center' }}>
-                      ⚠️ No branches assigned to you in the timetable
-                    </Text>
-                  </View>
-                )}
                 {branches.map((branch) => (
                   <TouchableOpacity
                     key={branch.value}
