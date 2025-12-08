@@ -144,6 +144,27 @@ const timetableSchema = new mongoose.Schema({
 
 const Timetable = mongoose.model('Timetable', timetableSchema);
 
+// Subject Schema - Manage subjects for each semester and branch
+const subjectSchema = new mongoose.Schema({
+    subjectCode: { type: String, required: true, unique: true }, // e.g., "CS301", "DS302"
+    subjectName: { type: String, required: true }, // e.g., "Data Structures", "OOPM"
+    shortName: { type: String }, // e.g., "DS", "OOPM" (for display in timetable)
+    semester: { type: String, required: true }, // e.g., "3", "4"
+    branch: { type: String, required: true }, // e.g., "B.Tech Computer Science"
+    credits: { type: Number, default: 3 }, // Credit hours
+    type: { type: String, enum: ['Theory', 'Lab', 'Practical', 'Training'], default: 'Theory' },
+    description: { type: String },
+    isActive: { type: Boolean, default: true },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+});
+
+// Index for faster queries
+subjectSchema.index({ semester: 1, branch: 1 });
+subjectSchema.index({ subjectCode: 1 });
+
+const Subject = mongoose.model('Subject', subjectSchema);
+
 // Attendance Record Schema
 // Attendance Session Schema (Real-time tracking)
 const attendanceSessionSchema = new mongoose.Schema({
@@ -679,6 +700,163 @@ app.post('/api/periods/update-all', async (req, res) => {
         }
     } catch (error) {
         console.error('❌ Error updating periods:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ========================================
+// Subject Management APIs
+// ========================================
+
+// Get all subjects (with optional filters)
+app.get('/api/subjects', async (req, res) => {
+    try {
+        const { semester, branch, isActive } = req.query;
+        
+        const filter = {};
+        if (semester) filter.semester = semester;
+        if (branch) filter.branch = branch;
+        if (isActive !== undefined) filter.isActive = isActive === 'true';
+        
+        const subjects = await Subject.find(filter).sort({ semester: 1, subjectCode: 1 });
+        
+        res.json({
+            success: true,
+            subjects: subjects,
+            count: subjects.length
+        });
+    } catch (error) {
+        console.error('❌ Error fetching subjects:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get single subject by code
+app.get('/api/subjects/:subjectCode', async (req, res) => {
+    try {
+        const subject = await Subject.findOne({ subjectCode: req.params.subjectCode });
+        
+        if (!subject) {
+            return res.status(404).json({ success: false, error: 'Subject not found' });
+        }
+        
+        res.json({ success: true, subject });
+    } catch (error) {
+        console.error('❌ Error fetching subject:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Create new subject
+app.post('/api/subjects', async (req, res) => {
+    try {
+        const { subjectCode, subjectName, shortName, semester, branch, credits, type, description } = req.body;
+        
+        // Check if subject code already exists
+        const existing = await Subject.findOne({ subjectCode });
+        if (existing) {
+            return res.status(400).json({ success: false, error: 'Subject code already exists' });
+        }
+        
+        const subject = new Subject({
+            subjectCode,
+            subjectName,
+            shortName: shortName || subjectName,
+            semester,
+            branch,
+            credits: credits || 3,
+            type: type || 'Theory',
+            description,
+            isActive: true
+        });
+        
+        await subject.save();
+        
+        console.log(`✅ Created subject: ${subjectCode} - ${subjectName}`);
+        
+        res.json({ success: true, subject });
+    } catch (error) {
+        console.error('❌ Error creating subject:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update subject
+app.put('/api/subjects/:subjectCode', async (req, res) => {
+    try {
+        const { subjectName, shortName, semester, branch, credits, type, description, isActive } = req.body;
+        
+        const subject = await Subject.findOne({ subjectCode: req.params.subjectCode });
+        
+        if (!subject) {
+            return res.status(404).json({ success: false, error: 'Subject not found' });
+        }
+        
+        // Update fields
+        if (subjectName) subject.subjectName = subjectName;
+        if (shortName) subject.shortName = shortName;
+        if (semester) subject.semester = semester;
+        if (branch) subject.branch = branch;
+        if (credits !== undefined) subject.credits = credits;
+        if (type) subject.type = type;
+        if (description !== undefined) subject.description = description;
+        if (isActive !== undefined) subject.isActive = isActive;
+        subject.updatedAt = new Date();
+        
+        await subject.save();
+        
+        console.log(`✅ Updated subject: ${req.params.subjectCode}`);
+        
+        res.json({ success: true, subject });
+    } catch (error) {
+        console.error('❌ Error updating subject:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete subject
+app.delete('/api/subjects/:subjectCode', async (req, res) => {
+    try {
+        const subject = await Subject.findOneAndDelete({ subjectCode: req.params.subjectCode });
+        
+        if (!subject) {
+            return res.status(404).json({ success: false, error: 'Subject not found' });
+        }
+        
+        console.log(`✅ Deleted subject: ${req.params.subjectCode}`);
+        
+        res.json({ success: true, message: 'Subject deleted successfully' });
+    } catch (error) {
+        console.error('❌ Error deleting subject:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get subjects grouped by semester and branch
+app.get('/api/subjects/grouped/by-semester-branch', async (req, res) => {
+    try {
+        const subjects = await Subject.find({ isActive: true }).sort({ semester: 1, branch: 1, subjectCode: 1 });
+        
+        // Group by semester and branch
+        const grouped = {};
+        
+        subjects.forEach(subject => {
+            const key = `Sem ${subject.semester} - ${subject.branch}`;
+            if (!grouped[key]) {
+                grouped[key] = [];
+            }
+            grouped[key].push({
+                code: subject.subjectCode,
+                name: subject.subjectName,
+                shortName: subject.shortName,
+                credits: subject.credits,
+                type: subject.type
+            });
+        });
+        
+        res.json({ success: true, grouped });
+    } catch (error) {
+        console.error('❌ Error fetching grouped subjects:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
