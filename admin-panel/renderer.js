@@ -5193,11 +5193,11 @@ async function viewDetailedAttendance(enrollmentNo) {
             throw new Error('Failed to load attendance history');
         }
         
-        const records = data.records || [];
-        console.log(`✅ Loaded ${records.length} days of attendance`);
+        const history = data.history || [];
+        console.log(`✅ Loaded ${history.length} days of attendance`);
         
         // Render detailed view
-        renderDetailedAttendanceModal(student, records);
+        renderDetailedAttendanceModal(student, history);
         
     } catch (error) {
         console.error('❌ Error loading detailed attendance:', error);
@@ -5206,95 +5206,48 @@ async function viewDetailedAttendance(enrollmentNo) {
 }
 
 // Render Detailed Attendance Modal
-function renderDetailedAttendanceModal(student, records) {
-    const modalBody = document.getElementById('modalBody');
+function renderDetailedAttendanceModal(student, history) {
+    const modal = document.getElementById('detailedAttendanceModal');
+    const modalBody = document.getElementById('detailedAttendanceModalBody');
     
     // Calculate totals
-    const totalDays = records.length;
-    const presentDays = records.filter(r => r.status === 'present').length;
-    
-    // Calculate from lectures
-    const totalLecturesAttended = records.reduce((sum, r) => sum + (r.lecturesAttended || 0), 0);
-    const totalLecturesTotal = records.reduce((sum, r) => sum + (r.totalLectures || 0), 0);
-    const totalAttendedMinutes = totalLecturesAttended * 50;
-    const totalClassMinutes = totalLecturesTotal * 50;
+    const totalDays = history.length;
+    const presentDays = history.filter(d => d.dayPresent).length;
+    const totalAttendedMinutes = history.reduce((sum, d) => sum + d.totalAttendedMinutes, 0);
+    const totalClassMinutes = history.reduce((sum, d) => sum + d.totalClassMinutes, 0);
     const overallPercentage = totalClassMinutes > 0 
         ? Math.round((totalAttendedMinutes / totalClassMinutes) * 100)
         : 0;
     
     const totalHours = Math.floor(totalAttendedMinutes / 60);
     const totalMinutes = totalAttendedMinutes % 60;
+    const totalSeconds = Math.round((totalAttendedMinutes * 60) % 60);
     
     const classHours = Math.floor(totalClassMinutes / 60);
     const classMinutes = totalClassMinutes % 60;
     
-    // Sort records by date (newest first)
-    const sortedRecords = [...records].sort((a, b) => new Date(b.date) - new Date(a.date));
-    
-    modalBody.innerHTML = `
-        <h2>📊 Detailed Attendance - ${student.name}</h2>
-        <div style="background: var(--bg-card); padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-            <p><strong>Enrollment:</strong> ${student.enrollmentNo}</p>
-            <p><strong>Course:</strong> ${student.course} | <strong>Semester:</strong> ${student.semester}</p>
-            <p><strong>Overall Attendance:</strong> <span class="attendance-badge ${getAttendanceBadgeClass(overallPercentage)}">${overallPercentage}%</span></p>
-            <p><strong>Days Present:</strong> ${presentDays} / ${totalDays}</p>
-            <p><strong>Total Time:</strong> ${totalHours}h ${totalMinutes}m / ${classHours}h ${classMinutes}m</p>
-        </div>
-        
-        <h3>📅 Day-by-Day Attendance</h3>
-        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Day</th>
-                        <th>Check In</th>
-                        <th>Check Out</th>
-                        <th>Lectures</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${sortedRecords.map(record => {
-                        const date = new Date(record.date);
-                        const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-                        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                        const checkIn = record.checkInTime ? new Date(record.checkInTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-';
-                        const checkOut = record.checkOutTime ? new Date(record.checkOutTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-';
-                        const lectures = `${record.lecturesAttended || 0} / ${record.totalLectures || 0}`;
-                        const percentage = record.totalLectures > 0 ? Math.round((record.lecturesAttended / record.totalLectures) * 100) : 0;
-                        
-                        return `
-                            <tr>
-                                <td>${dateStr}</td>
-                                <td>${dayName}</td>
-                                <td>${checkIn}</td>
-                                <td>${checkOut}</td>
-                                <td>
-                                    ${lectures}
-                                    <span class="attendance-badge ${getAttendanceBadgeClass(percentage)}" style="margin-left: 8px;">
-                                        ${percentage}%
-                                    </span>
-                                </td>
-                                <td>
-                                    <span class="status-badge ${record.status === 'present' ? 'badge-success' : 'badge-danger'}">
-                                        ${record.status === 'present' ? '✓ Present' : '✗ Absent'}
-                                    </span>
-                                </td>
-                            </tr>
-                        `;
-                    }).join('')}
-                </tbody>
-            </table>
-        </div>
-        
-        <div style="margin-top: 20px; text-align: right;">
-            <button class="btn btn-primary" onclick="closeModal()">Close</button>
-        </div>
-    `;
-    
-    openModal();
-}
+    // Group by subject
+    const subjectStats = {};
+    history.forEach(day => {
+        day.periods.forEach(period => {
+            if (!subjectStats[period.subject]) {
+                subjectStats[period.subject] = {
+                    subject: period.subject,
+                    totalAttendedMinutes: 0,
+                    totalClassMinutes: 0,
+                    periodsAttended: 0,
+                    totalPeriods: 0,
+                    periods: []
+                };
+            }
+            subjectStats[period.subject].totalAttendedMinutes += period.attendedMinutes || 0;
+            subjectStats[period.subject].totalClassMinutes += period.totalMinutes || 0;
+            subjectStats[period.subject].totalPeriods++;
+            if (period.present) {
+                subjectStats[period.subject].periodsAttended++;
+            }
+            subjectStats[period.subject].periods.push({
+                date: day.date,
                 ...period
             });
         });
