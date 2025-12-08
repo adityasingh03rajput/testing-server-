@@ -136,7 +136,7 @@ export default function App() {
   const [uiClock, setUiClock] = useState(0);
   
   const [semester, setSemester] = useState('1');
-  const [branch, setBranch] = useState('letsbunk enters');
+  const [branch, setBranch] = useState('');
 
   // Teacher-specific timetable states
   const [showTimetable, setShowTimetable] = useState(false);
@@ -428,11 +428,11 @@ export default function App() {
       // Initial fetch
       fetchStudents();
 
-      // Refresh every 3 seconds for near-instant updates (backup to socket)
+      // Refresh every 30 seconds as backup (socket provides real-time updates)
       const refreshInterval = setInterval(() => {
-        console.log('🔄 Auto-refreshing student list...');
+        console.log('🔄 Auto-refreshing student list (backup)...');
         fetchStudents();
-      }, 3000); // 3 seconds for instant feel
+      }, 30000); // 30 seconds - socket events provide instant updates
 
       return () => clearInterval(refreshInterval);
     }
@@ -1162,7 +1162,7 @@ export default function App() {
         body: JSON.stringify({
           studentId,
           studentName,
-          enrollmentNumber: userData?.enrollmentNo,
+          enrollmentNo: userData?.enrollmentNo,
           status: todayAttendance.dayPresent ? 'present' : 'absent',
           timerValue: 0,
           semester,
@@ -1303,6 +1303,19 @@ export default function App() {
       await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(data));
       setConfig(data);
       // Timer duration from config is no longer used - attendance based on actual lecture time
+      
+      // Fetch dynamic app configuration (branches, semesters, etc.)
+      try {
+        const appConfigResponse = await fetch(`${SOCKET_URL}/api/config/app`);
+        const appConfigData = await appConfigResponse.json();
+        if (appConfigData.success) {
+          console.log('✅ Loaded dynamic app config:', appConfigData.config);
+          // Store for later use (branches, semesters, etc.)
+          await AsyncStorage.setItem('@app_config', JSON.stringify(appConfigData.config));
+        }
+      } catch (configError) {
+        console.log('Could not load dynamic config:', configError);
+      }
     } catch (error) {
       console.log('Using cached config');
     }
@@ -1311,20 +1324,30 @@ export default function App() {
   const fetchStudents = async () => {
     try {
       // For teachers, fetch ONLY ACTIVE students (timer running) from their current class
-      if (selectedRole === 'teacher' && semester && branch) {
+      if (selectedRole === 'teacher' && loginId) {
         console.log(`� Fetching AtCTIVE students for ${branch} Semester ${semester}`);
+        const response = await fetch(`${SOCKET_URL}/api/teacher/current-class-students/${loginId}`);
+        const data = await response.json();
+        if (data.success) {
+          if (data.hasActiveClass) {
+            console.log(`✅ Found ${data.students?.length || 0} students in current class`);
+            console.log(`📚 Current class: ${data.currentClass?.subject} - ${data.currentClass?.branch} Sem ${data.currentClass?.semester}`);
+            setStudents(data.students || []);
+            setCurrentClassInfo(data.currentClass);
+          } else {
+            console.log('ℹ️  No active class right now');
+            setStudents([]);
+            setCurrentClassInfo(null);
+          }
+        }
+      } else if (selectedRole === 'teacher' && semester && branch) {
+        // Fallback: if loginId not available, use semester/branch
+        console.log(`📊 Fetching students for ${branch} Semester ${semester} (fallback)`);
         const response = await fetch(`${SOCKET_URL}/api/view-records/students?semester=${semester}&branch=${branch}`);
         const data = await response.json();
         if (data.success) {
           console.log(`✅ Found ${data.students?.length || 0} students total`);
           setStudents(data.students || []);
-        }
-      } else {
-        // Fallback to all students
-        const response = await fetch(`${SOCKET_URL}/api/students`);
-        const data = await response.json();
-        if (data.success) {
-          setStudents(data.students);
         }
       }
     } catch (error) {
@@ -1367,7 +1390,7 @@ export default function App() {
 
     try {
       // Fetch student management details
-      const detailsResponse = await fetch(`${SOCKET_URL}/api/student-management?enrollmentNo=${student.enrollmentNumber || student._id}`);
+      const detailsResponse = await fetch(`${SOCKET_URL}/api/student-management?enrollmentNo=${student.enrollmentNo || student._id}`);
       const detailsData = await detailsResponse.json();
 
       // Fetch attendance records (last 30 days) - use server time
@@ -1652,7 +1675,7 @@ export default function App() {
           body: JSON.stringify({
             studentId,
             studentName,
-            enrollmentNumber: userData?.enrollmentNo || 'N/A',
+            enrollmentNo: userData?.enrollmentNo || 'N/A',
             status: finalStatus,
             timerValue: timer,
             semester,
@@ -1797,9 +1820,17 @@ export default function App() {
           console.log('   Session start:', data.session.sessionStartTime);
         } else {
           console.error('❌ Failed to start session:', data.error);
+          alert('Failed to start attendance session. Please try again.');
+          setIsRunning(false);
+          setIsFaceVerified(false);
+          return;
         }
       } catch (error) {
         console.error('❌ Error starting session:', error);
+        alert('Network error: Failed to start attendance session. Please check your connection and try again.');
+        setIsRunning(false);
+        setIsFaceVerified(false);
+        return;
       }
     }
 
@@ -3139,7 +3170,7 @@ export default function App() {
                           {statusIcon} {student.name || 'Unknown'}
                         </Text>
                         <Text style={{ fontSize: 12, color: theme.textSecondary, marginTop: 2 }}>
-                          {student.enrollmentNumber || 'N/A'}
+                          {student.enrollmentNo || 'N/A'}
                         </Text>
                       </View>
                       <View style={{
@@ -3216,7 +3247,7 @@ export default function App() {
                       </View>
                       <View style={styles.infoRow}>
                         <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Enrollment:</Text>
-                        <Text style={[styles.infoValue, { color: theme.text }]}>{studentDetails?.enrollmentNo || selectedStudent?.enrollmentNumber || 'N/A'}</Text>
+                        <Text style={[styles.infoValue, { color: theme.text }]}>{studentDetails?.enrollmentNo || selectedStudent?.enrollmentNo || 'N/A'}</Text>
                       </View>
                       {studentDetails && (
                         <>

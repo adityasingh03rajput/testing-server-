@@ -229,7 +229,7 @@ const ViewRecords = ({ onBack, theme }) => {
                       {student.name}
                     </Text>
                     <Text style={[styles.studentRoll, { color: theme.textSecondary }]}>
-                      {student.enrollmentNumber || 'N/A'}
+                      {student.enrollmentNo || 'N/A'}
                     </Text>
                   </View>
 

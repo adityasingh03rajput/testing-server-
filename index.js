@@ -35,6 +35,7 @@ const mongoose = require('mongoose');
 const http = require('http');
 const { Server } = require('socket.io');
 const axios = require('axios');
+const rateLimit = require('express-rate-limit');
 
 // Cloudinary configuration
 const cloudinary = require('cloudinary').v2;
@@ -370,6 +371,23 @@ app.post('/api/student/register', async (req, res) => {
 });
 
 // Timetable APIs
+// Get all timetables (for conflict checking)
+app.get('/api/timetables', async (req, res) => {
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const timetables = await Timetable.find({});
+            res.json({ success: true, timetables, count: timetables.length });
+        } else {
+            // Return from memory if DB not connected
+            const timetables = Object.values(timetableMemory);
+            res.json({ success: true, timetables, count: timetables.length });
+        }
+    } catch (error) {
+        console.error('❌ Error fetching all timetables:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.get('/api/timetable/:semester/:branch', async (req, res) => {
     try {
         const { semester, branch } = req.params;
@@ -2751,8 +2769,155 @@ app.get('/api/time', (req, res) => {
 
 // Server will be started at the end of the file after all routes are registered
 
+// ============================================
+// CONFIGURATION ENDPOINTS (Dynamic Data)
+// ============================================
+
+// Get available branches (dynamic)
+app.get('/api/config/branches', async (req, res) => {
+    try {
+        if (mongoose.connection.readyState === 1) {
+            // Get unique branches from StudentManagement collection
+            const branches = await StudentManagement.distinct('course');
+            
+            // Format branches with metadata
+            const branchList = branches.map(branch => ({
+                id: branch.toLowerCase().replace(/\s+/g, '-'),
+                name: branch,
+                displayName: branch
+            }));
+            
+            res.json({ 
+                success: true, 
+                branches: branchList,
+                count: branchList.length
+            });
+        } else {
+            // Fallback to default branches
+            res.json({ 
+                success: true, 
+                branches: [
+                    { id: 'b-tech-data-science', name: 'B.Tech Data Science', displayName: 'Data Science' }
+                ],
+                count: 1
+            });
+        }
+    } catch (error) {
+        console.error('Error fetching branches:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get available semesters (dynamic)
+app.get('/api/config/semesters', async (req, res) => {
+    try {
+        if (mongoose.connection.readyState === 1) {
+            // Get unique semesters from StudentManagement collection
+            const semesters = await StudentManagement.distinct('semester');
+            
+            // Sort numerically
+            const sortedSemesters = semesters.sort((a, b) => parseInt(a) - parseInt(b));
+            
+            res.json({ 
+                success: true, 
+                semesters: sortedSemesters,
+                count: sortedSemesters.length
+            });
+        } else {
+            // Fallback to default semesters
+            res.json({ 
+                success: true, 
+                semesters: ['1', '2', '3', '4', '5', '6', '7', '8'],
+                count: 8
+            });
+        }
+    } catch (error) {
+        console.error('Error fetching semesters:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get current academic year (calculated)
+app.get('/api/config/academic-year', async (req, res) => {
+    try {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth();
+        
+        // Academic year starts in July (month 6)
+        let academicYear;
+        if (month >= 6) {
+            academicYear = `${year}-${year + 1}`;
+        } else {
+            academicYear = `${year - 1}-${year}`;
+        }
+        
+        res.json({ 
+            success: true, 
+            academicYear,
+            startYear: parseInt(academicYear.split('-')[0]),
+            endYear: parseInt(academicYear.split('-')[1])
+        });
+    } catch (error) {
+        console.error('Error calculating academic year:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get app configuration (all dynamic settings)
+app.get('/api/config/app', async (req, res) => {
+    try {
+        // Get branches
+        const branches = await StudentManagement.distinct('course');
+        const branchList = branches.map(branch => ({
+            id: branch.toLowerCase().replace(/\s+/g, '-'),
+            name: branch,
+            displayName: branch
+        }));
+        
+        // Get semesters
+        const semesters = await StudentManagement.distinct('semester');
+        const sortedSemesters = semesters.sort((a, b) => parseInt(a) - parseInt(b));
+        
+        // Calculate academic year
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth();
+        const academicYear = month >= 6 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+        
+        res.json({
+            success: true,
+            config: {
+                appName: 'LetsBunk',
+                version: '2.1.0',
+                academicYear,
+                branches: branchList,
+                semesters: sortedSemesters,
+                features: {
+                    faceVerification: true,
+                    randomRing: true,
+                    offlineTracking: true,
+                    parentNotifications: false // Coming soon
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching app config:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Rate limiting for login endpoints
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // 5 attempts per 15 minutes
+    message: { success: false, error: 'Too many login attempts. Please try again in 15 minutes.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 // Login endpoint
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
     try {
         const { id, password } = req.body;
         console.log('Login attempt:', id);
