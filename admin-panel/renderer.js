@@ -167,6 +167,30 @@ function setupEventListeners() {
     document.getElementById('courseFilter').addEventListener('change', filterStudents);
     document.getElementById('teacherSearch').addEventListener('input', filterTeachers);
     document.getElementById('departmentFilter').addEventListener('change', filterTeachers);
+    
+    // Subject Management
+    const addSubjectBtn = document.getElementById('addSubjectBtn');
+    if (addSubjectBtn) {
+        console.log('✅ Add Subject button found, attaching listener');
+        addSubjectBtn.addEventListener('click', () => {
+            console.log('🔘 Add Subject button clicked!');
+            showAddSubjectDialog();
+        });
+    } else {
+        console.log('❌ Add Subject button NOT found');
+    }
+    const subjectSemesterFilter = document.getElementById('subjectSemesterFilter');
+    if (subjectSemesterFilter) {
+        subjectSemesterFilter.addEventListener('change', loadSubjects);
+    }
+    const subjectBranchFilter = document.getElementById('subjectBranchFilter');
+    if (subjectBranchFilter) {
+        subjectBranchFilter.addEventListener('change', loadSubjects);
+    }
+    const subjectTypeFilter = document.getElementById('subjectTypeFilter');
+    if (subjectTypeFilter) {
+        subjectTypeFilter.addEventListener('change', loadSubjects);
+    }
 }
 
 // Navigation
@@ -251,7 +275,18 @@ async function loadDashboardData() {
         }, {});
 
         const totalStudents = students.length;
-        const courses = ['B.Tech Data Science', 'CSE', 'ECE', 'ME', 'Civil'];
+        
+        // Fetch dynamic branches from server
+        let courses = ['B.Tech Data Science']; // Fallback
+        try {
+            const branchResponse = await fetch(`${SERVER_URL}/api/config/branches`);
+            const branchData = await branchResponse.json();
+            if (branchData.success) {
+                courses = branchData.branches.map(b => b.name);
+            }
+        } catch (error) {
+            console.log('Using fallback branches');
+        }
 
         courses.forEach(course => {
             const count = courseCounts[course] || 0;
@@ -1519,7 +1554,7 @@ function selectRange(start, end) {
     }
 }
 
-function editAdvancedCell(dayIdx, periodIdx) {
+async function editAdvancedCell(dayIdx, periodIdx) {
     const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const period = currentTimetable.timetable[dayKeys[dayIdx]][periodIdx];
 
@@ -1533,23 +1568,52 @@ function editAdvancedCell(dayIdx, periodIdx) {
         `<option value="${c.roomNumber}" ${period.room === c.roomNumber ? 'selected' : ''}>${c.roomNumber} - ${c.building} (Cap: ${c.capacity})</option>`
     ).join('');
 
+    // Fetch subjects from database based on current timetable's semester and branch
+    let subjectOptions = '';
+    try {
+        console.log(`📚 Fetching subjects for: ${currentTimetable.branch} - Semester ${currentTimetable.semester}`);
+        const url = `${SERVER_URL}/api/subjects?semester=${currentTimetable.semester}&branch=${encodeURIComponent(currentTimetable.branch)}`;
+        console.log('API URL:', url);
+        
+        const response = await fetch(url);
+        console.log('Response status:', response.status);
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log('Subjects data:', data);
+            const subjects = data.subjects || [];
+            
+            if (subjects.length > 0) {
+                subjectOptions = subjects.map(s =>
+                    `<option value="${s.subjectName}" ${period.subject === s.subjectName ? 'selected' : ''}>${s.subjectName} (${s.subjectCode})</option>`
+                ).join('');
+                console.log(`✅ Loaded ${subjects.length} subjects`);
+            } else {
+                console.warn('⚠️ No subjects found for this semester/branch');
+                subjectOptions = '<option value="">No subjects found for this semester/branch</option>';
+            }
+        } else {
+            console.error('❌ Failed to fetch subjects, status:', response.status);
+            const errorText = await response.text();
+            console.error('Error response:', errorText);
+            subjectOptions = '<option value="">Failed to load subjects</option>';
+        }
+    } catch (error) {
+        console.error('❌ Error fetching subjects:', error);
+        subjectOptions = '<option value="">Error loading subjects - Check console</option>';
+    }
+
     const modalBody = document.getElementById('modalBody');
     modalBody.innerHTML = `
         <h2>✏️ Edit Period</h2>
         <form id="periodForm">
             <div class="form-group">
                 <label>📚 Subject</label>
-                <input type="text" name="subject" class="form-input" value="${period.subject || ''}" list="subjectList">
-                <datalist id="subjectList">
-                    <option value="Mathematics">
-                    <option value="Physics">
-                    <option value="Chemistry">
-                    <option value="Programming">
-                    <option value="Data Structures">
-                    <option value="DBMS">
-                    <option value="Operating Systems">
-                    <option value="Computer Networks">
-                </datalist>
+                <select name="subject" class="form-select">
+                    <option value="">-- Select Subject --</option>
+                    ${subjectOptions}
+                </select>
+                <small style="color: var(--text-secondary); font-size: 12px;">Subjects from database for ${currentTimetable.branch} - Semester ${currentTimetable.semester}</small>
             </div>
             <div class="form-group">
                 <label>👨‍🏫 Teacher</label>
@@ -1590,22 +1654,49 @@ function editAdvancedCell(dayIdx, periodIdx) {
         colorChanged = true;
     });
 
-    document.getElementById('periodForm').addEventListener('submit', (e) => {
+    document.getElementById('periodForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        saveToHistory();
+        
         const formData = new FormData(e.target);
-        period.subject = formData.get('subject');
-        period.teacher = formData.get('teacher');
-        period.room = formData.get('room');
+        const newTeacher = formData.get('teacher');
+        const newRoom = formData.get('room');
+        const newSubject = formData.get('subject');
+        const isBreak = formData.has('isBreak');
+
+        // Check for teacher conflicts if teacher is assigned and not a break
+        if (newTeacher && !isBreak) {
+            const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const currentDay = dayKeys[dayIdx];
+            const currentPeriodNumber = currentTimetable.periods[periodIdx].number;
+            
+            const conflict = await checkTeacherConflict(newTeacher, currentDay, currentPeriodNumber, newRoom, currentTimetable.branch, currentTimetable.semester);
+            
+            if (conflict) {
+                const message = `⚠️ Teacher Conflict!\n\n${newTeacher} is already assigned to:\n` +
+                    `• ${conflict.branch} - Semester ${conflict.semester}\n` +
+                    `• ${currentDay} - Period ${currentPeriodNumber}\n` +
+                    `• Subject: ${conflict.subject}\n` +
+                    `• Room: ${conflict.room}\n\n` +
+                    `Cannot assign same teacher to different rooms at the same time.`;
+                
+                if (!confirm(message + '\n\nDo you want to assign anyway?')) {
+                    return; // Cancel the save
+                }
+            }
+        }
+
+        saveToHistory();
+        period.subject = newSubject;
+        period.teacher = newTeacher;
+        period.room = newRoom;
 
         // Only update color if user explicitly changed it
         if (colorChanged) {
             const newColor = formData.get('color');
             period.color = newColor;
         }
-        // Otherwise, keep existing color (don't modify period.color at all)
 
-        period.isBreak = formData.has('isBreak');
+        period.isBreak = isBreak;
 
         closeModal();
         renderAdvancedTimetableEditor(currentTimetable);
@@ -1616,6 +1707,64 @@ function editAdvancedCell(dayIdx, periodIdx) {
     });
 
     openModal();
+}
+
+// Check for teacher conflicts across all timetables
+async function checkTeacherConflict(teacherName, day, periodNumber, room, currentBranch, currentSemester) {
+    try {
+        // Fetch all timetables from server
+        const response = await fetch(`${SERVER_URL}/api/timetables`);
+        if (!response.ok) {
+            console.error('Failed to fetch timetables for conflict check');
+            return null;
+        }
+
+        const data = await response.json();
+        const allTimetables = data.timetables || [];
+
+        // Check each timetable for conflicts
+        for (const timetable of allTimetables) {
+            // Skip the current timetable being edited
+            if (timetable.branch === currentBranch && timetable.semester === currentSemester) {
+                continue;
+            }
+
+            // Check if this timetable has the same day
+            if (!timetable.timetable || !timetable.timetable[day]) {
+                continue;
+            }
+
+            // Find the period with matching period number
+            const periods = timetable.timetable[day];
+            for (let i = 0; i < periods.length; i++) {
+                const period = periods[i];
+                const periodNum = timetable.periods && timetable.periods[i] ? timetable.periods[i].number : i + 1;
+
+                // Check if same teacher, same period number, but different room
+                if (period.teacher === teacherName && 
+                    periodNum === periodNumber && 
+                    !period.isBreak &&
+                    period.room !== room) {
+                    
+                    // Found a conflict!
+                    return {
+                        branch: timetable.branch,
+                        semester: timetable.semester,
+                        day: day,
+                        periodNumber: periodNum,
+                        subject: period.subject,
+                        room: period.room,
+                        teacher: period.teacher
+                    };
+                }
+            }
+        }
+
+        return null; // No conflict found
+    } catch (error) {
+        console.error('Error checking teacher conflict:', error);
+        return null; // Don't block on error
+    }
 }
 
 // Keep old function for compatibility
@@ -3695,22 +3844,40 @@ function autoFillTimetable() {
                 });
             });
         } else if (mode === 'random') {
-            const commonSubjects = [
-                'Mathematics', 'Physics', 'Chemistry', 'English', 
-                'Computer Science', 'Biology', 'History', 'Geography'
-            ];
+            // Fetch subjects from database for random fill
+            fetch(`${SERVER_URL}/api/subjects?semester=${currentTimetable.semester}&branch=${encodeURIComponent(currentTimetable.branch)}`)
+                .then(response => response.json())
+                .then(data => {
+                    const subjects = data.subjects || [];
+                    if (!subjects || subjects.length === 0) {
+                        showNotification('No subjects found for this semester and branch', 'error');
+                        return;
+                    }
 
-            dayKeys.forEach(day => {
-                currentTimetable.timetable[day].forEach(period => {
-                    if (skipBreaks && period.isBreak) return;
-                    if (!overwrite && period.subject) return;
+                    const subjectNames = subjects.map(s => s.subjectName);
 
-                    period.subject = commonSubjects[Math.floor(Math.random() * commonSubjects.length)];
-                    period.teacher = '';
-                    period.room = '';
-                    filledCount++;
+                    dayKeys.forEach(day => {
+                        currentTimetable.timetable[day].forEach(period => {
+                            if (skipBreaks && period.isBreak) return;
+                            if (!overwrite && period.subject) return;
+
+                            period.subject = subjectNames[Math.floor(Math.random() * subjectNames.length)];
+                            period.teacher = '';
+                            period.room = '';
+                            filledCount++;
+                        });
+                    });
+
+                    closeModal();
+                    renderAdvancedTimetableEditor(currentTimetable);
+                    showNotification(`Auto-filled ${filledCount} periods successfully!`, 'success');
+                    triggerAutoSave();
+                })
+                .catch(error => {
+                    console.error('Error fetching subjects:', error);
+                    showNotification('Failed to fetch subjects from database', 'error');
                 });
-            });
+            return; // Exit early since we're handling async
         }
 
         closeModal();
@@ -3723,10 +3890,11 @@ function autoFillTimetable() {
 }
 
 // Validate
-function validateTimetable() {
+async function validateTimetable() {
     let issues = [];
     const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
+    // Check for empty cells
     dayKeys.forEach(dayKey => {
         currentTimetable.timetable[dayKey].forEach((period, idx) => {
             if (!period.isBreak && !period.subject) {
@@ -3735,10 +3903,81 @@ function validateTimetable() {
         });
     });
 
+    // Check for teacher conflicts across all timetables
+    showNotification('Checking for teacher conflicts...', 'info');
+    
+    try {
+        const response = await fetch(`${SERVER_URL}/api/timetables`);
+        if (response.ok) {
+            const data = await response.json();
+            const allTimetables = data.timetables || [];
+            
+            // Check each period in current timetable
+            for (const day of dayKeys) {
+                const periods = currentTimetable.timetable[day];
+                for (let i = 0; i < periods.length; i++) {
+                    const period = periods[i];
+                    if (period.isBreak || !period.teacher) continue;
+                    
+                    const periodNumber = currentTimetable.periods[i].number;
+                    
+                    // Check against all other timetables
+                    for (const otherTimetable of allTimetables) {
+                        // Skip current timetable
+                        if (otherTimetable.branch === currentTimetable.branch && 
+                            otherTimetable.semester === currentTimetable.semester) {
+                            continue;
+                        }
+                        
+                        if (!otherTimetable.timetable || !otherTimetable.timetable[day]) continue;
+                        
+                        const otherPeriods = otherTimetable.timetable[day];
+                        for (let j = 0; j < otherPeriods.length; j++) {
+                            const otherPeriod = otherPeriods[j];
+                            const otherPeriodNum = otherTimetable.periods && otherTimetable.periods[j] 
+                                ? otherTimetable.periods[j].number 
+                                : j + 1;
+                            
+                            // Check for conflict: same teacher, same time, different room
+                            if (otherPeriod.teacher === period.teacher &&
+                                otherPeriodNum === periodNumber &&
+                                !otherPeriod.isBreak &&
+                                otherPeriod.room !== period.room) {
+                                
+                                issues.push(
+                                    `Teacher conflict: ${period.teacher} assigned to ` +
+                                    `${day} P${periodNumber} in both ` +
+                                    `${currentTimetable.branch} (Room ${period.room}) and ` +
+                                    `${otherTimetable.branch} (Room ${otherPeriod.room})`
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error checking conflicts:', error);
+        issues.push('Could not check for teacher conflicts (network error)');
+    }
+
+    // Show results
     if (issues.length === 0) {
-        showNotification('✓ Timetable is valid!', 'success');
+        showNotification('✓ Timetable is valid! No conflicts found.', 'success');
     } else {
-        showNotification(`Found ${issues.length} issue(s)`, 'warning');
+        const modalBody = document.getElementById('modalBody');
+        modalBody.innerHTML = `
+            <h2>⚠️ Validation Issues (${issues.length})</h2>
+            <div style="max-height: 400px; overflow-y: auto;">
+                <ul style="color: var(--text-primary); line-height: 1.8;">
+                    ${issues.map(issue => `<li>${issue}</li>`).join('')}
+                </ul>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-primary" onclick="closeModal()">Close</button>
+            </div>
+        `;
+        openModal();
     }
 }
 
@@ -6095,11 +6334,13 @@ async function loadSubjects() {
         const semester = document.getElementById('subjectSemesterFilter').value;
         const branch = document.getElementById('subjectBranchFilter').value;
         const type = document.getElementById('subjectTypeFilter').value;
+        const status = document.getElementById('subjectStatusFilter')?.value;
         
         let url = `${SERVER_URL}/api/subjects?`;
         if (semester) url += `semester=${semester}&`;
         if (branch) url += `branch=${encodeURIComponent(branch)}&`;
         if (type) url += `type=${type}&`;
+        if (status) url += `isActive=${status === 'active'}&`;
         
         const response = await fetch(url);
         const data = await response.json();
@@ -6108,22 +6349,88 @@ async function loadSubjects() {
             subjects = data.subjects;
             renderSubjectsTable();
         }
+        
+        // Attach button listeners after section is loaded
+        attachSubjectButtonListeners();
     } catch (error) {
         console.error('Error loading subjects:', error);
         showNotification('Failed to load subjects', 'error');
     }
 }
 
+function attachSubjectButtonListeners() {
+    const addBtn = document.getElementById('addSubjectBtn');
+    if (addBtn) {
+        addBtn.onclick = function() {
+            showAddSubjectDialog();
+        };
+        console.log('✅ Add Subject button listener attached');
+    }
+    
+    // Subject management buttons
+    const exportBtn = document.getElementById('exportSubjectsBtn');
+    if (exportBtn) {
+        exportBtn.onclick = exportSubjectsToCSV;
+    }
+    
+    const importBtn = document.getElementById('importSubjectsBtn');
+    if (importBtn) {
+        importBtn.onclick = importSubjectsFromCSV;
+    }
+    
+    const bulkEditBtn = document.getElementById('bulkEditSubjectsBtn');
+    if (bulkEditBtn) {
+        bulkEditBtn.onclick = function() {
+            if (selectedSubjects.size === 0) {
+                showNotification('Please select subjects to edit', 'warning');
+            } else {
+                showNotification('Bulk edit feature coming soon', 'info');
+            }
+        };
+    }
+    
+    const bulkDeleteBtn = document.getElementById('bulkDeleteSubjectsBtn');
+    if (bulkDeleteBtn) {
+        bulkDeleteBtn.onclick = bulkDeleteSelectedSubjects;
+    }
+    
+    // Subject search
+    const searchInput = document.getElementById('subjectSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            searchSubjects(e.target.value);
+        });
+    }
+    
+    // Subject status filter
+    const statusFilter = document.getElementById('subjectStatusFilter');
+    if (statusFilter) {
+        statusFilter.addEventListener('change', loadSubjects);
+    }
+}
+
+// Track selected subjects
+let selectedSubjects = new Set();
+
 function renderSubjectsTable() {
     const tbody = document.getElementById('subjectsTableBody');
     
     if (subjects.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center">No subjects found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center">No subjects found</td></tr>';
         return;
     }
     
     tbody.innerHTML = subjects.map(subject => `
         <tr>
+            <td>
+                <input 
+                    type="checkbox" 
+                    class="subject-checkbox" 
+                    data-subject-code="${subject.subjectCode}"
+                    onchange="toggleSubjectSelection('${subject.subjectCode}', this.checked)"
+                    ${selectedSubjects.has(subject.subjectCode) ? 'checked' : ''}
+                >
+            </td>
             <td><strong>${subject.subjectCode}</strong></td>
             <td>${subject.subjectName}</td>
             <td>${subject.shortName || '-'}</td>
@@ -6133,17 +6440,66 @@ function renderSubjectsTable() {
             <td><span class="badge badge-${subject.type.toLowerCase()}">${subject.type}</span></td>
             <td><span class="badge badge-${subject.isActive ? 'success' : 'danger'}">${subject.isActive ? 'Active' : 'Inactive'}</span></td>
             <td>
+                <button class="btn-icon" onclick="duplicateSubject('${subject.subjectCode}')" title="Duplicate">📋</button>
                 <button class="btn-icon" onclick="editSubject('${subject.subjectCode}')" title="Edit">✏️</button>
                 <button class="btn-icon" onclick="deleteSubject('${subject.subjectCode}')" title="Delete">🗑️</button>
             </td>
         </tr>
     `).join('');
+    
+    updateBulkActionsBar();
+}
+
+// Toggle subject selection
+function toggleSubjectSelection(subjectCode, isChecked) {
+    if (isChecked) {
+        selectedSubjects.add(subjectCode);
+    } else {
+        selectedSubjects.delete(subjectCode);
+    }
+    updateBulkActionsBar();
+}
+
+// Toggle all subjects
+function toggleAllSubjects(isChecked) {
+    selectedSubjects.clear();
+    if (isChecked) {
+        subjects.forEach(subject => selectedSubjects.add(subject.subjectCode));
+    }
+    renderSubjectsTable();
+}
+
+// Update bulk actions bar
+function updateBulkActionsBar() {
+    const bar = document.getElementById('subjectBulkActionsBar');
+    const count = document.getElementById('subjectSelectedCount');
+    
+    if (selectedSubjects.size > 0) {
+        bar.style.display = 'block';
+        count.textContent = `${selectedSubjects.size} subject${selectedSubjects.size > 1 ? 's' : ''} selected`;
+    } else {
+        bar.style.display = 'none';
+    }
+    
+    // Update select all checkbox
+    const selectAllCheckbox = document.getElementById('selectAllSubjects');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = selectedSubjects.size === subjects.length && subjects.length > 0;
+    }
+}
+
+// Clear selection
+function clearSubjectSelection() {
+    selectedSubjects.clear();
+    renderSubjectsTable();
 }
 
 function showAddSubjectDialog() {
-    const dialog = document.createElement('div');
-    dialog.className = 'modal-overlay';
-    dialog.innerHTML = `
+    console.log('🎯 showAddSubjectDialog called');
+    try {
+        const dialog = document.createElement('div');
+        dialog.className = 'modal-overlay';
+        dialog.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
                 <h3>Add New Subject</h3>
@@ -6219,7 +6575,12 @@ function showAddSubjectDialog() {
             </div>
         </div>
     `;
-    document.body.appendChild(dialog);
+        document.body.appendChild(dialog);
+        console.log('✅ Dialog added to body');
+    } catch (error) {
+        console.error('❌ Error in showAddSubjectDialog:', error);
+        alert('Error opening dialog: ' + error.message);
+    }
 }
 
 async function saveNewSubject() {
@@ -6427,8 +6788,582 @@ async function deleteSubject(subjectCode) {
     }
 }
 
-// Event listeners for subject filters
-document.getElementById('subjectSemesterFilter')?.addEventListener('change', loadSubjects);
-document.getElementById('subjectBranchFilter')?.addEventListener('change', loadSubjects);
-document.getElementById('subjectTypeFilter')?.addEventListener('change', loadSubjects);
-document.getElementById('addSubjectBtn')?.addEventListener('click', showAddSubjectDialog);
+// Duplicate subject
+async function duplicateSubject(subjectCode) {
+    try {
+        const response = await fetch(`${SERVER_URL}/api/subjects/${subjectCode}`);
+        const data = await response.json();
+        
+        if (!data.success) {
+            showNotification('Failed to load subject', 'error');
+            return;
+        }
+        
+        const subject = data.subject;
+        
+        // Show dialog to select new semester/branch
+        const modalBody = document.getElementById('modalBody');
+        modalBody.innerHTML = `
+            <h2>📋 Duplicate Subject</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                Duplicating: <strong>${subject.subjectName} (${subject.subjectCode})</strong>
+            </p>
+            <form id="duplicateSubjectForm">
+                <div class="form-group">
+                    <label>New Subject Code *</label>
+                    <input type="text" id="newSubjectCode" class="form-input" required placeholder="e.g., CS401">
+                </div>
+                <div class="form-group">
+                    <label>Semester *</label>
+                    <select id="newSemester" class="form-select" required>
+                        <option value="">Select Semester</option>
+                        ${[1,2,3,4,5,6,7,8].map(s => `<option value="${s}" ${s == subject.semester ? 'selected' : ''}>Semester ${s}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Branch *</label>
+                    <select id="newBranch" class="form-select" required>
+                        <option value="">Select Branch</option>
+                        <option value="B.Tech Computer Science" ${subject.branch === 'B.Tech Computer Science' ? 'selected' : ''}>Computer Science (CS)</option>
+                        <option value="B.Tech Data Science" ${subject.branch === 'B.Tech Data Science' ? 'selected' : ''}>Data Science (DS)</option>
+                        <option value="B.Tech Information Technology" ${subject.branch === 'B.Tech Information Technology' ? 'selected' : ''}>Information Technology (IT)</option>
+                        <option value="B.Tech Artificial Intelligence" ${subject.branch === 'B.Tech Artificial Intelligence' ? 'selected' : ''}>Artificial Intelligence (AI)</option>
+                        <option value="B.Tech Electronics" ${subject.branch === 'B.Tech Electronics' ? 'selected' : ''}>Electronics (EC)</option>
+                        <option value="B.Tech Mechanical" ${subject.branch === 'B.Tech Mechanical' ? 'selected' : ''}>Mechanical (ME)</option>
+                        <option value="B.Tech Civil" ${subject.branch === 'B.Tech Civil' ? 'selected' : ''}>Civil (CE)</option>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">📋 Duplicate</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>
+        `;
+        
+        document.getElementById('duplicateSubjectForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const newSubject = {
+                subjectCode: document.getElementById('newSubjectCode').value,
+                subjectName: subject.subjectName,
+                shortName: subject.shortName,
+                semester: document.getElementById('newSemester').value,
+                branch: document.getElementById('newBranch').value,
+                credits: subject.credits,
+                type: subject.type,
+                description: subject.description,
+                isActive: subject.isActive
+            };
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/api/subjects`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newSubject)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Subject duplicated successfully', 'success');
+                    closeModal();
+                    loadSubjects();
+                } else {
+                    showNotification(data.error || 'Failed to duplicate subject', 'error');
+                }
+            } catch (error) {
+                console.error('Error duplicating subject:', error);
+                showNotification('Failed to duplicate subject', 'error');
+            }
+        });
+        
+        openModal();
+    } catch (error) {
+        console.error('Error loading subject:', error);
+        showNotification('Failed to load subject', 'error');
+    }
+}
+
+// Bulk activate subjects
+async function bulkActivateSubjects() {
+    if (selectedSubjects.size === 0) {
+        showNotification('No subjects selected', 'warning');
+        return;
+    }
+    
+    if (!confirm(`Activate ${selectedSubjects.size} subject(s)?`)) {
+        return;
+    }
+    
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const subjectCode of selectedSubjects) {
+        try {
+            const subject = subjects.find(s => s.subjectCode === subjectCode);
+            if (!subject) continue;
+            
+            const response = await fetch(`${SERVER_URL}/api/subjects/${subjectCode}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...subject, isActive: true })
+            });
+            
+            if (response.ok) {
+                successCount++;
+            } else {
+                errorCount++;
+            }
+        } catch (error) {
+            errorCount++;
+        }
+    }
+    
+    showNotification(`Activated ${successCount} subject(s)${errorCount > 0 ? `, ${errorCount} failed` : ''}`, successCount > 0 ? 'success' : 'error');
+    clearSubjectSelection();
+    loadSubjects();
+}
+
+// Bulk deactivate subjects
+async function bulkDeactivateSubjects() {
+    if (selectedSubjects.size === 0) {
+        showNotification('No subjects selected', 'warning');
+        return;
+    }
+    
+    if (!confirm(`Deactivate ${selectedSubjects.size} subject(s)?`)) {
+        return;
+    }
+    
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const subjectCode of selectedSubjects) {
+        try {
+            const subject = subjects.find(s => s.subjectCode === subjectCode);
+            if (!subject) continue;
+            
+            const response = await fetch(`${SERVER_URL}/api/subjects/${subjectCode}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...subject, isActive: false })
+            });
+            
+            if (response.ok) {
+                successCount++;
+            } else {
+                errorCount++;
+            }
+        } catch (error) {
+            errorCount++;
+        }
+    }
+    
+    showNotification(`Deactivated ${successCount} subject(s)${errorCount > 0 ? `, ${errorCount} failed` : ''}`, successCount > 0 ? 'success' : 'error');
+    clearSubjectSelection();
+    loadSubjects();
+}
+
+// Bulk duplicate subjects
+async function bulkDuplicateSubjects() {
+    if (selectedSubjects.size === 0) {
+        showNotification('No subjects selected', 'warning');
+        return;
+    }
+    
+    // Show dialog to select target semester/branch
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>📋 Bulk Duplicate Subjects</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 20px;">
+            Duplicating ${selectedSubjects.size} subject(s) to a new semester/branch
+        </p>
+        <form id="bulkDuplicateForm">
+            <div class="form-group">
+                <label>Target Semester *</label>
+                <select id="targetSemester" class="form-select" required>
+                    <option value="">Select Semester</option>
+                    ${[1,2,3,4,5,6,7,8].map(s => `<option value="${s}">Semester ${s}</option>`).join('')}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Target Branch *</label>
+                <select id="targetBranch" class="form-select" required>
+                    <option value="">Select Branch</option>
+                    <option value="B.Tech Computer Science">Computer Science (CS)</option>
+                    <option value="B.Tech Data Science">Data Science (DS)</option>
+                    <option value="B.Tech Information Technology">Information Technology (IT)</option>
+                    <option value="B.Tech Artificial Intelligence">Artificial Intelligence (AI)</option>
+                    <option value="B.Tech Electronics">Electronics (EC)</option>
+                    <option value="B.Tech Mechanical">Mechanical (ME)</option>
+                    <option value="B.Tech Civil">Civil (CE)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Subject Code Prefix (optional)</label>
+                <input type="text" id="codePrefix" class="form-input" placeholder="e.g., CS4 (will create CS401, CS402, etc.)">
+                <small style="color: var(--text-secondary);">Leave empty to keep original codes</small>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">📋 Duplicate All</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    `;
+    
+    document.getElementById('bulkDuplicateForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const targetSemester = document.getElementById('targetSemester').value;
+        const targetBranch = document.getElementById('targetBranch').value;
+        const codePrefix = document.getElementById('codePrefix').value;
+        
+        let successCount = 0;
+        let errorCount = 0;
+        let counter = 1;
+        
+        for (const subjectCode of selectedSubjects) {
+            try {
+                const subject = subjects.find(s => s.subjectCode === subjectCode);
+                if (!subject) continue;
+                
+                const newCode = codePrefix ? `${codePrefix}${String(counter).padStart(2, '0')}` : subject.subjectCode;
+                
+                const newSubject = {
+                    subjectCode: newCode,
+                    subjectName: subject.subjectName,
+                    shortName: subject.shortName,
+                    semester: targetSemester,
+                    branch: targetBranch,
+                    credits: subject.credits,
+                    type: subject.type,
+                    description: subject.description,
+                    isActive: subject.isActive
+                };
+                
+                const response = await fetch(`${SERVER_URL}/api/subjects`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newSubject)
+                });
+                
+                if (response.ok) {
+                    successCount++;
+                } else {
+                    errorCount++;
+                }
+                
+                counter++;
+            } catch (error) {
+                errorCount++;
+            }
+        }
+        
+        showNotification(`Duplicated ${successCount} subject(s)${errorCount > 0 ? `, ${errorCount} failed` : ''}`, successCount > 0 ? 'success' : 'error');
+        closeModal();
+        clearSubjectSelection();
+        loadSubjects();
+    });
+    
+    openModal();
+}
+
+// Bulk delete selected subjects
+async function bulkDeleteSelectedSubjects() {
+    if (selectedSubjects.size === 0) {
+        showNotification('No subjects selected', 'warning');
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to delete ${selectedSubjects.size} subject(s)? This action cannot be undone.`)) {
+        return;
+    }
+    
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const subjectCode of selectedSubjects) {
+        try {
+            const response = await fetch(`${SERVER_URL}/api/subjects/${subjectCode}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                successCount++;
+            } else {
+                errorCount++;
+            }
+        } catch (error) {
+            errorCount++;
+        }
+    }
+    
+    showNotification(`Deleted ${successCount} subject(s)${errorCount > 0 ? `, ${errorCount} failed` : ''}`, successCount > 0 ? 'success' : 'error');
+    clearSubjectSelection();
+    loadSubjects();
+}
+
+// Export subjects to CSV
+function exportSubjectsToCSV() {
+    if (subjects.length === 0) {
+        showNotification('No subjects to export', 'warning');
+        return;
+    }
+    
+    // Create CSV content
+    const headers = ['Subject Code', 'Subject Name', 'Short Name', 'Semester', 'Branch', 'Credits', 'Type', 'Description', 'Active'];
+    const rows = subjects.map(s => [
+        s.subjectCode,
+        s.subjectName,
+        s.shortName || '',
+        s.semester,
+        s.branch,
+        s.credits,
+        s.type,
+        s.description || '',
+        s.isActive ? 'Yes' : 'No'
+    ]);
+    
+    const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+    
+    // Download file
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `subjects_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    
+    showNotification(`Exported ${subjects.length} subjects to CSV`, 'success');
+}
+
+// Import subjects from CSV
+function importSubjectsFromCSV() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv';
+    
+    input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const csv = event.target.result;
+                const lines = csv.split('\n');
+                const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+                
+                const subjectsToImport = [];
+                
+                for (let i = 1; i < lines.length; i++) {
+                    if (!lines[i].trim()) continue;
+                    
+                    const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+                    
+                    const subject = {
+                        subjectCode: values[0],
+                        subjectName: values[1],
+                        shortName: values[2] || '',
+                        semester: values[3],
+                        branch: values[4],
+                        credits: parseInt(values[5]) || 3,
+                        type: values[6] || 'Theory',
+                        description: values[7] || '',
+                        isActive: values[8] === 'Yes' || values[8] === 'true'
+                    };
+                    
+                    subjectsToImport.push(subject);
+                }
+                
+                if (subjectsToImport.length === 0) {
+                    showNotification('No valid subjects found in CSV', 'warning');
+                    return;
+                }
+                
+                // Show confirmation
+                if (!confirm(`Import ${subjectsToImport.length} subject(s) from CSV?`)) {
+                    return;
+                }
+                
+                let successCount = 0;
+                let errorCount = 0;
+                
+                for (const subject of subjectsToImport) {
+                    try {
+                        const response = await fetch(`${SERVER_URL}/api/subjects`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(subject)
+                        });
+                        
+                        if (response.ok) {
+                            successCount++;
+                        } else {
+                            errorCount++;
+                        }
+                    } catch (error) {
+                        errorCount++;
+                    }
+                }
+                
+                showNotification(`Imported ${successCount} subject(s)${errorCount > 0 ? `, ${errorCount} failed` : ''}`, successCount > 0 ? 'success' : 'error');
+                loadSubjects();
+            } catch (error) {
+                console.error('Error parsing CSV:', error);
+                showNotification('Failed to parse CSV file', 'error');
+            }
+        };
+        
+        reader.readAsText(file);
+    };
+    
+    input.click();
+}
+
+// Search subjects
+function searchSubjects(query) {
+    if (!query) {
+        renderSubjectsTable();
+        return;
+    }
+    
+    const filtered = subjects.filter(subject => 
+        subject.subjectCode.toLowerCase().includes(query.toLowerCase()) ||
+        subject.subjectName.toLowerCase().includes(query.toLowerCase()) ||
+        (subject.shortName && subject.shortName.toLowerCase().includes(query.toLowerCase()))
+    );
+    
+    const tbody = document.getElementById('subjectsTableBody');
+    
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center">No subjects found matching your search</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = filtered.map(subject => `
+        <tr>
+            <td>
+                <input 
+                    type="checkbox" 
+                    class="subject-checkbox" 
+                    data-subject-code="${subject.subjectCode}"
+                    onchange="toggleSubjectSelection('${subject.subjectCode}', this.checked)"
+                    ${selectedSubjects.has(subject.subjectCode) ? 'checked' : ''}
+                >
+            </td>
+            <td><strong>${subject.subjectCode}</strong></td>
+            <td>${subject.subjectName}</td>
+            <td>${subject.shortName || '-'}</td>
+            <td>Sem ${subject.semester}</td>
+            <td>${subject.branch}</td>
+            <td>${subject.credits}</td>
+            <td><span class="badge badge-${subject.type.toLowerCase()}">${subject.type}</span></td>
+            <td><span class="badge badge-${subject.isActive ? 'success' : 'danger'}">${subject.isActive ? 'Active' : 'Inactive'}</span></td>
+            <td>
+                <button class="btn-icon" onclick="duplicateSubject('${subject.subjectCode}')" title="Duplicate">📋</button>
+                <button class="btn-icon" onclick="editSubject('${subject.subjectCode}')" title="Edit">✏️</button>
+                <button class="btn-icon" onclick="deleteSubject('${subject.subjectCode}')" title="Delete">🗑️</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// Event listeners for subject filters are now in setupEventListeners()
+
+// Feature Request Dialog
+function showFeatureRequestDialog() {
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+        <h2>💡 Submit Feature Request</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 20px;">
+            Help us improve the system by sharing your ideas and suggestions!
+        </p>
+        <form id="featureRequestForm">
+            <div class="form-group">
+                <label>Your Name *</label>
+                <input type="text" id="requesterName" class="form-input" required placeholder="Enter your name">
+            </div>
+            <div class="form-group">
+                <label>Email *</label>
+                <input type="email" id="requesterEmail" class="form-input" required placeholder="your.email@example.com">
+            </div>
+            <div class="form-group">
+                <label>Feature Title *</label>
+                <input type="text" id="featureTitle" class="form-input" required placeholder="Brief title for your feature">
+            </div>
+            <div class="form-group">
+                <label>Feature Description *</label>
+                <textarea id="featureDescription" class="form-input" rows="6" required 
+                    placeholder="Describe your feature idea in detail. What problem does it solve? How would it work?"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Priority</label>
+                <select id="featurePriority" class="form-select">
+                    <option value="low">Low - Nice to have</option>
+                    <option value="medium" selected>Medium - Would be helpful</option>
+                    <option value="high">High - Really need this</option>
+                    <option value="critical">Critical - Blocking my work</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Category</label>
+                <select id="featureCategory" class="form-select">
+                    <option value="attendance">Attendance Management</option>
+                    <option value="timetable">Timetable</option>
+                    <option value="students">Student Management</option>
+                    <option value="teachers">Teacher Management</option>
+                    <option value="reports">Reports & Analytics</option>
+                    <option value="notifications">Notifications</option>
+                    <option value="mobile">Mobile App</option>
+                    <option value="integration">Integration</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">✉️ Submit Request</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    `;
+    
+    document.getElementById('featureRequestForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const featureRequest = {
+            name: document.getElementById('requesterName').value,
+            email: document.getElementById('requesterEmail').value,
+            title: document.getElementById('featureTitle').value,
+            description: document.getElementById('featureDescription').value,
+            priority: document.getElementById('featurePriority').value,
+            category: document.getElementById('featureCategory').value,
+            timestamp: new Date().toISOString()
+        };
+        
+        // For now, just show success message
+        // In production, this would send to a backend API or email
+        console.log('Feature Request:', featureRequest);
+        
+        showNotification(
+            `Thank you for your feature request!\n\n` +
+            `"${featureRequest.title}" has been submitted.\n\n` +
+            `We'll review it and get back to you at ${featureRequest.email}`,
+            'success'
+        );
+        
+        closeModal();
+        
+        // TODO: Send to backend API
+        // await fetch(`${SERVER_URL}/api/feature-requests`, {
+        //     method: 'POST',
+        //     headers: { 'Content-Type': 'application/json' },
+        //     body: JSON.stringify(featureRequest)
+        // });
+    });
+    
+    openModal();
+}
