@@ -32,6 +32,7 @@ import Notifications from './Notifications';
 import Updates from './Updates';
 import HelpAndSupport from './HelpAndSupport';
 import Feedback from './Feedback';
+import SemesterSelector from './SemesterSelector';
 
 const API_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net/api/config';
 const SOCKET_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
@@ -160,6 +161,9 @@ export default function App() {
   const [randomRingDialogOpen, setRandomRingDialogOpen] = useState(false);
   const [activeRandomRing, setActiveRandomRing] = useState(null); // Track active random ring for accept/reject
   const [selectedBranchForTimetable, setSelectedBranchForTimetable] = useState(null);
+  const [showSemesterSelector, setShowSemesterSelector] = useState(false);
+  const [manualSelection, setManualSelection] = useState({ semester: 'auto', branch: null });
+  const [allowedBranches, setAllowedBranches] = useState([]);
   const [selectedSemesterForTimetable] = useState(null);
 
   // Login states
@@ -416,6 +420,25 @@ export default function App() {
       saveAttendanceToServer();
     }
   }, [todayAttendance.lectures.length]);
+
+  // Fetch allowed branches for teacher
+  useEffect(() => {
+    if (selectedRole === 'teacher' && loginId) {
+      const fetchAllowedBranches = async () => {
+        try {
+          const response = await fetch(`${SOCKET_URL}/api/teacher/allowed-branches/${loginId}`);
+          const data = await response.json();
+          if (data.success) {
+            console.log(`✅ Teacher allowed branches:`, data.allowedBranches);
+            setAllowedBranches(data.allowedBranches);
+          }
+        } catch (error) {
+          console.log('Error fetching allowed branches:', error);
+        }
+      };
+      fetchAllowedBranches();
+    }
+  }, [selectedRole, loginId]);
 
   // Periodic refresh for teacher to see real-time student updates
   useEffect(() => {
@@ -1777,7 +1800,7 @@ export default function App() {
           body: JSON.stringify({
             studentId: studentId,
             studentName: studentName || userData?.name,
-            enrollmentNumber: userData?.enrollmentNo,
+            enrollmentNo: userData?.enrollmentNo,  // Changed from enrollmentNumber
             semester: semester,
             branch: branch,
             faceData: result.photo || null
@@ -2631,6 +2654,63 @@ export default function App() {
           onFeedback={() => setShowFeedback(true)}
           onLogout={handleLogout}
         />
+        {/* Current Lecture / Manual Selection Banner */}
+        {currentClassInfo && (
+          <View style={{
+            backgroundColor: currentClassInfo.isManual ? theme.primary + '20' : theme.primary + '10',
+            padding: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: theme.border
+          }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
+                  {currentClassInfo.isManual ? '📌 Manual Selection' : '📚 Current Lecture'}
+                </Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2 }}>
+                  {currentClassInfo.subject} • {currentClassInfo.branch} Sem {currentClassInfo.semester}
+                  {!currentClassInfo.isManual && ` • ${currentClassInfo.startTime}-${currentClassInfo.endTime}`}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowSemesterSelector(true)}
+                style={{
+                  backgroundColor: theme.primary,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 8
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>Change</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+        
+        {/* Semester Selector Button (when no lecture) */}
+        {!currentClassInfo && (
+          <View style={{
+            backgroundColor: theme.card,
+            padding: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: theme.border
+          }}>
+            <TouchableOpacity
+              onPress={() => setShowSemesterSelector(true)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 8
+              }}
+            >
+              <Text style={{ color: theme.primary, fontSize: 14, fontWeight: '600' }}>
+                📚 Select Semester & Branch
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        
         <ScrollView
           style={{ flex: 1 }}
           refreshControl={
@@ -2749,6 +2829,21 @@ export default function App() {
           theme={theme}
           teacherData={userData}
           onLogout={handleLogout}
+        />
+        {/* Semester Selector */}
+        <SemesterSelector
+          visible={showSemesterSelector}
+          onClose={() => setShowSemesterSelector(false)}
+          onSelect={(selection) => {
+            setManualSelection(selection);
+            // Refresh student list with new selection
+            setTimeout(() => {
+              fetchStudents();
+            }, 300);
+          }}
+          currentSelection={manualSelection}
+          theme={theme}
+          allowedBranches={allowedBranches}
         />
         {/* Offline Toast Message */}
         {isOffline && (

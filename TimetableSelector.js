@@ -14,13 +14,14 @@ const TimetableSelector = ({ theme, onSelect }) => {
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
   const [semesterDropdownOpen, setSemesterDropdownOpen] = useState(false);
 
+  // Real branches from database
   const branches = [
-    { id: 'cse', name: 'Computer Science Engineering', icon: '💻' },
-    { id: 'ece', name: 'Electronics & Communication', icon: '📡' },
-    { id: 'me', name: 'Mechanical Engineering', icon: '⚙️' },
-    { id: 'ce', name: 'Civil Engineering', icon: '🏗️' },
-    { id: 'ee', name: 'Electrical Engineering', icon: '⚡' },
-    { id: 'it', name: 'Information Technology', icon: '🖥️' },
+    { id: 'B.Tech Data Science', name: 'Data Science', icon: '📊' },
+    { id: 'B.Tech Computer Science', name: 'Computer Science', icon: '💻' },
+    { id: 'B.Tech IT', name: 'Information Technology', icon: '🖥️' },
+    { id: 'B.Tech ECE', name: 'Electronics & Communication', icon: '📡' },
+    { id: 'B.Tech Mechanical', name: 'Mechanical Engineering', icon: '⚙️' },
+    { id: 'B.Tech Civil', name: 'Civil Engineering', icon: '🏗️' },
   ];
 
   const semesters = [
