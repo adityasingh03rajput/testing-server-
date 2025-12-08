@@ -3110,8 +3110,19 @@ app.get('/api/attendance/summary/:enrollmentNo', async (req, res) => {
             // Calculate summary
             const uniqueDates = [...new Set(records.map(r => new Date(r.date).toDateString()))];
             const presentRecords = records.filter(r => r.status === 'present');
-            const totalAttendedMinutes = records.reduce((sum, r) => sum + (r.totalAttended || 0), 0);
-            const totalClassMinutes = records.reduce((sum, r) => sum + (r.totalClassTime || 0), 0);
+            
+            // Use totalAttended/totalClassTime if available, otherwise calculate from lectures
+            let totalAttendedMinutes = records.reduce((sum, r) => sum + (r.totalAttended || 0), 0);
+            let totalClassMinutes = records.reduce((sum, r) => sum + (r.totalClassTime || 0), 0);
+            
+            // If totalAttended/totalClassTime are 0, calculate from lectures (assuming 50 min per lecture)
+            if (totalAttendedMinutes === 0 && totalClassMinutes === 0) {
+                const totalLecturesAttended = records.reduce((sum, r) => sum + (r.lecturesAttended || 0), 0);
+                const totalLecturesTotal = records.reduce((sum, r) => sum + (r.totalLectures || 0), 0);
+                totalAttendedMinutes = totalLecturesAttended * 50; // 50 minutes per lecture
+                totalClassMinutes = totalLecturesTotal * 50;
+            }
+            
             const overallPercentage = totalClassMinutes > 0 
                 ? Math.round((totalAttendedMinutes / totalClassMinutes) * 100)
                 : 0;
@@ -3142,8 +3153,19 @@ app.get('/api/attendance/summary/:enrollmentNo', async (req, res) => {
             
             const uniqueDates = [...new Set(records.map(r => new Date(r.date).toDateString()))];
             const presentRecords = records.filter(r => r.status === 'present');
-            const totalAttendedMinutes = records.reduce((sum, r) => sum + (r.totalAttended || 0), 0);
-            const totalClassMinutes = records.reduce((sum, r) => sum + (r.totalClassTime || 0), 0);
+            
+            // Use totalAttended/totalClassTime if available, otherwise calculate from lectures
+            let totalAttendedMinutes = records.reduce((sum, r) => sum + (r.totalAttended || 0), 0);
+            let totalClassMinutes = records.reduce((sum, r) => sum + (r.totalClassTime || 0), 0);
+            
+            // If totalAttended/totalClassTime are 0, calculate from lectures (assuming 50 min per lecture)
+            if (totalAttendedMinutes === 0 && totalClassMinutes === 0) {
+                const totalLecturesAttended = records.reduce((sum, r) => sum + (r.lecturesAttended || 0), 0);
+                const totalLecturesTotal = records.reduce((sum, r) => sum + (r.totalLectures || 0), 0);
+                totalAttendedMinutes = totalLecturesAttended * 50; // 50 minutes per lecture
+                totalClassMinutes = totalLecturesTotal * 50;
+            }
+            
             const overallPercentage = totalClassMinutes > 0 
                 ? Math.round((totalAttendedMinutes / totalClassMinutes) * 100)
                 : 0;
