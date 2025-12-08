@@ -149,6 +149,10 @@ function setupEventListeners() {
 
     // Settings
     document.getElementById('saveServerBtn').addEventListener('click', saveServerSettings);
+    document.getElementById('saveThresholdBtn').addEventListener('click', saveAttendanceThreshold);
+    
+    // Setup threshold slider/input sync
+    setupThresholdSync();
 
 
     // Modal close
@@ -2093,6 +2097,80 @@ function saveServerSettings() {
     localStorage.setItem('serverUrl', url);
     showNotification('Settings saved', 'success');
     checkServerConnection();
+}
+
+// Load attendance threshold
+async function loadAttendanceThreshold() {
+    try {
+        const response = await fetch(`${SERVER_URL}/api/settings/attendance-threshold`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const threshold = data.threshold || 75;
+            document.getElementById('attendanceThreshold').value = threshold;
+            document.getElementById('attendanceThresholdValue').value = threshold;
+            document.getElementById('currentThresholdDisplay').textContent = `${threshold}%`;
+            console.log(`✅ Loaded attendance threshold: ${threshold}%`);
+        }
+    } catch (error) {
+        console.error('Error loading threshold:', error);
+    }
+}
+
+// Save attendance threshold
+async function saveAttendanceThreshold() {
+    try {
+        const threshold = parseInt(document.getElementById('attendanceThresholdValue').value);
+        
+        if (isNaN(threshold) || threshold < 0 || threshold > 100) {
+            showNotification('Threshold must be between 0 and 100', 'error');
+            return;
+        }
+        
+        const response = await fetch(`${SERVER_URL}/api/settings/attendance-threshold`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                threshold: threshold,
+                updatedBy: 'admin'
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(`Attendance threshold updated to ${threshold}%`, 'success');
+            document.getElementById('currentThresholdDisplay').textContent = `${threshold}%`;
+            console.log(`✅ Threshold saved: ${threshold}%`);
+        } else {
+            showNotification('Failed to save threshold: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error saving threshold:', error);
+        showNotification('Error saving threshold', 'error');
+    }
+}
+
+// Sync slider and input
+function setupThresholdSync() {
+    const slider = document.getElementById('attendanceThreshold');
+    const input = document.getElementById('attendanceThresholdValue');
+    
+    if (slider && input) {
+        slider.addEventListener('input', (e) => {
+            input.value = e.target.value;
+        });
+        
+        input.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value) || 0;
+            if (value >= 0 && value <= 100) {
+                slider.value = value;
+            }
+        });
+    }
+    
+    // Load threshold when settings section is opened
+    loadAttendanceThreshold();
 }
 
 // Delete functions

@@ -588,6 +588,26 @@
                         </div>
 
                         <div class="settings-card">
+                            <h3>📊 Attendance Threshold</h3>
+                            <div class="form-group">
+                                <label>Minimum Attendance % to Mark Present</label>
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <input type="range" id="attendanceThreshold" min="0" max="100" value="75" 
+                                           class="threshold-slider" style="flex: 1;">
+                                    <input type="number" id="attendanceThresholdValue" min="0" max="100" value="75" 
+                                           class="form-input" style="width: 80px; text-align: center;">
+                                    <span style="font-weight: 600; color: var(--primary);">%</span>
+                                </div>
+                                <small style="color: var(--text-secondary); display: block; margin-top: 8px;">
+                                    Students must attend at least this percentage of a lecture to be marked present.
+                                    <br>
+                                    <strong>Current:</strong> <span id="currentThresholdDisplay">75%</span>
+                                </small>
+                            </div>
+                            <button class="btn btn-primary" id="saveThresholdBtn">💾 Save Threshold</button>
+                        </div>
+
+                        <div class="settings-card">
                             <h3>Backup & Restore</h3>
                             <button class="btn btn-secondary">📥 Backup Database</button>
                             <button class="btn btn-secondary">📤 Restore Database</button>

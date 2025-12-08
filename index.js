@@ -1142,7 +1142,7 @@ setInterval(async () => {
                         attendedMinutes: attendedMinutes,
                         totalMinutes: totalMinutes,
                         percentage: percentage,
-                        present: percentage >= 75,
+                        present: percentage >= ATTENDANCE_THRESHOLD,
                         verifiedFace: true,
                         randomRingTriggered: student.attendanceSession?.randomRingId ? true : false,
                         randomRingPassed: student.attendanceSession?.randomRingId ? 
@@ -1485,7 +1485,7 @@ app.post('/api/attendance/lecture-end', async (req, res) => {
                     attended: attendedSeconds,
                     total: lectureDuration,
                     percentage,
-                    present: percentage >= 75,
+                    present: percentage >= ATTENDANCE_THRESHOLD,
                     verifications: []
                 });
 
@@ -3361,6 +3361,87 @@ app.get('/api/attendance/teacher/:teacherId/lectures', async (req, res) => {
     }
 });
 
+// ============================================
+// SYSTEM SETTINGS ENDPOINTS
+// ============================================
+
+// Get attendance threshold
+app.get('/api/settings/attendance-threshold', async (req, res) => {
+    try {
+        const setting = await SystemSettings.findOne({ settingKey: 'attendance_threshold' });
+        res.json({
+            success: true,
+            threshold: setting ? parseInt(setting.settingValue) : 75,
+            description: setting?.description || 'Minimum attendance percentage required'
+        });
+    } catch (error) {
+        console.error('Error getting threshold:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update attendance threshold
+app.post('/api/settings/attendance-threshold', async (req, res) => {
+    try {
+        const { threshold, updatedBy } = req.body;
+        
+        // Validate threshold
+        const thresholdValue = parseInt(threshold);
+        if (isNaN(thresholdValue) || thresholdValue < 0 || thresholdValue > 100) {
+            return res.status(400).json({
+                success: false,
+                error: 'Threshold must be a number between 0 and 100'
+            });
+        }
+        
+        // Update in database
+        await SystemSettings.findOneAndUpdate(
+            { settingKey: 'attendance_threshold' },
+            {
+                settingValue: thresholdValue,
+                description: 'Minimum attendance percentage required to mark student as present',
+                updatedAt: new Date(),
+                updatedBy: updatedBy || 'admin'
+            },
+            { upsert: true, new: true }
+        );
+        
+        // Update in-memory value
+        ATTENDANCE_THRESHOLD = thresholdValue;
+        
+        console.log(`✅ Attendance threshold updated to ${thresholdValue}% by ${updatedBy || 'admin'}`);
+        
+        res.json({
+            success: true,
+            message: `Attendance threshold updated to ${thresholdValue}%`,
+            threshold: thresholdValue
+        });
+    } catch (error) {
+        console.error('Error updating threshold:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get all system settings
+app.get('/api/settings', async (req, res) => {
+    try {
+        const settings = await SystemSettings.find();
+        res.json({
+            success: true,
+            settings: settings.map(s => ({
+                key: s.settingKey,
+                value: s.settingValue,
+                description: s.description,
+                updatedAt: s.updatedAt,
+                updatedBy: s.updatedBy
+            }))
+        });
+    } catch (error) {
+        console.error('Error getting settings:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Helper function to format seconds
 function formatSeconds(seconds) {
     const h = Math.floor(seconds / 3600);
@@ -3368,6 +3449,46 @@ function formatSeconds(seconds) {
     const s = seconds % 60;
     return `${h}h ${m}m ${s}s`;
 }
+
+// System Settings Schema
+const systemSettingsSchema = new mongoose.Schema({
+    settingKey: { type: String, required: true, unique: true },
+    settingValue: mongoose.Schema.Types.Mixed,
+    description: String,
+    updatedAt: { type: Date, default: Date.now },
+    updatedBy: String
+});
+
+const SystemSettings = mongoose.model('SystemSettings', systemSettingsSchema);
+
+// Default attendance threshold
+let ATTENDANCE_THRESHOLD = 75; // Default 75%
+
+// Load attendance threshold from database on startup
+async function loadAttendanceThreshold() {
+    try {
+        const setting = await SystemSettings.findOne({ settingKey: 'attendance_threshold' });
+        if (setting) {
+            ATTENDANCE_THRESHOLD = parseInt(setting.settingValue) || 75;
+            console.log(`✅ Loaded attendance threshold: ${ATTENDANCE_THRESHOLD}%`);
+        } else {
+            // Create default setting
+            await SystemSettings.create({
+                settingKey: 'attendance_threshold',
+                settingValue: 75,
+                description: 'Minimum attendance percentage required to mark student as present',
+                updatedBy: 'system'
+            });
+            console.log(`✅ Created default attendance threshold: 75%`);
+        }
+    } catch (error) {
+        console.error('⚠️ Error loading attendance threshold:', error);
+        ATTENDANCE_THRESHOLD = 75; // Fallback to default
+    }
+}
+
+// Call on server start
+loadAttendanceThreshold();
 
 // Classroom Management
 const classroomSchema = new mongoose.Schema({
