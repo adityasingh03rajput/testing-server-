@@ -1594,6 +1594,241 @@ app.get('/api/attendance/date/:date', async (req, res) => {
     }
 });
 
+// Get attendance summary for a student
+app.get('/api/attendance/summary/:enrollmentNo', async (req, res) => {
+    try {
+        const { enrollmentNo } = req.params;
+        const { startDate, endDate } = req.query;
+        
+        console.log(`📊 Fetching attendance summary for ${enrollmentNo}`);
+        
+        if (!enrollmentNo) {
+            return res.status(400).json({ success: false, error: 'Enrollment number required' });
+        }
+        
+        // Build date filter
+        let dateFilter = {};
+        if (startDate && endDate) {
+            dateFilter = {
+                date: {
+                    $gte: new Date(startDate),
+                    $lte: new Date(endDate)
+                }
+            };
+        }
+        
+        if (mongoose.connection.readyState === 1) {
+            // Get student info
+            const student = await StudentManagement.findOne({ enrollmentNo });
+            if (!student) {
+                return res.json({
+                    success: true,
+                    summary: {
+                        totalDays: 0,
+                        presentDays: 0,
+                        totalAttendedMinutes: 0,
+                        totalClassMinutes: 0,
+                        overallPercentage: 0,
+                        subjects: []
+                    }
+                });
+            }
+            
+            // Get attendance records
+            const records = await AttendanceRecord.find({
+                studentId: student.studentId,
+                ...dateFilter
+            }).lean();
+            
+            // Calculate summary
+            const uniqueDates = [...new Set(records.map(r => new Date(r.date).toDateString()))];
+            const presentRecords = records.filter(r => r.status === 'present');
+            const totalAttendedMinutes = records.reduce((sum, r) => sum + (r.totalAttended || 0), 0);
+            const totalClassMinutes = records.reduce((sum, r) => sum + (r.totalClassTime || 0), 0);
+            const overallPercentage = totalClassMinutes > 0 
+                ? Math.round((totalAttendedMinutes / totalClassMinutes) * 100)
+                : 0;
+            
+            res.json({
+                success: true,
+                summary: {
+                    totalDays: uniqueDates.length,
+                    presentDays: presentRecords.length,
+                    totalAttendedMinutes,
+                    totalClassMinutes,
+                    overallPercentage,
+                    subjects: []
+                }
+            });
+        } else {
+            // Memory fallback
+            const records = attendanceRecordsMemory.filter(r => {
+                const matchesStudent = r.enrollmentNo === enrollmentNo;
+                if (!matchesStudent) return false;
+                
+                if (startDate && endDate) {
+                    const recordDate = new Date(r.date);
+                    return recordDate >= new Date(startDate) && recordDate <= new Date(endDate);
+                }
+                return true;
+            });
+            
+            const uniqueDates = [...new Set(records.map(r => new Date(r.date).toDateString()))];
+            const presentRecords = records.filter(r => r.status === 'present');
+            const totalAttendedMinutes = records.reduce((sum, r) => sum + (r.totalAttended || 0), 0);
+            const totalClassMinutes = records.reduce((sum, r) => sum + (r.totalClassTime || 0), 0);
+            const overallPercentage = totalClassMinutes > 0 
+                ? Math.round((totalAttendedMinutes / totalClassMinutes) * 100)
+                : 0;
+            
+            res.json({
+                success: true,
+                summary: {
+                    totalDays: uniqueDates.length,
+                    presentDays: presentRecords.length,
+                    totalAttendedMinutes,
+                    totalClassMinutes,
+                    overallPercentage,
+                    subjects: []
+                }
+            });
+        }
+    } catch (error) {
+        console.error('❌ Error fetching attendance summary:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get attendance history for a student
+app.get('/api/attendance/history/:enrollmentNo', async (req, res) => {
+    try {
+        const { enrollmentNo } = req.params;
+        const { startDate, endDate } = req.query;
+        
+        console.log(`📊 Fetching attendance history for ${enrollmentNo}`);
+        
+        if (!enrollmentNo) {
+            return res.status(400).json({ success: false, error: 'Enrollment number required' });
+        }
+        
+        // Build date filter
+        let dateFilter = {};
+        if (startDate && endDate) {
+            dateFilter = {
+                date: {
+                    $gte: new Date(startDate),
+                    $lte: new Date(endDate)
+                }
+            };
+        }
+        
+        if (mongoose.connection.readyState === 1) {
+            // Get student info
+            const student = await StudentManagement.findOne({ enrollmentNo });
+            if (!student) {
+                return res.json({ success: false, error: 'Student not found' });
+            }
+            
+            // Get attendance records
+            const records = await AttendanceRecord.find({
+                studentId: student.studentId,
+                ...dateFilter
+            }).sort({ date: -1 }).lean();
+            
+            res.json({
+                success: true,
+                records,
+                student: {
+                    enrollmentNo: student.enrollmentNo,
+                    name: student.name,
+                    course: student.course,
+                    semester: student.semester
+                }
+            });
+        } else {
+            // Memory fallback
+            const records = attendanceRecordsMemory.filter(r => {
+                const matchesStudent = r.enrollmentNo === enrollmentNo;
+                if (!matchesStudent) return false;
+                
+                if (startDate && endDate) {
+                    const recordDate = new Date(r.date);
+                    return recordDate >= new Date(startDate) && recordDate <= new Date(endDate);
+                }
+                return true;
+            }).sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            res.json({
+                success: true,
+                records,
+                student: {
+                    enrollmentNo,
+                    name: 'Unknown',
+                    course: 'Unknown',
+                    semester: 'Unknown'
+                }
+            });
+        }
+    } catch (error) {
+        console.error('❌ Error fetching attendance history:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get attendance date range
+app.get('/api/attendance/date-range', async (req, res) => {
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const records = await AttendanceRecord.find().sort({ date: 1 }).lean();
+            
+            if (records.length === 0) {
+                return res.json({
+                    success: true,
+                    dateRange: {
+                        earliest: null,
+                        latest: null,
+                        totalRecords: 0
+                    }
+                });
+            }
+            
+            res.json({
+                success: true,
+                dateRange: {
+                    earliest: records[0].date,
+                    latest: records[records.length - 1].date,
+                    totalRecords: records.length
+                }
+            });
+        } else {
+            // Memory fallback
+            if (attendanceRecordsMemory.length === 0) {
+                return res.json({
+                    success: true,
+                    dateRange: {
+                        earliest: null,
+                        latest: null,
+                        totalRecords: 0
+                    }
+                });
+            }
+            
+            const sorted = [...attendanceRecordsMemory].sort((a, b) => new Date(a.date) - new Date(b.date));
+            res.json({
+                success: true,
+                dateRange: {
+                    earliest: sorted[0].date,
+                    latest: sorted[sorted.length - 1].date,
+                    totalRecords: sorted.length
+                }
+            });
+        }
+    } catch (error) {
+        console.error('❌ Error fetching date range:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 const faceApiService = require('./face-api-service');
 
 // Load face-api.js models on startup
