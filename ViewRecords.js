@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 
@@ -101,34 +102,38 @@ const ViewRecords = ({ onBack, theme }) => {
   const [selectedSemester, setSelectedSemester] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [students, setStudents] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  const semesters = [
-    'Semester 1',
-    'Semester 2',
-    'Semester 3',
-    'Semester 4',
-    'Semester 5',
-    'Semester 6',
-    'Semester 7',
-    'Semester 8',
-  ];
+  const semesters = ['1', '2', '3', '4', '5', '6', '7', '8'];
+  const branches = ['B.Tech Data Science', 'B.Tech Computer Science', 'B.Tech IT'];
 
-  const branches = [
-    'CS - Computer Science',
-    'IT - Information Technology',
-    'ECE - Electronics & Communication',
-    'EEE - Electrical Engineering',
-    'ME - Mechanical Engineering',
-    'CE - Civil Engineering',
-  ];
+  // Fetch students from server when semester and branch are selected
+  useEffect(() => {
+    if (selectedSemester && selectedBranch) {
+      fetchStudents();
+    } else {
+      setStudents([]);
+    }
+  }, [selectedSemester, selectedBranch]);
 
-  const students =
-    selectedSemester && selectedBranch
-      ? generateStudents(
-          parseInt(selectedSemester.replace('Semester ', '')),
-          selectedBranch
-        )
-      : [];
+  const fetchStudents = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net/api/view-records/students?semester=${selectedSemester}&branch=${encodeURIComponent(selectedBranch)}`
+      );
+      const data = await response.json();
+      if (data.success) {
+        setStudents(data.students || []);
+      }
+    } catch (error) {
+      console.error('Error fetching students:', error);
+      setStudents([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleStudentClick = (student) => {
     setSelectedStudent(student);
@@ -160,8 +165,8 @@ const ViewRecords = ({ onBack, theme }) => {
                 style={[styles.picker, { color: theme.text }]}
               >
                 <Picker.Item label="Choose semester" value="" />
-                {semesters.map((semester) => (
-                  <Picker.Item key={semester} label={semester} value={semester} />
+                {semesters.map((sem) => (
+                  <Picker.Item key={sem} label={`Semester ${sem}`} value={sem} />
                 ))}
               </Picker>
             </View>
@@ -188,52 +193,66 @@ const ViewRecords = ({ onBack, theme }) => {
 
       {/* Student List */}
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {selectedSemester && selectedBranch ? (
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={theme.primary} />
+            <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
+              Loading students...
+            </Text>
+          </View>
+        ) : selectedSemester && selectedBranch ? (
           <View style={styles.listContainer}>
             <View style={styles.listHeader}>
               <Text style={[styles.listTitle, { color: theme.text }]}>
-                {selectedBranch.split(' - ')[0]} - {selectedSemester}
+                {selectedBranch} - Semester {selectedSemester}
               </Text>
               <Text style={[styles.listCount, { color: theme.textSecondary }]}>
                 {students.length} Students
               </Text>
             </View>
 
-            {students.map((student) => {
-              const statusStyle = getStatusColor(student.status);
-              return (
+            {students.length > 0 ? (
+              students.map((student) => (
                 <TouchableOpacity
-                  key={student.id}
+                  key={student._id}
                   onPress={() => handleStudentClick(student)}
                   style={[styles.studentCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
                 >
-                  <Image
-                    source={{ uri: student.profileImage }}
-                    style={styles.profileImage}
-                  />
+                  <View style={styles.profileImagePlaceholder}>
+                    <Text style={styles.profileInitial}>
+                      {student.name ? student.name.charAt(0).toUpperCase() : '?'}
+                    </Text>
+                  </View>
 
                   <View style={styles.studentInfo}>
                     <Text style={[styles.studentName, { color: theme.text }]} numberOfLines={1}>
                       {student.name}
                     </Text>
                     <Text style={[styles.studentRoll, { color: theme.textSecondary }]}>
-                      {student.rollNo}
+                      {student.enrollmentNumber || 'N/A'}
                     </Text>
                   </View>
 
                   <View style={styles.studentStats}>
-                    <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
-                      <Text style={[styles.statusText, { color: statusStyle.text }]}>
-                        {getStatusLabel(student.status)}
-                      </Text>
-                    </View>
-                    <Text style={[styles.attendanceText, { color: theme.textSecondary }]}>
-                      {student.attendancePercentage}% Attendance
+                    <Text style={[styles.attendanceText, { color: theme.primary }]}>
+                      {student.attendancePercentage || 0}% Attendance
+                    </Text>
+                    <Text style={[styles.daysText, { color: theme.textSecondary }]}>
+                      {student.presentDays || 0}/{student.totalDays || 0} days
                     </Text>
                   </View>
                 </TouchableOpacity>
-              );
-            })}
+              ))
+            ) : (
+              <View style={styles.emptyState}>
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                  No students found
+                </Text>
+                <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
+                  No students enrolled in this semester and branch
+                </Text>
+              </View>
+            )}
           </View>
         ) : (
           <View style={styles.emptyState}>
@@ -379,6 +398,33 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   attendanceText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  daysText: {
+    fontSize: 12,
+  },
+  profileImagePlaceholder: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#e0e0e0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileInitial: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#666',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+    gap: 16,
+  },
+  loadingText: {
     fontSize: 12,
   },
   emptyState: {

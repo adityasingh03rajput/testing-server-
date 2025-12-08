@@ -131,13 +131,13 @@ const timetableSchema = new mongoose.Schema({
         endTime: String
     }],
     timetable: {
-        sunday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        monday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        tuesday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        wednesday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        thursday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        friday: [{ period: Number, subject: String, room: String, isBreak: Boolean }],
-        saturday: [{ period: Number, subject: String, room: String, isBreak: Boolean }]
+        sunday: [{ period: Number, subject: String, teacher: String, teacherName: String, room: String, isBreak: Boolean }],
+        monday: [{ period: Number, subject: String, teacher: String, teacherName: String, room: String, isBreak: Boolean }],
+        tuesday: [{ period: Number, subject: String, teacher: String, teacherName: String, room: String, isBreak: Boolean }],
+        wednesday: [{ period: Number, subject: String, teacher: String, teacherName: String, room: String, isBreak: Boolean }],
+        thursday: [{ period: Number, subject: String, teacher: String, teacherName: String, room: String, isBreak: Boolean }],
+        friday: [{ period: Number, subject: String, teacher: String, teacherName: String, room: String, isBreak: Boolean }],
+        saturday: [{ period: Number, subject: String, teacher: String, teacherName: String, room: String, isBreak: Boolean }]
     },
     lastUpdated: { type: Date, default: Date.now }
 });
@@ -149,7 +149,7 @@ const Timetable = mongoose.model('Timetable', timetableSchema);
 const attendanceSessionSchema = new mongoose.Schema({
     studentId: { type: String, required: true },
     studentName: { type: String, required: true },
-    enrollmentNumber: { type: String, required: true },
+    enrollmentNo: { type: String, required: true },  // Changed from enrollmentNumber to match student schema
     date: { type: Date, required: true },
     
     sessionStartTime: { type: Date, required: true },  // When timer started
@@ -179,7 +179,7 @@ const AttendanceSession = mongoose.model('AttendanceSession', attendanceSessionS
 const attendanceRecordSchema = new mongoose.Schema({
     studentId: { type: String, required: true },
     studentName: { type: String, required: true },
-    enrollmentNumber: { type: String, required: true },
+    enrollmentNo: { type: String, required: true },  // Changed from enrollmentNumber to match student schema
     date: { type: Date, required: true },
     status: { type: String, enum: ['present', 'absent', 'leave'], required: true },
 
@@ -228,7 +228,7 @@ const attendanceRecordSchema = new mongoose.Schema({
 });
 
 // Indexes for faster queries
-attendanceRecordSchema.index({ enrollmentNumber: 1, date: -1 });
+attendanceRecordSchema.index({ enrollmentNo: 1, date: -1 });  // Changed from enrollmentNumber
 attendanceRecordSchema.index({ date: -1 });
 attendanceRecordSchema.index({ 'lectures.teacher': 1, date: -1 });
 
@@ -445,9 +445,154 @@ app.put('/api/timetable/:semester/:branch', async (req, res) => {
     }
 });
 
+// Get current lecture for a teacher based on time and timetable
+app.get('/api/teacher/current-lecture/:teacherId', async (req, res) => {
+    try {
+        const { teacherId } = req.params;
+        
+        // Get current time
+        const now = new Date();
+        const currentDay = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][now.getDay()];
+        const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        
+        console.log(`🔍 Finding current lecture for teacher ${teacherId} at ${currentTime} on ${currentDay}`);
+        
+        // Find all timetables where this teacher is assigned
+        const timetables = await Timetable.find();
+        
+        let currentLecture = null;
+        let matchedTimetable = null;
+        
+        for (const timetable of timetables) {
+            const daySchedule = timetable.timetable[currentDay];
+            if (!daySchedule) continue;
+            
+            // Check each period to find current lecture
+            for (const lecture of daySchedule) {
+                if (lecture.isBreak) continue;
+                if (lecture.teacher !== teacherId) continue;
+                
+                // Find period timing
+                const period = timetable.periods.find(p => p.number === lecture.period);
+                if (!period) continue;
+                
+                // Check if current time is within this period
+                if (currentTime >= period.startTime && currentTime <= period.endTime) {
+                    currentLecture = {
+                        period: lecture.period,
+                        subject: lecture.subject,
+                        teacher: lecture.teacher,
+                        teacherName: lecture.teacherName,
+                        room: lecture.room,
+                        startTime: period.startTime,
+                        endTime: period.endTime,
+                        semester: timetable.semester,
+                        branch: timetable.branch
+                    };
+                    matchedTimetable = timetable;
+                    break;
+                }
+            }
+            
+            if (currentLecture) break;
+        }
+        
+        // Also get all branches this teacher is assigned to
+        const allowedBranches = new Set();
+        for (const timetable of timetables) {
+            for (const day of Object.keys(timetable.timetable)) {
+                const daySchedule = timetable.timetable[day];
+                if (daySchedule) {
+                    for (const lecture of daySchedule) {
+                        if (lecture.teacher === teacherId && !lecture.isBreak) {
+                            allowedBranches.add(timetable.branch);
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (currentLecture) {
+            console.log(`✅ Found current lecture: ${currentLecture.subject} for ${currentLecture.branch} Semester ${currentLecture.semester}`);
+            res.json({
+                success: true,
+                currentLecture,
+                hasLecture: true,
+                allowedBranches: Array.from(allowedBranches)
+            });
+        } else {
+            console.log(`ℹ️  No current lecture found for teacher ${teacherId}`);
+            res.json({
+                success: true,
+                currentLecture: null,
+                hasLecture: false,
+                message: 'No lecture scheduled at this time',
+                allowedBranches: Array.from(allowedBranches)
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ Error finding current lecture:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get allowed branches for a teacher (branches they teach)
+app.get('/api/teacher/allowed-branches/:teacherId', async (req, res) => {
+    try {
+        const { teacherId } = req.params;
+        
+        console.log(`🔍 Finding allowed branches for teacher ${teacherId}...`);
+        
+        // Find all timetables where this teacher is assigned
+        const timetables = await Timetable.find();
+        
+        const allowedBranches = new Set();
+        const branchDetails = [];
+        
+        for (const timetable of timetables) {
+            let hasAssignment = false;
+            
+            // Check all days
+            for (const day of Object.keys(timetable.timetable)) {
+                const daySchedule = timetable.timetable[day];
+                if (daySchedule) {
+                    for (const lecture of daySchedule) {
+                        if (lecture.teacher === teacherId && !lecture.isBreak) {
+                            hasAssignment = true;
+                            break;
+                        }
+                    }
+                }
+                if (hasAssignment) break;
+            }
+            
+            if (hasAssignment && !allowedBranches.has(timetable.branch)) {
+                allowedBranches.add(timetable.branch);
+                branchDetails.push({
+                    branch: timetable.branch,
+                    semester: timetable.semester
+                });
+            }
+        }
+        
+        console.log(`✅ Teacher ${teacherId} is assigned to ${allowedBranches.size} branch(es)`);
+        
+        res.json({
+            success: true,
+            allowedBranches: Array.from(allowedBranches),
+            branchDetails: branchDetails
+        });
+        
+    } catch (error) {
+        console.error('❌ Error finding allowed branches:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Update periods for ALL timetables
 app.post('/api/periods/update-all', async (req, res) => {
-    try {
+    try{
         const { periods } = req.body;
 
         if (!periods || !Array.isArray(periods) || periods.length === 0) {
@@ -1262,7 +1407,7 @@ setInterval(async () => {
 // 1. Face Verification & Timer Start
 app.post('/api/attendance/start-session', async (req, res) => {
     try {
-        const { studentId, studentName, enrollmentNumber, semester, branch, faceData } = req.body;
+        const { studentId, studentName, enrollmentNo, semester, branch, faceData } = req.body;  // Changed from enrollmentNumber
 
         // TODO: Verify face data against stored photo
         // For now, assume verification successful
@@ -1298,7 +1443,7 @@ app.post('/api/attendance/start-session', async (req, res) => {
         session = new AttendanceSession({
             studentId,
             studentName,
-            enrollmentNumber,
+            enrollmentNo,  // Changed from enrollmentNumber
             date: today,
             sessionStartTime: new Date(),
             timerValue: 0,
@@ -1320,7 +1465,7 @@ app.post('/api/attendance/start-session', async (req, res) => {
             record = new AttendanceRecord({
                 studentId,
                 studentName,
-                enrollmentNumber,
+                enrollmentNo,  // Changed from enrollmentNumber
                 date: today,
                 status: 'present',
                 lectures: [],
@@ -1562,7 +1707,7 @@ app.post('/api/attendance/add-verification', async (req, res) => {
 app.post('/api/attendance/record', async (req, res) => {
     try {
         const {
-            studentId, studentName, enrollmentNumber, status, timerValue, semester, branch,
+            studentId, studentName, enrollmentNo, status, timerValue, semester, branch,  // Changed from enrollmentNumber
             lectures, totalAttended, totalClassTime, dayPercentage, clientDate
         } = req.body;
 
@@ -1611,7 +1756,7 @@ app.post('/api/attendance/record', async (req, res) => {
                 record = new AttendanceRecord({
                     studentId,
                     studentName,
-                    enrollmentNumber,
+                    enrollmentNo,  // Changed from enrollmentNumber
                     date: today,
                     status,
                     timerValue,
@@ -1645,7 +1790,7 @@ app.post('/api/attendance/record', async (req, res) => {
                     _id: 'record_' + Date.now(),
                     studentId,
                     studentName,
-                    enrollmentNumber,
+                    enrollmentNo,  // Changed from enrollmentNumber
                     date: today,
                     status,
                     timerValue,
@@ -3108,7 +3253,7 @@ app.get('/api/attendance/student/:enrollmentNo/dates', async (req, res) => {
         }
 
         const records = await AttendanceRecord.find({
-            enrollmentNumber: enrollmentNo,
+            enrollmentNo: enrollmentNo,  // Changed from enrollmentNumber
             ...dateFilter
         })
         .select('date status dayPercentage totalAttended totalClassTime lectures')
@@ -3126,7 +3271,7 @@ app.get('/api/attendance/student/:enrollmentNo/dates', async (req, res) => {
         res.json({
             success: true,
             student: {
-                enrollmentNumber: enrollmentNo,
+                enrollmentNo: enrollmentNo,  // Changed from enrollmentNumber
                 totalDays,
                 presentDays,
                 overallPercentage,
@@ -3158,7 +3303,7 @@ app.get('/api/attendance/student/:enrollmentNo/date/:date', async (req, res) => 
         targetDate.setHours(0, 0, 0, 0);
 
         const record = await AttendanceRecord.findOne({
-            enrollmentNumber: enrollmentNo,
+            enrollmentNo: enrollmentNo,  // Changed from enrollmentNumber
             date: targetDate
         });
 
@@ -3209,7 +3354,7 @@ app.get('/api/attendance/student/:enrollmentNo/date/:date/lecture/:period', asyn
         targetDate.setHours(0, 0, 0, 0);
 
         const record = await AttendanceRecord.findOne({
-            enrollmentNumber: enrollmentNo,
+            enrollmentNo: enrollmentNo,
             date: targetDate
         });
 
@@ -3298,7 +3443,7 @@ app.get('/api/attendance/teacher/:teacherId/lectures', async (req, res) => {
                         $push: {
                             studentId: '$studentId',
                             studentName: '$studentName',
-                            enrollmentNumber: '$enrollmentNumber',
+                            enrollmentNo: '$enrollmentNo',  // Changed from enrollmentNumber
                             attended: '$lectures.attended',
                             total: '$lectures.total',
                             percentage: '$lectures.percentage',
@@ -3629,11 +3774,11 @@ app.get('/api/attendance/history/:enrollmentNo', async (req, res) => {
                 return res.json({ success: false, error: 'Student not found' });
             }
             
-            // Get attendance records - use enrollmentNumber field (note: different from enrollmentNo)
+            // Get attendance records using enrollmentNo field
             const records = await AttendanceRecord.find({
                 $or: [
                     { studentId: enrollmentNo },
-                    { enrollmentNumber: enrollmentNo }
+                    { enrollmentNo: enrollmentNo }
                 ],
                 ...dateFilter
             }).sort({ date: -1 }).lean();
@@ -3651,7 +3796,7 @@ app.get('/api/attendance/history/:enrollmentNo', async (req, res) => {
         } else {
             // Memory fallback
             const records = attendanceRecordsMemory.filter(r => {
-                const matchesStudent = r.enrollmentNumber === enrollmentNo || r.studentId === enrollmentNo;
+                const matchesStudent = r.enrollmentNo === enrollmentNo || r.studentId === enrollmentNo;
                 if (!matchesStudent) return false;
                 
                 if (startDate && endDate) {
@@ -3859,7 +4004,7 @@ app.get('/api/attendance/summary/:enrollmentNo', async (req, res) => {
             const records = await AttendanceRecord.find({
                 $or: [
                     { studentId: enrollmentNo },
-                    { enrollmentNumber: enrollmentNo }
+                    { enrollmentNo: enrollmentNo }
                 ],
                 ...dateFilter
             }).lean();
@@ -3900,7 +4045,7 @@ app.get('/api/attendance/summary/:enrollmentNo', async (req, res) => {
         } else {
             // Memory fallback
             const records = attendanceRecordsMemory.filter(r => {
-                const matchesStudent = r.enrollmentNumber === enrollmentNo || r.studentId === enrollmentNo;
+                const matchesStudent = r.enrollmentNo === enrollmentNo || r.studentId === enrollmentNo;
                 if (!matchesStudent) return false;
                 
                 if (startDate && endDate) {

@@ -250,16 +250,28 @@ async function loadDashboardData() {
         }, {});
 
         const totalStudents = students.length;
-        const courses = ['CSE', 'ECE', 'ME', 'Civil'];
+        const courses = ['B.Tech Data Science', 'CSE', 'ECE', 'ME', 'Civil'];
 
         courses.forEach(course => {
             const count = courseCounts[course] || 0;
             const percentage = totalStudents > 0 ? (count / totalStudents * 100).toFixed(1) : 0;
 
-            const countId = course === 'Civil' ? 'civilCount' : `${course.toLowerCase()}Count`;
-            const progressId = course === 'Civil' ? 'civilProgress' : `${course.toLowerCase()}Progress`;
+            let countId, progressId;
+            if (course === 'B.Tech Data Science') {
+                countId = 'dsCount';
+                progressId = 'dsProgress';
+            } else if (course === 'Civil') {
+                countId = 'civilCount';
+                progressId = 'civilProgress';
+            } else {
+                countId = `${course.toLowerCase()}Count`;
+                progressId = `${course.toLowerCase()}Progress`;
+            }
 
-            document.getElementById(countId).textContent = count;
+            const countElement = document.getElementById(countId);
+            if (countElement) {
+                countElement.textContent = count;
+            }
             const progressBar = document.getElementById(progressId);
             if (progressBar) {
                 setTimeout(() => {
@@ -404,6 +416,7 @@ function showAddStudentModal() {
                 <label>Course *</label>
                 <select name="course" class="form-select" required>
                     <option value="">Select Course</option>
+                    <option value="B.Tech Data Science">Data Science</option>
                     <option value="CSE">Computer Science</option>
                     <option value="ECE">Electronics</option>
                     <option value="ME">Mechanical</option>
@@ -2254,6 +2267,7 @@ async function editStudent(id) {
             <div class="form-group">
                 <label>Course *</label>
                 <select name="course" class="form-select" required>
+                    <option value="B.Tech Data Science" ${student.course === 'B.Tech Data Science' ? 'selected' : ''}>Data Science</option>
                     <option value="CSE" ${student.course === 'CSE' ? 'selected' : ''}>Computer Science</option>
                     <option value="ECE" ${student.course === 'ECE' ? 'selected' : ''}>Electronics</option>
                     <option value="ME" ${student.course === 'ME' ? 'selected' : ''}>Mechanical</option>
@@ -3467,6 +3481,7 @@ function duplicateTimetable() {
             <div class="form-group">
                 <label>Target Course:</label>
                 <select name="course" class="form-select">
+                    <option value="B.Tech Data Science">Data Science</option>
                     <option value="CSE">Computer Science</option>
                     <option value="ECE">Electronics</option>
                     <option value="ME">Mechanical</option>
