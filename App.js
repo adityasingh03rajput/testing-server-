@@ -513,6 +513,45 @@ export default function App() {
     return () => clearInterval(clockInterval);
   }, [isRunning, selectedRole]);
 
+  // Timer Heartbeat - Send updates to server every 5 minutes
+  useEffect(() => {
+    if (!isRunning || selectedRole !== 'student' || !studentId) return;
+    
+    const sendHeartbeat = async () => {
+      try {
+        const timerSeconds = serverTimerData.attendedSeconds || 0;
+        const wifiConnected = true; // TODO: Check actual WiFi status
+        
+        console.log('💓 Sending timer heartbeat:', timerSeconds, 'seconds');
+        
+        await fetch(`${SOCKET_URL}/api/attendance/update-timer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            studentId: studentId,
+            timerValue: timerSeconds,
+            wifiConnected: wifiConnected
+          })
+        });
+        
+        console.log('✅ Heartbeat sent successfully');
+      } catch (error) {
+        console.error('❌ Error sending heartbeat:', error);
+      }
+    };
+    
+    // Send heartbeat every 5 minutes
+    const heartbeatInterval = setInterval(sendHeartbeat, 5 * 60 * 1000);
+    
+    // Send initial heartbeat after 1 minute
+    const initialHeartbeat = setTimeout(sendHeartbeat, 60 * 1000);
+    
+    return () => {
+      clearInterval(heartbeatInterval);
+      clearTimeout(initialHeartbeat);
+    };
+  }, [isRunning, selectedRole, studentId, serverTimerData.attendedSeconds]);
+
   useEffect(() => {
     // Initialize server time synchronization (CRITICAL for security)
     const serverTime = initializeServerTime(SOCKET_URL);
@@ -1698,6 +1737,25 @@ export default function App() {
         if (data.success) {
           console.log(`✅ Random Ring verification submitted successfully (response time: ${data.responseTime}s)`);
           alert(`✅ Random Ring Verified!\n\nYour attendance has been marked.\nResponse time: ${Math.round(data.responseTime)}s`);
+          
+          // Add verification event to current lecture
+          if (currentClassInfo) {
+            try {
+              await fetch(`${SOCKET_URL}/api/attendance/add-verification`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  studentId: studentId,
+                  period: currentClassInfo.period || 'P1',
+                  verificationType: 'random_ring',
+                  event: 'random_ring'
+                })
+              });
+              console.log('✅ Verification event added to lecture');
+            } catch (error) {
+              console.error('❌ Error adding verification event:', error);
+            }
+          }
         } else {
           console.error('❌ Random Ring verification failed:', data.error);
           alert(`❌ Verification Failed\n\n${data.error}`);
@@ -1708,6 +1766,35 @@ export default function App() {
       } finally {
         // Clear random ring data after submission attempt
         setRandomRingData(null);
+      }
+    } else {
+      // Regular morning check-in - Start attendance session
+      console.log('🌅 Starting attendance session...');
+      try {
+        const response = await fetch(`${SOCKET_URL}/api/attendance/start-session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            studentId: studentId,
+            studentName: studentName || userData?.name,
+            enrollmentNumber: userData?.enrollmentNo,
+            semester: semester,
+            branch: branch,
+            faceData: result.photo || null
+          })
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+          console.log('✅ Attendance session started:', data.message);
+          console.log('   Timer value:', data.session.timerValue);
+          console.log('   Session start:', data.session.sessionStartTime);
+        } else {
+          console.error('❌ Failed to start session:', data.error);
+        }
+      } catch (error) {
+        console.error('❌ Error starting session:', error);
       }
     }
 
@@ -1725,18 +1812,6 @@ export default function App() {
       console.log('💾 Saved daily verification state');
     } catch (error) {
       console.log('Error saving verification state:', error);
-    }
-
-    // Mark verification for current class
-    if (currentClassInfo) {
-      try {
-        const serverTime = getServerTime();
-        const currentServerTime = serverTime.now();
-        // Removed classStartTime - server handles timing
-      } catch {
-        // If server time fails, don't mark class start - security measure
-        console.error('⚠️ Cannot mark class start without server time');
-      }
     }
 
     // Keep screen awake for continuous tracking

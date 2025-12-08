@@ -145,39 +145,92 @@ const timetableSchema = new mongoose.Schema({
 const Timetable = mongoose.model('Timetable', timetableSchema);
 
 // Attendance Record Schema
+// Attendance Session Schema (Real-time tracking)
+const attendanceSessionSchema = new mongoose.Schema({
+    studentId: { type: String, required: true },
+    studentName: { type: String, required: true },
+    enrollmentNumber: { type: String, required: true },
+    date: { type: Date, required: true },
+    
+    sessionStartTime: { type: Date, required: true },  // When timer started
+    timerValue: { type: Number, default: 0 },          // Current timer in seconds
+    isActive: { type: Boolean, default: true },
+    lastUpdate: { type: Date, default: Date.now },
+    
+    wifiConnected: { type: Boolean, default: true },
+    currentClass: {
+        period: String,
+        subject: String,
+        teacher: String,
+        teacherName: String,
+        room: String,
+        startTime: String,
+        endTime: String,
+        classStartedAt: Date
+    },
+    
+    semester: String,
+    branch: String
+});
+
+const AttendanceSession = mongoose.model('AttendanceSession', attendanceSessionSchema);
+
+// Attendance Record Schema (Daily summary)
 const attendanceRecordSchema = new mongoose.Schema({
     studentId: { type: String, required: true },
     studentName: { type: String, required: true },
-    enrollmentNumber: String,
+    enrollmentNumber: { type: String, required: true },
     date: { type: Date, required: true },
     status: { type: String, enum: ['present', 'absent', 'leave'], required: true },
 
     // Detailed lecture-wise attendance
     lectures: [{
+        period: String,                    // P1, P2, P3, etc.
         subject: String,
+        teacher: String,                   // Teacher ID (e.g., TEACH001)
+        teacherName: String,               // Teacher's full name
         room: String,
-        startTime: String,
+        startTime: String,                 // HH:MM format
         endTime: String,
-        attended: Number,      // minutes attended
-        total: Number,         // total lecture minutes
-        percentage: Number,    // attendance percentage
-        present: Boolean       // true if >= 75%
+        
+        // Time tracking (in SECONDS for precision)
+        lectureStartedAt: Date,            // ISO timestamp
+        lectureEndedAt: Date,
+        studentCheckIn: Date,              // When student's timer started
+        
+        attended: Number,                  // seconds attended
+        total: Number,                     // total lecture seconds (usually 3000 = 50min)
+        percentage: Number,                // attendance percentage
+        present: Boolean,                  // true if >= 75%
+        
+        // Verification events
+        verifications: [{
+            time: Date,
+            type: { type: String, enum: ['face', 'random_ring', 'manual'] },
+            success: Boolean,
+            event: String                  // 'morning_checkin', 'random_ring', 'periodic'
+        }]
     }],
 
-    // Daily totals (excluding breaks)
-    totalAttended: { type: Number, default: 0 },      // total minutes attended
-    totalClassTime: { type: Number, default: 0 },     // total class minutes
+    // Daily totals (in SECONDS)
+    totalAttended: { type: Number, default: 0 },      // total seconds attended in classes
+    totalClassTime: { type: Number, default: 0 },     // total class seconds
     dayPercentage: { type: Number, default: 0 },      // daily attendance %
 
-    // Legacy fields (for backward compatibility)
-    timerValue: { type: Number, default: 0 },
-    checkInTime: Date,
-    checkOutTime: Date,
+    // Timer tracking
+    timerValue: { type: Number, default: 0 },         // Total seconds in college
+    checkInTime: Date,                                 // First check-in
+    checkOutTime: Date,                                // Last check-out
 
     semester: String,
     branch: String,
     createdAt: { type: Date, default: Date.now }
 });
+
+// Indexes for faster queries
+attendanceRecordSchema.index({ enrollmentNumber: 1, date: -1 });
+attendanceRecordSchema.index({ date: -1 });
+attendanceRecordSchema.index({ 'lectures.teacher': 1, date: -1 });
 
 const AttendanceRecord = mongoose.model('AttendanceRecord', attendanceRecordSchema);
 
@@ -1201,6 +1254,309 @@ setInterval(async () => {
 }, 1000); // Broadcast every 1 second
 
 
+
+// ============================================
+// NEW ATTENDANCE TRACKING SYSTEM
+// ============================================
+
+// 1. Face Verification & Timer Start
+app.post('/api/attendance/start-session', async (req, res) => {
+    try {
+        const { studentId, studentName, enrollmentNumber, semester, branch, faceData } = req.body;
+
+        // TODO: Verify face data against stored photo
+        // For now, assume verification successful
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Check if session already exists for today
+        let session = await AttendanceSession.findOne({
+            studentId,
+            date: today
+        });
+
+        if (session) {
+            // Resume existing session
+            session.isActive = true;
+            session.wifiConnected = true;
+            session.lastUpdate = new Date();
+            await session.save();
+
+            return res.json({
+                success: true,
+                message: 'Session resumed',
+                session: {
+                    timerValue: session.timerValue,
+                    sessionStartTime: session.sessionStartTime,
+                    currentClass: session.currentClass
+                }
+            });
+        }
+
+        // Create new session
+        session = new AttendanceSession({
+            studentId,
+            studentName,
+            enrollmentNumber,
+            date: today,
+            sessionStartTime: new Date(),
+            timerValue: 0,
+            isActive: true,
+            wifiConnected: true,
+            semester,
+            branch
+        });
+
+        await session.save();
+
+        // Also create/update attendance record
+        let record = await AttendanceRecord.findOne({
+            studentId,
+            date: today
+        });
+
+        if (!record) {
+            record = new AttendanceRecord({
+                studentId,
+                studentName,
+                enrollmentNumber,
+                date: today,
+                status: 'present',
+                lectures: [],
+                checkInTime: new Date(),
+                semester,
+                branch
+            });
+            await record.save();
+        }
+
+        res.json({
+            success: true,
+            message: 'Session started',
+            session: {
+                timerValue: 0,
+                sessionStartTime: session.sessionStartTime
+            }
+        });
+
+    } catch (error) {
+        console.error('Error starting session:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 2. Update Timer (Heartbeat every 5 minutes)
+app.post('/api/attendance/update-timer', async (req, res) => {
+    try {
+        const { studentId, timerValue, wifiConnected } = req.body;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const session = await AttendanceSession.findOne({
+            studentId,
+            date: today
+        });
+
+        if (!session) {
+            return res.status(404).json({ success: false, error: 'Session not found' });
+        }
+
+        session.timerValue = timerValue;
+        session.wifiConnected = wifiConnected;
+        session.isActive = wifiConnected;
+        session.lastUpdate = new Date();
+
+        await session.save();
+
+        // Also update attendance record
+        await AttendanceRecord.updateOne(
+            { studentId, date: today },
+            { 
+                timerValue,
+                checkOutTime: new Date()
+            }
+        );
+
+        res.json({ success: true, message: 'Timer updated' });
+
+    } catch (error) {
+        console.error('Error updating timer:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 3. Lecture Started (Called by server when lecture begins)
+app.post('/api/attendance/lecture-start', async (req, res) => {
+    try {
+        const { period, subject, teacher, teacherName, room, startTime, endTime, semester, branch } = req.body;
+
+        const now = new Date();
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Find all active sessions for this semester/branch
+        const sessions = await AttendanceSession.find({
+            date: today,
+            semester,
+            branch,
+            isActive: true,
+            wifiConnected: true
+        });
+
+        // Update each session with current class info
+        for (const session of sessions) {
+            session.currentClass = {
+                period,
+                subject,
+                teacher,
+                teacherName,
+                room,
+                startTime,
+                endTime,
+                classStartedAt: now
+            };
+            await session.save();
+        }
+
+        res.json({
+            success: true,
+            message: `Lecture started for ${sessions.length} students`,
+            studentsInClass: sessions.length
+        });
+
+    } catch (error) {
+        console.error('Error starting lecture:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 4. Lecture Ended (Calculate and save attendance)
+app.post('/api/attendance/lecture-end', async (req, res) => {
+    try {
+        const { period, subject, semester, branch } = req.body;
+
+        const now = new Date();
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Find all sessions with this lecture
+        const sessions = await AttendanceSession.find({
+            date: today,
+            semester,
+            branch,
+            'currentClass.period': period,
+            'currentClass.subject': subject
+        });
+
+        let updatedCount = 0;
+
+        for (const session of sessions) {
+            const classInfo = session.currentClass;
+            const lectureStartTime = new Date(classInfo.classStartedAt);
+            const lectureDuration = 50 * 60; // 50 minutes in seconds
+
+            // Calculate how long student was present
+            const studentCheckIn = new Date(session.sessionStartTime);
+            const timeInLecture = Math.floor((now - lectureStartTime) / 1000);
+            const attendedSeconds = Math.min(timeInLecture, lectureDuration);
+            const percentage = Math.round((attendedSeconds / lectureDuration) * 100);
+
+            // Update attendance record
+            const record = await AttendanceRecord.findOne({
+                studentId: session.studentId,
+                date: today
+            });
+
+            if (record) {
+                // Add lecture to record
+                record.lectures.push({
+                    period,
+                    subject: classInfo.subject,
+                    teacher: classInfo.teacher,
+                    teacherName: classInfo.teacherName,
+                    room: classInfo.room,
+                    startTime: classInfo.startTime,
+                    endTime: classInfo.endTime,
+                    lectureStartedAt: lectureStartTime,
+                    lectureEndedAt: now,
+                    studentCheckIn,
+                    attended: attendedSeconds,
+                    total: lectureDuration,
+                    percentage,
+                    present: percentage >= 75,
+                    verifications: []
+                });
+
+                // Update totals
+                record.totalAttended = record.lectures.reduce((sum, l) => sum + l.attended, 0);
+                record.totalClassTime = record.lectures.reduce((sum, l) => sum + l.total, 0);
+                record.dayPercentage = record.totalClassTime > 0 
+                    ? Math.round((record.totalAttended / record.totalClassTime) * 100)
+                    : 0;
+
+                await record.save();
+                updatedCount++;
+            }
+
+            // Clear current class from session
+            session.currentClass = null;
+            await session.save();
+        }
+
+        res.json({
+            success: true,
+            message: `Lecture ended, updated ${updatedCount} students`,
+            studentsUpdated: updatedCount
+        });
+
+    } catch (error) {
+        console.error('Error ending lecture:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 5. Add Face Verification Event
+app.post('/api/attendance/add-verification', async (req, res) => {
+    try {
+        const { studentId, period, verificationType, event } = req.body;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const record = await AttendanceRecord.findOne({
+            studentId,
+            date: today
+        });
+
+        if (!record) {
+            return res.status(404).json({ success: false, error: 'Record not found' });
+        }
+
+        // Find the lecture and add verification
+        const lecture = record.lectures.find(l => l.period === period);
+        if (lecture) {
+            lecture.verifications.push({
+                time: new Date(),
+                type: verificationType || 'face',
+                success: true,
+                event: event || 'periodic'
+            });
+            await record.save();
+        }
+
+        res.json({ success: true, message: 'Verification added' });
+
+    } catch (error) {
+        console.error('Error adding verification:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============================================
+// LEGACY ATTENDANCE ENDPOINTS (Keep for backward compatibility)
+// ============================================
 
 // Attendance Records API
 app.post('/api/attendance/record', async (req, res) => {
@@ -2730,6 +3086,288 @@ app.delete('/api/teachers/:id', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+
+// ============================================
+// ATTENDANCE QUERY ENDPOINTS (Teacher Views)
+// ============================================
+
+// Get all dates for a student (Level 1: Student Overview)
+app.get('/api/attendance/student/:enrollmentNo/dates', async (req, res) => {
+    try {
+        const { enrollmentNo } = req.params;
+        const { startDate, endDate } = req.query;
+
+        let dateFilter = {};
+        if (startDate && endDate) {
+            dateFilter = {
+                date: {
+                    $gte: new Date(startDate),
+                    $lte: new Date(endDate)
+                }
+            };
+        }
+
+        const records = await AttendanceRecord.find({
+            enrollmentNumber: enrollmentNo,
+            ...dateFilter
+        })
+        .select('date status dayPercentage totalAttended totalClassTime lectures')
+        .sort({ date: -1 });
+
+        // Calculate summary
+        const totalDays = records.length;
+        const presentDays = records.filter(r => r.status === 'present').length;
+        const totalSeconds = records.reduce((sum, r) => sum + (r.totalAttended || 0), 0);
+        const totalClassSeconds = records.reduce((sum, r) => sum + (r.totalClassTime || 0), 0);
+        const overallPercentage = totalClassSeconds > 0 
+            ? Math.round((totalSeconds / totalClassSeconds) * 100)
+            : 0;
+
+        res.json({
+            success: true,
+            student: {
+                enrollmentNumber: enrollmentNo,
+                totalDays,
+                presentDays,
+                overallPercentage,
+                totalHours: Math.floor(totalSeconds / 3600),
+                totalMinutes: Math.floor((totalSeconds % 3600) / 60)
+            },
+            dates: records.map(r => ({
+                date: r.date,
+                status: r.status,
+                percentage: r.dayPercentage,
+                attended: r.totalAttended,
+                total: r.totalClassTime,
+                lectureCount: r.lectures.length
+            }))
+        });
+
+    } catch (error) {
+        console.error('Error fetching student dates:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get specific date details (Level 2: Date Details)
+app.get('/api/attendance/student/:enrollmentNo/date/:date', async (req, res) => {
+    try {
+        const { enrollmentNo, date } = req.params;
+
+        const targetDate = new Date(date);
+        targetDate.setHours(0, 0, 0, 0);
+
+        const record = await AttendanceRecord.findOne({
+            enrollmentNumber: enrollmentNo,
+            date: targetDate
+        });
+
+        if (!record) {
+            return res.status(404).json({ success: false, error: 'Record not found' });
+        }
+
+        res.json({
+            success: true,
+            record: {
+                date: record.date,
+                status: record.status,
+                dayPercentage: record.dayPercentage,
+                totalAttended: record.totalAttended,
+                totalClassTime: record.totalClassTime,
+                checkInTime: record.checkInTime,
+                checkOutTime: record.checkOutTime,
+                lectures: record.lectures.map(l => ({
+                    period: l.period,
+                    subject: l.subject,
+                    teacher: l.teacher,
+                    teacherName: l.teacherName,
+                    room: l.room,
+                    startTime: l.startTime,
+                    endTime: l.endTime,
+                    attended: l.attended,
+                    total: l.total,
+                    percentage: l.percentage,
+                    present: l.present,
+                    attendedFormatted: formatSeconds(l.attended),
+                    totalFormatted: formatSeconds(l.total)
+                }))
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching date details:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get specific lecture details (Level 3: Lecture Details)
+app.get('/api/attendance/student/:enrollmentNo/date/:date/lecture/:period', async (req, res) => {
+    try {
+        const { enrollmentNo, date, period } = req.params;
+
+        const targetDate = new Date(date);
+        targetDate.setHours(0, 0, 0, 0);
+
+        const record = await AttendanceRecord.findOne({
+            enrollmentNumber: enrollmentNo,
+            date: targetDate
+        });
+
+        if (!record) {
+            return res.status(404).json({ success: false, error: 'Record not found' });
+        }
+
+        const lecture = record.lectures.find(l => l.period === period);
+        if (!lecture) {
+            return res.status(404).json({ success: false, error: 'Lecture not found' });
+        }
+
+        res.json({
+            success: true,
+            lecture: {
+                period: lecture.period,
+                subject: lecture.subject,
+                teacher: lecture.teacher,
+                teacherName: lecture.teacherName,
+                room: lecture.room,
+                startTime: lecture.startTime,
+                endTime: lecture.endTime,
+                lectureStartedAt: lecture.lectureStartedAt,
+                lectureEndedAt: lecture.lectureEndedAt,
+                studentCheckIn: lecture.studentCheckIn,
+                attended: lecture.attended,
+                total: lecture.total,
+                percentage: lecture.percentage,
+                present: lecture.present,
+                timeBreakdown: {
+                    hours: Math.floor(lecture.attended / 3600),
+                    minutes: Math.floor((lecture.attended % 3600) / 60),
+                    seconds: lecture.attended % 60
+                },
+                totalDuration: {
+                    hours: Math.floor(lecture.total / 3600),
+                    minutes: Math.floor((lecture.total % 3600) / 60),
+                    seconds: lecture.total % 60
+                },
+                verifications: lecture.verifications
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching lecture details:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get teacher's lectures (Level 4: Teacher View)
+app.get('/api/attendance/teacher/:teacherId/lectures', async (req, res) => {
+    try {
+        const { teacherId } = req.params;
+        const { startDate, endDate, subject } = req.query;
+
+        let dateFilter = {};
+        if (startDate && endDate) {
+            dateFilter = {
+                date: {
+                    $gte: new Date(startDate),
+                    $lte: new Date(endDate)
+                }
+            };
+        }
+
+        // Aggregate all lectures for this teacher
+        const records = await AttendanceRecord.aggregate([
+            { $match: dateFilter },
+            { $unwind: '$lectures' },
+            { $match: { 
+                'lectures.teacher': teacherId,
+                ...(subject ? { 'lectures.subject': subject } : {})
+            }},
+            {
+                $group: {
+                    _id: {
+                        date: '$date',
+                        period: '$lectures.period',
+                        subject: '$lectures.subject'
+                    },
+                    teacherName: { $first: '$lectures.teacherName' },
+                    room: { $first: '$lectures.room' },
+                    startTime: { $first: '$lectures.startTime' },
+                    endTime: { $first: '$lectures.endTime' },
+                    students: {
+                        $push: {
+                            studentId: '$studentId',
+                            studentName: '$studentName',
+                            enrollmentNumber: '$enrollmentNumber',
+                            attended: '$lectures.attended',
+                            total: '$lectures.total',
+                            percentage: '$lectures.percentage',
+                            present: '$lectures.present'
+                        }
+                    }
+                }
+            },
+            { $sort: { '_id.date': -1 } }
+        ]);
+
+        // Calculate statistics
+        const totalLectures = records.length;
+        let totalStudents = 0;
+        let totalPresent = 0;
+        let totalSeconds = 0;
+        let totalClassSeconds = 0;
+
+        records.forEach(lecture => {
+            totalStudents += lecture.students.length;
+            totalPresent += lecture.students.filter(s => s.present).length;
+            lecture.students.forEach(s => {
+                totalSeconds += s.attended;
+                totalClassSeconds += s.total;
+            });
+        });
+
+        const avgAttendance = totalStudents > 0 
+            ? Math.round((totalPresent / totalStudents) * 100)
+            : 0;
+
+        res.json({
+            success: true,
+            summary: {
+                teacherId,
+                totalLectures,
+                avgAttendance,
+                totalTeachingHours: Math.floor(totalClassSeconds / 3600),
+                totalStudentHours: Math.floor(totalSeconds / 3600)
+            },
+            lectures: records.map(l => ({
+                date: l._id.date,
+                period: l._id.period,
+                subject: l._id.subject,
+                room: l.room,
+                startTime: l.startTime,
+                endTime: l.endTime,
+                studentsEnrolled: l.students.length,
+                studentsPresent: l.students.filter(s => s.present).length,
+                attendanceRate: l.students.length > 0 
+                    ? Math.round((l.students.filter(s => s.present).length / l.students.length) * 100)
+                    : 0,
+                students: l.students
+            }))
+        });
+
+    } catch (error) {
+        console.error('Error fetching teacher lectures:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Helper function to format seconds
+function formatSeconds(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h}h ${m}m ${s}s`;
+}
 
 // Classroom Management
 const classroomSchema = new mongoose.Schema({
