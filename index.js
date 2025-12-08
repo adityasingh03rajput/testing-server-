@@ -2841,41 +2841,78 @@ const AttendanceHistory = mongoose.model('AttendanceHistory', attendanceHistoryS
 // Attendance History APIs
 
 // Get attendance history for a student
-app.get('/api/attendance/history/:studentId', async (req, res) => {
+app.get('/api/attendance/history/:enrollmentNo', async (req, res) => {
     try {
-        const { studentId } = req.params;
-        const { startDate, endDate, subject } = req.query;
+        const { enrollmentNo } = req.params;
+        const { startDate, endDate } = req.query;
         
-        if (mongoose.connection.readyState !== 1) {
-            return res.json({ success: true, history: [] });
+        console.log(`📊 Fetching attendance history for ${enrollmentNo}`);
+        
+        if (!enrollmentNo) {
+            return res.status(400).json({ success: false, error: 'Enrollment number required' });
         }
         
-        const query = {
-            $or: [
-                { studentId: studentId },
-                { enrollmentNo: studentId }
-            ]
-        };
-        
+        // Build date filter
+        let dateFilter = {};
         if (startDate && endDate) {
-            query.date = {
-                $gte: new Date(startDate),
-                $lte: new Date(endDate)
+            dateFilter = {
+                date: {
+                    $gte: new Date(startDate),
+                    $lte: new Date(endDate)
+                }
             };
         }
         
-        let history = await AttendanceHistory.find(query).sort({ date: -1 });
-        
-        // Filter by subject if specified
-        if (subject) {
-            history = history.map(day => ({
-                ...day.toObject(),
-                periods: day.periods.filter(p => p.subject === subject)
-            })).filter(day => day.periods.length > 0);
+        if (mongoose.connection.readyState === 1) {
+            // Get student info
+            const student = await StudentManagement.findOne({ enrollmentNo });
+            if (!student) {
+                return res.json({ success: false, error: 'Student not found' });
+            }
+            
+            // Get attendance records - use enrollmentNumber field (note: different from enrollmentNo)
+            const records = await AttendanceRecord.find({
+                $or: [
+                    { studentId: enrollmentNo },
+                    { enrollmentNumber: enrollmentNo }
+                ],
+                ...dateFilter
+            }).sort({ date: -1 }).lean();
+            
+            res.json({
+                success: true,
+                records,
+                student: {
+                    enrollmentNo: student.enrollmentNo,
+                    name: student.name,
+                    course: student.course,
+                    semester: student.semester
+                }
+            });
+        } else {
+            // Memory fallback
+            const records = attendanceRecordsMemory.filter(r => {
+                const matchesStudent = r.enrollmentNumber === enrollmentNo || r.studentId === enrollmentNo;
+                if (!matchesStudent) return false;
+                
+                if (startDate && endDate) {
+                    const recordDate = new Date(r.date);
+                    return recordDate >= new Date(startDate) && recordDate <= new Date(endDate);
+                }
+                return true;
+            }).sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            res.json({
+                success: true,
+                records,
+                student: {
+                    enrollmentNo,
+                    name: 'Unknown',
+                    course: 'Unknown',
+                    semester: 'Unknown'
+                }
+            });
         }
-        
-        res.json({ success: true, history });
-        
     } catch (error) {
         console.error('❌ Error fetching attendance history:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -2968,43 +3005,51 @@ app.post('/api/attendance/history/period', async (req, res) => {
 // Get date range of available attendance data
 app.get('/api/attendance/date-range', async (req, res) => {
     try {
-        if (mongoose.connection.readyState !== 1) {
-            return res.json({ 
-                success: true, 
-                dateRange: null,
-                message: 'Database not connected'
-            });
-        }
-        
-        // Get earliest and latest dates from AttendanceHistory
-        const result = await AttendanceHistory.aggregate([
-            {
-                $group: {
-                    _id: null,
-                    earliest: { $min: '$date' },
-                    latest: { $max: '$date' },
-                    totalRecords: { $sum: 1 }
-                }
+        if (mongoose.connection.readyState === 1) {
+            const records = await AttendanceRecord.find().sort({ date: 1 }).lean();
+            
+            if (records.length === 0) {
+                return res.json({
+                    success: true,
+                    dateRange: {
+                        earliest: null,
+                        latest: null,
+                        totalRecords: 0
+                    }
+                });
             }
-        ]);
-        
-        if (result.length > 0 && result[0].earliest) {
+            
             res.json({
                 success: true,
                 dateRange: {
-                    earliest: result[0].earliest,
-                    latest: result[0].latest,
-                    totalRecords: result[0].totalRecords
+                    earliest: records[0].date,
+                    latest: records[records.length - 1].date,
+                    totalRecords: records.length
                 }
             });
         } else {
+            // Memory fallback
+            if (attendanceRecordsMemory.length === 0) {
+                return res.json({
+                    success: true,
+                    dateRange: {
+                        earliest: null,
+                        latest: null,
+                        totalRecords: 0
+                    }
+                });
+            }
+            
+            const sorted = [...attendanceRecordsMemory].sort((a, b) => new Date(a.date) - new Date(b.date));
             res.json({
                 success: true,
-                dateRange: null,
-                message: 'No attendance data available yet'
+                dateRange: {
+                    earliest: sorted[0].date,
+                    latest: sorted[sorted.length - 1].date,
+                    totalRecords: sorted.length
+                }
             });
         }
-        
     } catch (error) {
         console.error('❌ Error fetching date range:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -3012,81 +3057,109 @@ app.get('/api/attendance/date-range', async (req, res) => {
 });
 
 // Get attendance summary for a student
-app.get('/api/attendance/summary/:studentId', async (req, res) => {
+app.get('/api/attendance/summary/:enrollmentNo', async (req, res) => {
     try {
-        const { studentId } = req.params;
+        const { enrollmentNo } = req.params;
         const { startDate, endDate } = req.query;
         
-        if (mongoose.connection.readyState !== 1) {
-            return res.json({ success: true, summary: {} });
+        console.log(`📊 Fetching attendance summary for ${enrollmentNo}`);
+        
+        if (!enrollmentNo) {
+            return res.status(400).json({ success: false, error: 'Enrollment number required' });
         }
         
-        const query = {
-            $or: [
-                { studentId: studentId },
-                { enrollmentNo: studentId }
-            ]
-        };
-        
+        // Build date filter
+        let dateFilter = {};
         if (startDate && endDate) {
-            query.date = {
-                $gte: new Date(startDate),
-                $lte: new Date(endDate)
+            dateFilter = {
+                date: {
+                    $gte: new Date(startDate),
+                    $lte: new Date(endDate)
+                }
             };
         }
         
-        const history = await AttendanceHistory.find(query);
-        
-        // Calculate overall statistics
-        const totalDays = history.length;
-        const presentDays = history.filter(d => d.dayPresent).length;
-        const totalAttendedMinutes = history.reduce((sum, d) => sum + d.totalAttendedMinutes, 0);
-        const totalClassMinutes = history.reduce((sum, d) => sum + d.totalClassMinutes, 0);
-        const overallPercentage = totalClassMinutes > 0 
-            ? Math.round((totalAttendedMinutes / totalClassMinutes) * 100)
-            : 0;
-        
-        // Per-subject statistics
-        const subjectStats = {};
-        history.forEach(day => {
-            day.periods.forEach(period => {
-                if (!subjectStats[period.subject]) {
-                    subjectStats[period.subject] = {
-                        subject: period.subject,
+        if (mongoose.connection.readyState === 1) {
+            // Get student info
+            const student = await StudentManagement.findOne({ enrollmentNo });
+            if (!student) {
+                return res.json({
+                    success: true,
+                    summary: {
+                        totalDays: 0,
+                        presentDays: 0,
                         totalAttendedMinutes: 0,
                         totalClassMinutes: 0,
-                        periodsAttended: 0,
-                        totalPeriods: 0
-                    };
-                }
-                subjectStats[period.subject].totalAttendedMinutes += period.attendedMinutes || 0;
-                subjectStats[period.subject].totalClassMinutes += period.totalMinutes || 0;
-                subjectStats[period.subject].totalPeriods++;
-                if (period.present) {
-                    subjectStats[period.subject].periodsAttended++;
+                        overallPercentage: 0,
+                        subjects: []
+                    }
+                });
+            }
+            
+            // Get attendance records - use enrollmentNumber field (note: different from enrollmentNo)
+            const records = await AttendanceRecord.find({
+                $or: [
+                    { studentId: enrollmentNo },
+                    { enrollmentNumber: enrollmentNo }
+                ],
+                ...dateFilter
+            }).lean();
+            
+            console.log(`   Found ${records.length} attendance records`);
+            
+            // Calculate summary
+            const uniqueDates = [...new Set(records.map(r => new Date(r.date).toDateString()))];
+            const presentRecords = records.filter(r => r.status === 'present');
+            const totalAttendedMinutes = records.reduce((sum, r) => sum + (r.totalAttended || 0), 0);
+            const totalClassMinutes = records.reduce((sum, r) => sum + (r.totalClassTime || 0), 0);
+            const overallPercentage = totalClassMinutes > 0 
+                ? Math.round((totalAttendedMinutes / totalClassMinutes) * 100)
+                : 0;
+            
+            res.json({
+                success: true,
+                summary: {
+                    totalDays: uniqueDates.length,
+                    presentDays: presentRecords.length,
+                    totalAttendedMinutes,
+                    totalClassMinutes,
+                    overallPercentage,
+                    subjects: []
                 }
             });
-        });
-        
-        // Calculate percentage for each subject
-        Object.values(subjectStats).forEach(stat => {
-            stat.percentage = stat.totalClassMinutes > 0
-                ? Math.round((stat.totalAttendedMinutes / stat.totalClassMinutes) * 100)
+        } else {
+            // Memory fallback
+            const records = attendanceRecordsMemory.filter(r => {
+                const matchesStudent = r.enrollmentNumber === enrollmentNo || r.studentId === enrollmentNo;
+                if (!matchesStudent) return false;
+                
+                if (startDate && endDate) {
+                    const recordDate = new Date(r.date);
+                    return recordDate >= new Date(startDate) && recordDate <= new Date(endDate);
+                }
+                return true;
+            });
+            
+            const uniqueDates = [...new Set(records.map(r => new Date(r.date).toDateString()))];
+            const presentRecords = records.filter(r => r.status === 'present');
+            const totalAttendedMinutes = records.reduce((sum, r) => sum + (r.totalAttended || 0), 0);
+            const totalClassMinutes = records.reduce((sum, r) => sum + (r.totalClassTime || 0), 0);
+            const overallPercentage = totalClassMinutes > 0 
+                ? Math.round((totalAttendedMinutes / totalClassMinutes) * 100)
                 : 0;
-        });
-        
-        res.json({
-            success: true,
-            summary: {
-                totalDays,
-                presentDays,
-                totalAttendedMinutes,
-                totalClassMinutes,
-                overallPercentage,
-                subjects: Object.values(subjectStats)
-            }
-        });
-        
+            
+            res.json({
+                success: true,
+                summary: {
+                    totalDays: uniqueDates.length,
+                    presentDays: presentRecords.length,
+                    totalAttendedMinutes,
+                    totalClassMinutes,
+                    overallPercentage,
+                    subjects: []
+                }
+            });
+        }
     } catch (error) {
         console.error('❌ Error fetching attendance summary:', error);
         res.status(500).json({ success: false, error: error.message });

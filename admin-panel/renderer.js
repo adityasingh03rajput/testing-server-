@@ -4964,11 +4964,11 @@ async function loadAttendanceHistory() {
         // Get filters
         const semesterFilter = document.getElementById('attendanceSemesterFilter').value;
         const courseFilter = document.getElementById('attendanceCourseFilter').value;
+        const tbody = document.getElementById('attendanceHistoryTableBody');
         
         // Check if required filters are selected
         if (!semesterFilter || !courseFilter) {
             console.log('⚠️ Branch and Semester must be selected');
-            const tbody = document.getElementById('attendanceHistoryTableBody');
             tbody.innerHTML = `
                 <tr>
                     <td colspan="9" style="text-align: center; padding: 60px;">
@@ -4981,11 +4981,22 @@ async function loadAttendanceHistory() {
             return;
         }
         
+        // Show loading indicator
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" style="text-align: center; padding: 60px;">
+                    <div style="font-size: 48px; margin-bottom: 20px;">⏳</div>
+                    <h3 style="color: var(--text-primary); margin-bottom: 10px;">Loading Attendance Data...</h3>
+                    <p style="color: var(--text-secondary);">Please wait while we fetch the records</p>
+                </td>
+            </tr>
+        `;
+        
         // First, get the date range of available data
         await loadAttendanceDateRange();
         
         // Get all students
-        const studentsResponse = await fetch(`${SERVER_URL}/api/student-management`);
+        const studentsResponse = await fetch(`${SERVER_URL}/api/students`);
         const studentsData = await studentsResponse.json();
         
         if (!studentsData.success) {
@@ -5056,6 +5067,8 @@ async function loadAttendanceHistory() {
         
         const studentsWithAttendance = await Promise.all(attendancePromises);
         
+        console.log(`✅ Loaded attendance for ${studentsWithAttendance.length} students`);
+        
         // Update summary cards
         const totalStudents = studentsWithAttendance.length;
         const avgAttendance = totalStudents > 0 
@@ -5064,13 +5077,17 @@ async function loadAttendanceHistory() {
         const totalDays = Math.max(...studentsWithAttendance.map(s => s.summary.totalDays), 0);
         const totalHours = Math.floor(studentsWithAttendance.reduce((sum, s) => sum + s.summary.totalAttendedMinutes, 0) / 60);
         
+        console.log(`📊 Summary: ${totalStudents} students, ${avgAttendance}% avg, ${totalDays} days, ${totalHours}h`);
+        
         document.getElementById('totalStudentsAttendance').textContent = totalStudents;
         document.getElementById('avgAttendanceRate').textContent = `${avgAttendance}%`;
         document.getElementById('totalDaysTracked').textContent = totalDays;
         document.getElementById('totalHoursAttended').textContent = `${totalHours}h`;
         
         // Render table
+        console.log('📋 Calling renderAttendanceHistoryTable...');
         renderAttendanceHistoryTable(studentsWithAttendance);
+        console.log('✅ Attendance history loaded successfully');
         
     } catch (error) {
         console.error('❌ Error loading attendance history:', error);
@@ -5081,6 +5098,14 @@ async function loadAttendanceHistory() {
 // Render Attendance History Table
 function renderAttendanceHistoryTable(students) {
     const tbody = document.getElementById('attendanceHistoryTableBody');
+    
+    console.log(`📋 Rendering ${students.length} students in attendance table`);
+    
+    if (!tbody) {
+        console.error('❌ Table body element not found!');
+        return;
+    }
+    
     tbody.innerHTML = '';
     
     if (students.length === 0) {
@@ -5088,17 +5113,25 @@ function renderAttendanceHistoryTable(students) {
         return;
     }
     
-    students.forEach(student => {
-        const summary = student.summary;
+    students.forEach((student, index) => {
+        const summary = student.summary || {
+            totalDays: 0,
+            presentDays: 0,
+            totalAttendedMinutes: 0,
+            overallPercentage: 0
+        };
+        
         const totalHours = Math.floor(summary.totalAttendedMinutes / 60);
         const totalMinutes = summary.totalAttendedMinutes % 60;
         
+        console.log(`  ${index + 1}. ${student.name} - ${summary.overallPercentage}%`);
+        
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${student.enrollmentNo}</td>
-            <td>${student.name}</td>
-            <td>${student.course}</td>
-            <td>${student.semester}</td>
+            <td>${student.enrollmentNo || 'N/A'}</td>
+            <td>${student.name || 'Unknown'}</td>
+            <td>${student.course || 'N/A'}</td>
+            <td>${student.semester || 'N/A'}</td>
             <td>${summary.totalDays}</td>
             <td>${summary.presentDays}</td>
             <td>
@@ -5118,6 +5151,8 @@ function renderAttendanceHistoryTable(students) {
         `;
         tbody.appendChild(row);
     });
+    
+    console.log(`✅ Successfully rendered ${students.length} rows`);
 }
 
 // Get Attendance Badge Class
@@ -5133,7 +5168,7 @@ async function viewDetailedAttendance(enrollmentNo) {
         console.log(`📊 Loading detailed attendance for ${enrollmentNo}...`);
         
         // Get student info
-        const studentsResponse = await fetch(`${SERVER_URL}/api/student-management`);
+        const studentsResponse = await fetch(`${SERVER_URL}/api/students`);
         const studentsData = await studentsResponse.json();
         const student = studentsData.students.find(s => s.enrollmentNo === enrollmentNo);
         
