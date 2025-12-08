@@ -2818,6 +2818,24 @@ export default function App() {
           onClose={() => setShowSemesterSelector(false)}
           onSelect={(selection) => {
             setManualSelection(selection);
+            
+            // Update semester and branch states for fetchStudents to use
+            if (selection.semester !== 'auto') {
+              setSemester(selection.semester);
+              setBranch(selection.branch);
+              
+              // Create manual class info for banner display
+              setCurrentClassInfo({
+                subject: 'Manual Selection',
+                branch: selection.branch,
+                semester: selection.semester,
+                isManual: true
+              });
+            } else {
+              // Auto mode - clear manual info (will be set by timetable logic)
+              setCurrentClassInfo(null);
+            }
+            
             // Refresh student list with new selection
             setTimeout(() => {
               fetchStudents();
