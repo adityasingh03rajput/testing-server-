@@ -132,6 +132,9 @@ export default function App() {
     lectureEndTime: ''
   });
   
+  // Local timer display - increments every second when running
+  const [displayTime, setDisplayTime] = useState(0);
+  
   // UI clock state - updates every second for smooth display
   const [uiClock, setUiClock] = useState(0);
   
@@ -463,6 +466,11 @@ export default function App() {
       const schedule = timetable.schedule[currentDay];
       let foundClass = null;
 
+      // Find first and last lecture times (excluding breaks)
+      let firstLectureStart = null;
+      let lastLectureEnd = null;
+      let currentLecture = null;
+
       for (const slot of schedule) {
         if (slot.time && !slot.isBreak) {
           const [start, end] = slot.time.split('-').map(t => t.trim());
@@ -472,25 +480,54 @@ export default function App() {
           const startSeconds = (startH * 3600) + (startM * 60);
           const endSeconds = (endH * 3600) + (endM * 60);
 
-          if (currentTimeInSeconds >= startSeconds && currentTimeInSeconds <= endSeconds) {
-            const elapsed = currentTimeInSeconds - startSeconds;
-            const total = endSeconds - startSeconds;
-            const remaining = total - elapsed;
+          // Track first and last lecture times
+          if (firstLectureStart === null || startSeconds < firstLectureStart) {
+            firstLectureStart = startSeconds;
+          }
+          if (lastLectureEnd === null || endSeconds > lastLectureEnd) {
+            lastLectureEnd = endSeconds;
+          }
 
-            foundClass = {
+          // Check if we're currently in this lecture
+          if (currentTimeInSeconds >= startSeconds && currentTimeInSeconds <= endSeconds) {
+            currentLecture = {
               subject: slot.subject,
               room: slot.room,
               startTime: start,
               endTime: end,
-              elapsedMinutes: Math.floor(elapsed / 60),
-              remainingMinutes: Math.floor(remaining / 60),
-              remainingSeconds: remaining,
-              totalMinutes: Math.floor(total / 60),
-              elapsedSeconds: elapsed,
-              totalSeconds: total,
             };
-            break;
           }
+        }
+      }
+
+      // Check if we're within the overall lecture period (first to last)
+      if (firstLectureStart !== null && lastLectureEnd !== null) {
+        if (currentTimeInSeconds >= firstLectureStart && currentTimeInSeconds <= lastLectureEnd) {
+          // We're within lecture hours (including breaks)
+          const elapsed = currentTimeInSeconds - firstLectureStart;
+          const total = lastLectureEnd - firstLectureStart;
+          const remaining = total - elapsed;
+
+          // Convert first/last times to HH:MM format
+          const firstStartH = Math.floor(firstLectureStart / 3600);
+          const firstStartM = Math.floor((firstLectureStart % 3600) / 60);
+          const lastEndH = Math.floor(lastLectureEnd / 3600);
+          const lastEndM = Math.floor((lastLectureEnd % 3600) / 60);
+
+          foundClass = {
+            subject: currentLecture ? currentLecture.subject : 'Break Time',
+            room: currentLecture ? currentLecture.room : '',
+            startTime: `${firstStartH.toString().padStart(2, '0')}:${firstStartM.toString().padStart(2, '0')}`,
+            endTime: `${lastEndH.toString().padStart(2, '0')}:${lastEndM.toString().padStart(2, '0')}`,
+            currentLecture: currentLecture ? `${currentLecture.subject} (${currentLecture.startTime}-${currentLecture.endTime})` : 'Break',
+            elapsedMinutes: Math.floor(elapsed / 60),
+            remainingMinutes: Math.floor(remaining / 60),
+            remainingSeconds: remaining,
+            totalMinutes: Math.floor(total / 60),
+            elapsedSeconds: elapsed,
+            totalSeconds: total,
+            isWithinLectureHours: true,
+          };
         }
       }
 
@@ -506,13 +543,19 @@ export default function App() {
 
   // Removed 5-minute backup - server handles all attendance tracking via timer broadcasts
 
-  // UI Clock - Force re-render every second for smooth timer display
+  // Sync displayTime with serverTimerData when server broadcasts arrive
+  useEffect(() => {
+    setDisplayTime(serverTimerData.attendedSeconds);
+  }, [serverTimerData.attendedSeconds]);
+
+  // UI Clock - Increment display time every second when running
   useEffect(() => {
     if (!isRunning || selectedRole !== 'student') return;
     
-    // Update UI clock every second to force component re-render
+    // Update display time every second for smooth timer
     const clockInterval = setInterval(() => {
-      setUiClock(prev => prev + 1);
+      setDisplayTime(prev => prev + 1);
+      setUiClock(prev => prev + 1); // Force re-render
     }, 1000);
     
     return () => clearInterval(clockInterval);
@@ -3782,41 +3825,76 @@ export default function App() {
           }
           return null;
         })()}
-        <CircularTimer
-          theme={theme}
-          initialTime={serverTimerData.attendedSeconds}
-          totalLectureTime={serverTimerData.totalLectureSeconds}
-          remainingTime={serverTimerData.remainingLectureSeconds}
-          isRunning={isRunning}
-          onToggleTimer={handleStartPause}
-          onReset={handleReset}
-          onLongPressCenter={() => {
-            // NEW LOGIC: Face verification behavior based on attendance status
-            if (randomRingData) {
-              // Random Ring active - allow face verification
-              console.log('🔔 Random Ring active - opening face verification');
-              setShowFaceVerification(true);
-            } else if (isRunning) {
-              // Student is attending - only Random Ring can trigger verification
-              console.log('⚠️ Already attending - face verification only available during Random Ring');
-              alert('Face verification is only available during Random Ring when you are attending class.');
-            } else {
-              // Student NOT attending - allow face verification to start attendance
-              console.log('🔒 Not attending - opening face verification to start attendance');
-              setShowFaceVerification(true);
-            }
-          }}
-          formatTime={formatTime}
-          timetable={timetable}
-          currentDay={currentDay}
-          lectureInfo={{
-            subject: serverTimerData.lectureSubject,
-            teacher: serverTimerData.lectureTeacher,
-            room: serverTimerData.lectureRoom,
-            startTime: serverTimerData.lectureStartTime,
-            endTime: serverTimerData.lectureEndTime
-          }}
-        />
+        
+        {/* Show timer only during lecture hours */}
+        {currentClassInfo ? (
+          <CircularTimer
+            theme={theme}
+            initialTime={displayTime}
+            totalLectureTime={serverTimerData.totalLectureSeconds}
+            remainingTime={serverTimerData.remainingLectureSeconds}
+            isRunning={isRunning}
+            onToggleTimer={handleStartPause}
+            onReset={handleReset}
+            onLongPressCenter={() => {
+              // NEW LOGIC: Face verification behavior based on attendance status
+              if (randomRingData) {
+                // Random Ring active - allow face verification
+                console.log('🔔 Random Ring active - opening face verification');
+                setShowFaceVerification(true);
+              } else if (isRunning) {
+                // Student is attending - only Random Ring can trigger verification
+                console.log('⚠️ Already attending - face verification only available during Random Ring');
+                alert('Face verification is only available during Random Ring when you are attending class.');
+              } else {
+                // Student NOT attending - allow face verification to start attendance
+                console.log('🔒 Not attending - opening face verification to start attendance');
+                setShowFaceVerification(true);
+              }
+            }}
+            formatTime={formatTime}
+            timetable={timetable}
+            currentDay={currentDay}
+            lectureInfo={{
+              subject: serverTimerData.lectureSubject,
+              teacher: serverTimerData.lectureTeacher,
+              room: serverTimerData.lectureRoom,
+              startTime: serverTimerData.lectureStartTime,
+              endTime: serverTimerData.lectureEndTime
+            }}
+          />
+        ) : (
+          <View style={{
+            width: '100%',
+            maxWidth: 400,
+            backgroundColor: theme.cardBackground,
+            borderRadius: 20,
+            padding: 30,
+            alignItems: 'center',
+            marginVertical: 20,
+            borderWidth: 2,
+            borderColor: theme.border,
+          }}>
+            <Text style={{ fontSize: 48, marginBottom: 15 }}>🕐</Text>
+            <Text style={{ 
+              fontSize: 18, 
+              fontWeight: 'bold', 
+              color: theme.text,
+              marginBottom: 10,
+              textAlign: 'center'
+            }}>
+              No Lectures Right Now
+            </Text>
+            <Text style={{ 
+              fontSize: 14, 
+              color: theme.textSecondary,
+              textAlign: 'center',
+              lineHeight: 20
+            }}>
+              Attendance tracking is only available during lecture hours. Please check your timetable for class timings.
+            </Text>
+          </View>
+        )}
 
         {/* Current Class Progress Card - Matches frontend_home.md */}
         {currentClassInfo && (
@@ -3837,16 +3915,16 @@ export default function App() {
               color: theme.primary,
               marginBottom: 8,
             }}>
-              📚 Current Class: {currentClassInfo.subject}
+              📚 Lecture Period: {currentClassInfo.startTime} - {currentClassInfo.endTime}
             </Text>
 
-            {/* B. Class Details */}
+            {/* B. Current Lecture Details */}
             <Text style={{ 
               fontSize: 11, 
               color: theme.textSecondary,
               marginBottom: 10,
             }}>
-              {currentClassInfo.startTime} - {currentClassInfo.endTime}{currentClassInfo.room ? ` • ${currentClassInfo.room}` : ''}
+              {currentClassInfo.currentLecture}{currentClassInfo.room ? ` • ${currentClassInfo.room}` : ''}
             </Text>
 
             {/* C. Countdown Timer Display */}

@@ -58,6 +58,11 @@
                     <span class="icon">⚙️</span>
                     <span>Settings</span>
                 </button>
+                <button class="nav-item" data-section="coming-soon" style="border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px;">
+                    <span class="icon">🚀</span>
+                    <span>Coming Soon</span>
+                    <span style="background: var(--primary); color: #000; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: auto;">NEW</span>
+                </button>
             </nav>
 
             <div class="sidebar-footer">
@@ -325,11 +330,26 @@
                     <div class="section-header">
                         <h2 class="section-title">Subject Management</h2>
                         <div class="action-buttons">
-                            <button class="btn btn-secondary" id="exportSubjectsBtn">📤 Export</button>
+                            <button class="btn btn-success" id="importSubjectsBtn">📥 Import CSV</button>
+                            <button class="btn btn-secondary" id="exportSubjectsBtn">📤 Export CSV</button>
+                            <button class="btn btn-warning" id="bulkEditSubjectsBtn">✏️ Bulk Edit</button>
+                            <button class="btn btn-danger" id="bulkDeleteSubjectsBtn">🗑️ Bulk Delete</button>
                             <button class="btn btn-primary" id="addSubjectBtn">➕ Add Subject</button>
                         </div>
                     </div>
 
+                    <!-- Search Bar -->
+                    <div class="search-container" style="margin-bottom: 20px;">
+                        <input 
+                            type="text" 
+                            id="subjectSearchInput" 
+                            class="form-input" 
+                            placeholder="🔍 Search by subject code, name, or short name..."
+                            style="max-width: 500px;"
+                        >
+                    </div>
+
+                    <!-- Filters -->
                     <div class="filters">
                         <select id="subjectSemesterFilter" class="filter-select">
                             <option value="">All Semesters</option>
@@ -359,12 +379,34 @@
                             <option value="Practical">Practical</option>
                             <option value="Training">Training</option>
                         </select>
+                        <select id="subjectStatusFilter" class="filter-select">
+                            <option value="">All Status</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+
+                    <!-- Bulk Actions Bar (hidden by default) -->
+                    <div id="subjectBulkActionsBar" style="display: none; background: var(--bg-card); padding: 15px; margin-bottom: 15px; border-radius: 8px; border: 2px solid var(--primary);">
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <span id="subjectSelectedCount" style="color: var(--text-primary); font-weight: bold;">0 subjects selected</span>
+                            <div>
+                                <button class="btn btn-sm btn-warning" onclick="bulkActivateSubjects()">✓ Activate</button>
+                                <button class="btn btn-sm btn-secondary" onclick="bulkDeactivateSubjects()">✗ Deactivate</button>
+                                <button class="btn btn-sm btn-info" onclick="bulkDuplicateSubjects()">📋 Duplicate</button>
+                                <button class="btn btn-sm btn-danger" onclick="bulkDeleteSelectedSubjects()">🗑️ Delete</button>
+                                <button class="btn btn-sm btn-secondary" onclick="clearSubjectSelection()">Cancel</button>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
                                 <tr>
+                                    <th style="width: 40px;">
+                                        <input type="checkbox" id="selectAllSubjects" onchange="toggleAllSubjects(this.checked)">
+                                    </th>
                                     <th>Subject Code</th>
                                     <th>Subject Name</th>
                                     <th>Short Name</th>
@@ -377,7 +419,7 @@
                                 </tr>
                             </thead>
                             <tbody id="subjectsTableBody">
-                                <tr>
+                                <tr></tr>
                                     <td colspan="9" class="text-center">Loading subjects...</td>
                                 </tr>
                             </tbody>
@@ -690,6 +732,246 @@
                         </div>
                     </div>
                 </section>
+
+                <!-- Coming Soon Section -->
+                <section id="coming-soon-section" class="section">
+                    <div class="section-header">
+                        <h2 class="section-title">🚀 Coming Soon Features</h2>
+                        <span style="color: var(--text-secondary); font-size: 14px;">Exciting new features in development</span>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin-top: 30px;">
+                        
+                        <!-- Feature Card 1: AI Attendance Prediction -->
+                        <div class="feature-card">
+                            <div class="feature-icon">🤖</div>
+                            <h3>AI Attendance Prediction</h3>
+                            <p>Machine learning model to predict student attendance patterns and identify at-risk students early.</p>
+                            <div class="feature-tags">
+                                <span class="tag tag-ai">AI/ML</span>
+                                <span class="tag tag-priority">High Priority</span>
+                            </div>
+                            <div class="feature-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 30%;"></div>
+                                </div>
+                                <span class="progress-text">30% Complete</span>
+                            </div>
+                            <div class="feature-eta">ETA: Q1 2026</div>
+                        </div>
+
+                        <!-- Feature Card 2: Parent Portal -->
+                        <div class="feature-card">
+                            <div class="feature-icon">👨‍👩‍👧</div>
+                            <h3>Parent Portal</h3>
+                            <p>Dedicated portal for parents to view their child's attendance, grades, and receive real-time notifications.</p>
+                            <div class="feature-tags">
+                                <span class="tag tag-web">Web App</span>
+                                <span class="tag tag-priority">High Priority</span>
+                            </div>
+                            <div class="feature-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 45%;"></div>
+                                </div>
+                                <span class="progress-text">45% Complete</span>
+                            </div>
+                            <div class="feature-eta">ETA: Q1 2026</div>
+                        </div>
+
+                        <!-- Feature Card 3: Automated Reports -->
+                        <div class="feature-card">
+                            <div class="feature-icon">📊</div>
+                            <h3>Automated Reports</h3>
+                            <p>Generate and email weekly/monthly attendance reports to HODs, principals, and parents automatically.</p>
+                            <div class="feature-tags">
+                                <span class="tag tag-automation">Automation</span>
+                                <span class="tag tag-medium">Medium Priority</span>
+                            </div>
+                            <div class="feature-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 60%;"></div>
+                                </div>
+                                <span class="progress-text">60% Complete</span>
+                            </div>
+                            <div class="feature-eta">ETA: Q2 2026</div>
+                        </div>
+
+                        <!-- Feature Card 4: Biometric Integration -->
+                        <div class="feature-card">
+                            <div class="feature-icon">👆</div>
+                            <h3>Fingerprint Integration</h3>
+                            <p>Support for fingerprint scanners as an alternative to face verification for attendance marking.</p>
+                            <div class="feature-tags">
+                                <span class="tag tag-hardware">Hardware</span>
+                                <span class="tag tag-medium">Medium Priority</span>
+                            </div>
+                            <div class="feature-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 15%;"></div>
+                                </div>
+                                <span class="progress-text">15% Complete</span>
+                            </div>
+                            <div class="feature-eta">ETA: Q2 2026</div>
+                        </div>
+
+                        <!-- Feature Card 5: Mobile App for iOS -->
+                        <div class="feature-card">
+                            <div class="feature-icon">📱</div>
+                            <h3>iOS App</h3>
+                            <p>Native iOS application for iPhone and iPad users with all features from Android app.</p>
+                            <div class="feature-tags">
+                                <span class="tag tag-mobile">iOS</span>
+                                <span class="tag tag-low">Low Priority</span>
+                            </div>
+                            <div class="feature-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 10%;"></div>
+                                </div>
+                                <span class="progress-text">10% Complete</span>
+                            </div>
+                            <div class="feature-eta">ETA: Q3 2026</div>
+                        </div>
+
+                        <!-- Feature Card 6: Exam Schedule Management -->
+                        <div class="feature-card">
+                            <div class="feature-icon">📝</div>
+                            <h3>Exam Schedule Manager</h3>
+                            <p>Create and manage exam schedules, seating arrangements, and invigilator assignments.</p>
+                            <div class="feature-tags">
+                                <span class="tag tag-feature">Feature</span>
+                                <span class="tag tag-medium">Medium Priority</span>
+                            </div>
+                            <div class="feature-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 25%;"></div>
+                                </div>
+                                <span class="progress-text">25% Complete</span>
+                            </div>
+                            <div class="feature-eta">ETA: Q2 2026</div>
+                        </div>
+
+                        <!-- Feature Card 7: Student Performance Analytics -->
+                        <div class="feature-card">
+                            <div class="feature-icon">📈</div>
+                            <h3>Performance Analytics</h3>
+                            <p>Comprehensive analytics dashboard showing correlation between attendance and academic performance.</p>
+                            <div class="feature-tags">
+                                <span class="tag tag-analytics">Analytics</span>
+                                <span class="tag tag-priority">High Priority</span>
+                            </div>
+                            <div class="feature-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 40%;"></div>
+                                </div>
+                                <span class="progress-text">40% Complete</span>
+                            </div>
+                            <div class="feature-eta">ETA: Q1 2026</div>
+                        </div>
+
+                        <!-- Feature Card 8: WhatsApp Integration -->
+                        <div class="feature-card">
+                            <div class="feature-icon">💬</div>
+                            <h3>WhatsApp Notifications</h3>
+                            <p>Send attendance alerts and updates directly to parents and students via WhatsApp Business API.</p>
+                            <div class="feature-tags">
+                                <span class="tag tag-integration">Integration</span>
+                                <span class="tag tag-priority">High Priority</span>
+                            </div>
+                            <div class="feature-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 20%;"></div>
+                                </div>
+                                <span class="progress-text">20% Complete</span>
+                            </div>
+                            <div class="feature-eta">ETA: Q2 2026</div>
+                        </div>
+
+                        <!-- Feature Card 9: Leave Management System -->
+                        <div class="feature-card">
+                            <div class="feature-icon">🏖️</div>
+                            <h3>Leave Management</h3>
+                            <p>Students can apply for leave online, teachers can approve/reject, and system auto-adjusts attendance.</p>
+                            <div class="feature-tags">
+                                <span class="tag tag-feature">Feature</span>
+                                <span class="tag tag-medium">Medium Priority</span>
+                            </div>
+                            <div class="feature-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 35%;"></div>
+                                </div>
+                                <span class="progress-text">35% Complete</span>
+                            </div>
+                            <div class="feature-eta">ETA: Q2 2026</div>
+                        </div>
+
+                        <!-- Feature Card 10: Multi-Language Support -->
+                        <div class="feature-card">
+                            <div class="feature-icon">🌍</div>
+                            <h3>Multi-Language Support</h3>
+                            <p>Support for Hindi, Tamil, Telugu, Kannada, and other regional languages in the app.</p>
+                            <div class="feature-tags">
+                                <span class="tag tag-i18n">i18n</span>
+                                <span class="tag tag-low">Low Priority</span>
+                            </div>
+                            <div class="feature-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 5%;"></div>
+                                </div>
+                                <span class="progress-text">5% Complete</span>
+                            </div>
+                            <div class="feature-eta">ETA: Q3 2026</div>
+                        </div>
+
+                        <!-- Feature Card 11: QR Code Attendance -->
+                        <div class="feature-card">
+                            <div class="feature-icon">📷</div>
+                            <h3>QR Code Attendance</h3>
+                            <p>Generate unique QR codes for each class session. Students scan to mark attendance instantly.</p>
+                            <div class="feature-tags">
+                                <span class="tag tag-feature">Feature</span>
+                                <span class="tag tag-medium">Medium Priority</span>
+                            </div>
+                            <div class="feature-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 50%;"></div>
+                                </div>
+                                <span class="progress-text">50% Complete</span>
+                            </div>
+                            <div class="feature-eta">ETA: Q1 2026</div>
+                        </div>
+
+                        <!-- Feature Card 12: Smart Classroom Integration -->
+                        <div class="feature-card">
+                            <div class="feature-icon">🖥️</div>
+                            <h3>Smart Classroom Integration</h3>
+                            <p>Integrate with smart boards and classroom displays to show real-time attendance and announcements.</p>
+                            <div class="feature-tags">
+                                <span class="tag tag-hardware">Hardware</span>
+                                <span class="tag tag-low">Low Priority</span>
+                            </div>
+                            <div class="feature-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 0%;"></div>
+                                </div>
+                                <span class="progress-text">Planning Phase</span>
+                            </div>
+                            <div class="feature-eta">ETA: Q4 2026</div>
+                        </div>
+
+                    </div>
+
+                    <!-- Request Feature Section -->
+                    <div style="margin-top: 50px; padding: 30px; background: var(--bg-card); border-radius: 12px; border: 2px dashed var(--border);">
+                        <h3 style="color: var(--text-primary); margin-bottom: 15px;">💡 Have a Feature Request?</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                            We'd love to hear your ideas! Submit your feature requests and help us build the best attendance system.
+                        </p>
+                        <button class="btn btn-primary" onclick="showFeatureRequestDialog()">
+                            ✉️ Submit Feature Request
+                        </button>
+                    </div>
+                </section>
+
             </div>
         </main>
     </div>
