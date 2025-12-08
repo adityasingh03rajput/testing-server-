@@ -1,10 +1,10 @@
 
 // Configuration
 // Server URL - can be changed in Settings
-// Priority: 1. Saved in localStorage, 2. Azure URL, 3. Local IP
-let SERVER_URL = localStorage.getItem('serverUrl') ||
-    'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net' || // Azure URL
-    'http://192.168.9.31:3000'; // Fallback to local
+// Priority: 1. Saved in localStorage, 2. Azure URL
+let SERVER_URL = localStorage.getItem('serverUrl') || 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
+
+console.log('🌐 Admin Panel Server URL:', SERVER_URL);
 
 // State
 let students = [];
@@ -5163,9 +5163,10 @@ function getAttendanceBadgeClass(percentage) {
 }
 
 // View Detailed Attendance
+// Level 1: View Student Overview (All Dates)
 async function viewDetailedAttendance(enrollmentNo) {
     try {
-        console.log(`📊 Loading detailed attendance for ${enrollmentNo}...`);
+        console.log(`📊 Loading attendance overview for ${enrollmentNo}...`);
         
         // Get student info
         const studentsResponse = await fetch(`${SERVER_URL}/api/students`);
@@ -5180,8 +5181,8 @@ async function viewDetailedAttendance(enrollmentNo) {
         const startDate = document.getElementById('attendanceStartDate').value;
         const endDate = document.getElementById('attendanceEndDate').value;
         
-        // Get attendance history
-        let url = `${SERVER_URL}/api/attendance/history/${enrollmentNo}`;
+        // Use new endpoint for student dates overview
+        let url = `${SERVER_URL}/api/attendance/student/${enrollmentNo}/dates`;
         if (startDate && endDate) {
             url += `?startDate=${startDate}&endDate=${endDate}`;
         }
@@ -5190,22 +5191,381 @@ async function viewDetailedAttendance(enrollmentNo) {
         const data = await response.json();
         
         if (!data.success) {
-            throw new Error('Failed to load attendance history');
+            throw new Error('Failed to load attendance overview');
         }
         
-        const history = data.history || [];
-        console.log(`✅ Loaded ${history.length} days of attendance`);
+        console.log(`✅ Loaded ${data.dates.length} days of attendance`);
+        console.log(`   Overall: ${data.student.overallPercentage}%`);
         
-        // Render detailed view
-        renderDetailedAttendanceModal(student, history);
+        // Render Level 1: Student Overview
+        renderStudentOverviewModal(student, data.student, data.dates);
         
     } catch (error) {
-        console.error('❌ Error loading detailed attendance:', error);
-        showNotification('Failed to load detailed attendance', 'error');
+        console.error('❌ Error loading attendance overview:', error);
+        showNotification('Failed to load attendance overview', 'error');
     }
 }
 
-// Render Detailed Attendance Modal
+// Level 2: View Specific Date Details
+async function viewDateDetails(enrollmentNo, date, studentName) {
+    try {
+        console.log(`📅 Loading date details for ${enrollmentNo} on ${date}...`);
+        
+        const response = await fetch(`${SERVER_URL}/api/attendance/student/${enrollmentNo}/date/${date}`);
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error('Failed to load date details');
+        }
+        
+        console.log(`✅ Loaded ${data.record.lectures.length} lectures`);
+        
+        // Render Level 2: Date Details
+        renderDateDetailsModal(enrollmentNo, studentName, data.record);
+        
+    } catch (error) {
+        console.error('❌ Error loading date details:', error);
+        showNotification('Failed to load date details', 'error');
+    }
+}
+
+// Level 3: View Specific Lecture Details
+async function viewLectureDetails(enrollmentNo, date, period, studentName) {
+    try {
+        console.log(`📖 Loading lecture details for ${enrollmentNo} - ${period} on ${date}...`);
+        
+        const response = await fetch(`${SERVER_URL}/api/attendance/student/${enrollmentNo}/date/${date}/lecture/${period}`);
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error('Failed to load lecture details');
+        }
+        
+        console.log(`✅ Loaded lecture: ${data.lecture.subject}`);
+        
+        // Render Level 3: Lecture Details
+        renderLectureDetailsModal(enrollmentNo, studentName, date, data.lecture);
+        
+    } catch (error) {
+        console.error('❌ Error loading lecture details:', error);
+        showNotification('Failed to load lecture details', 'error');
+    }
+}
+
+// ============================================
+// LEVEL 1: Render Student Overview (All Dates)
+// ============================================
+function renderStudentOverviewModal(student, summary, dates) {
+    const modal = document.getElementById('detailedAttendanceModal');
+    const modalBody = document.getElementById('detailedAttendanceModalBody');
+    
+    modalBody.innerHTML = `
+        <div class="attendance-detail-header">
+            <button class="btn btn-secondary" onclick="closeDetailedAttendanceModal()">← Back</button>
+            <h2>📊 ${student.name} - Attendance Overview</h2>
+        </div>
+        
+        <div class="student-summary-card">
+            <div class="summary-row">
+                <div class="summary-item">
+                    <span class="summary-label">Enrollment:</span>
+                    <span class="summary-value">${student.enrollmentNo}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Course:</span>
+                    <span class="summary-value">${student.course} - Sem ${student.semester}</span>
+                </div>
+            </div>
+            <div class="summary-row">
+                <div class="summary-item">
+                    <span class="summary-label">Total Days:</span>
+                    <span class="summary-value">${summary.totalDays}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Present Days:</span>
+                    <span class="summary-value">${summary.presentDays}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Overall Attendance:</span>
+                    <span class="summary-value ${getAttendanceBadgeClass(summary.overallPercentage)}">${summary.overallPercentage}%</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Total Time:</span>
+                    <span class="summary-value">${summary.totalHours}h ${summary.totalMinutes}m</span>
+                </div>
+            </div>
+        </div>
+        
+        <h3>📅 Attendance by Date</h3>
+        <div class="dates-list">
+            ${dates.map(d => {
+                const date = new Date(d.date);
+                const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+                const attendedMin = Math.floor(d.attended / 60);
+                const totalMin = Math.floor(d.total / 60);
+                
+                return `
+                    <div class="date-card" onclick="viewDateDetails('${student.enrollmentNo}', '${d.date}', '${student.name}')">
+                        <div class="date-card-header">
+                            <span class="date-text">${dateStr}</span>
+                            <span class="attendance-badge ${getAttendanceBadgeClass(d.percentage)}">${d.percentage}%</span>
+                        </div>
+                        <div class="date-card-body">
+                            <div class="date-stat">
+                                <span class="stat-icon">📚</span>
+                                <span>${d.lectureCount} lectures</span>
+                            </div>
+                            <div class="date-stat">
+                                <span class="stat-icon">⏱️</span>
+                                <span>${attendedMin}/${totalMin} min</span>
+                            </div>
+                            <div class="date-stat">
+                                <span class="stat-icon">${d.status === 'present' ? '✅' : '❌'}</span>
+                                <span>${d.status === 'present' ? 'Present' : 'Absent'}</span>
+                            </div>
+                        </div>
+                        <div class="date-card-footer">
+                            <span class="view-details-link">View Details →</span>
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+    
+    modal.style.display = 'block';
+}
+
+// ============================================
+// LEVEL 2: Render Date Details (All Lectures on a Date)
+// ============================================
+function renderDateDetailsModal(enrollmentNo, studentName, record) {
+    const modal = document.getElementById('detailedAttendanceModal');
+    const modalBody = document.getElementById('detailedAttendanceModalBody');
+    
+    const date = new Date(record.date);
+    const dateStr = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    const attendedMin = Math.floor(record.totalAttended / 60);
+    const totalMin = Math.floor(record.totalClassTime / 60);
+    
+    modalBody.innerHTML = `
+        <div class="attendance-detail-header">
+            <button class="btn btn-secondary" onclick="viewDetailedAttendance('${enrollmentNo}')">← Back to Overview</button>
+            <h2>📅 ${studentName} - ${dateStr}</h2>
+        </div>
+        
+        <div class="date-summary-card">
+            <div class="summary-row">
+                <div class="summary-item">
+                    <span class="summary-label">Status:</span>
+                    <span class="summary-value ${record.status === 'present' ? 'badge-success' : 'badge-danger'}">
+                        ${record.status === 'present' ? '✅ Present' : '❌ Absent'}
+                    </span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Day Attendance:</span>
+                    <span class="summary-value ${getAttendanceBadgeClass(record.dayPercentage)}">${record.dayPercentage}%</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Time Attended:</span>
+                    <span class="summary-value">${attendedMin} / ${totalMin} min</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Check-in:</span>
+                    <span class="summary-value">${record.checkInTime ? new Date(record.checkInTime).toLocaleTimeString() : 'N/A'}</span>
+                </div>
+            </div>
+        </div>
+        
+        <h3>📚 Lectures</h3>
+        <div class="lectures-list">
+            ${record.lectures.map(lecture => {
+                const attendedFormatted = lecture.attendedFormatted || formatSecondsToTime(lecture.attended);
+                const totalFormatted = lecture.totalFormatted || formatSecondsToTime(lecture.total);
+                
+                return `
+                    <div class="lecture-card ${lecture.present ? 'present' : 'absent'}" 
+                         onclick="viewLectureDetails('${enrollmentNo}', '${record.date}', '${lecture.period}', '${studentName}')">
+                        <div class="lecture-card-header">
+                            <div class="lecture-info">
+                                <span class="lecture-period">${lecture.period}</span>
+                                <span class="lecture-time">${lecture.startTime} - ${lecture.endTime}</span>
+                            </div>
+                            <span class="attendance-badge ${getAttendanceBadgeClass(lecture.percentage)}">${lecture.percentage}%</span>
+                        </div>
+                        <div class="lecture-card-body">
+                            <div class="lecture-subject">${lecture.subject}</div>
+                            <div class="lecture-details">
+                                <span class="lecture-detail">
+                                    <span class="detail-icon">👨‍🏫</span>
+                                    ${lecture.teacherName || 'N/A'}
+                                </span>
+                                <span class="lecture-detail">
+                                    <span class="detail-icon">🏫</span>
+                                    ${lecture.room || 'N/A'}
+                                </span>
+                            </div>
+                            <div class="lecture-time-info">
+                                <span class="time-attended">⏱️ ${attendedFormatted} / ${totalFormatted}</span>
+                                <span class="status-badge ${lecture.present ? 'badge-success' : 'badge-danger'}">
+                                    ${lecture.present ? '✅ Present' : '❌ Absent'}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="lecture-card-footer">
+                            <span class="view-details-link">View Timeline →</span>
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+    
+    modal.style.display = 'block';
+}
+
+// ============================================
+// LEVEL 3: Render Lecture Details (Timeline)
+// ============================================
+function renderLectureDetailsModal(enrollmentNo, studentName, date, lecture) {
+    const modal = document.getElementById('detailedAttendanceModal');
+    const modalBody = document.getElementById('detailedAttendanceModalBody');
+    
+    const dateObj = new Date(date);
+    const dateStr = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    
+    modalBody.innerHTML = `
+        <div class="attendance-detail-header">
+            <button class="btn btn-secondary" onclick="viewDateDetails('${enrollmentNo}', '${date}', '${studentName}')">← Back to Date</button>
+            <h2>📖 ${lecture.period} - ${lecture.subject}</h2>
+        </div>
+        
+        <div class="lecture-detail-card">
+            <div class="lecture-detail-header">
+                <h3>${studentName}</h3>
+                <p>${dateStr}</p>
+            </div>
+            
+            <div class="lecture-info-grid">
+                <div class="info-item">
+                    <span class="info-label">Period:</span>
+                    <span class="info-value">${lecture.period}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Subject:</span>
+                    <span class="info-value">${lecture.subject}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Teacher:</span>
+                    <span class="info-value">${lecture.teacherName || 'N/A'}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Room:</span>
+                    <span class="info-value">${lecture.room || 'N/A'}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Time:</span>
+                    <span class="info-value">${lecture.startTime} - ${lecture.endTime}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Status:</span>
+                    <span class="info-value ${lecture.present ? 'badge-success' : 'badge-danger'}">
+                        ${lecture.present ? '✅ Present' : '❌ Absent'}
+                    </span>
+                </div>
+            </div>
+            
+            <div class="time-breakdown-section">
+                <h4>⏱️ Time Breakdown</h4>
+                <div class="time-breakdown-grid">
+                    <div class="time-item">
+                        <span class="time-label">Attended:</span>
+                        <span class="time-value">${lecture.timeBreakdown.hours}h ${lecture.timeBreakdown.minutes}m ${lecture.timeBreakdown.seconds}s</span>
+                    </div>
+                    <div class="time-item">
+                        <span class="time-label">Total Duration:</span>
+                        <span class="time-value">${lecture.totalDuration.hours}h ${lecture.totalDuration.minutes}m ${lecture.totalDuration.seconds}s</span>
+                    </div>
+                    <div class="time-item">
+                        <span class="time-label">Attendance %:</span>
+                        <span class="time-value ${getAttendanceBadgeClass(lecture.percentage)}">${lecture.percentage}%</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="timeline-section">
+                <h4>📍 Timeline</h4>
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <span class="timeline-time">${lecture.startTime}</span>
+                        <span class="timeline-event">🔔 Lecture Started</span>
+                        <span class="timeline-detail">${new Date(lecture.lectureStartedAt).toLocaleTimeString()}</span>
+                    </div>
+                    
+                    ${lecture.studentCheckIn ? `
+                        <div class="timeline-item">
+                            <span class="timeline-time">${new Date(lecture.studentCheckIn).toLocaleTimeString()}</span>
+                            <span class="timeline-event">✅ Student Checked In</span>
+                            <span class="timeline-detail">Face verified</span>
+                        </div>
+                    ` : ''}
+                    
+                    ${lecture.verifications && lecture.verifications.length > 0 ? lecture.verifications.map(v => `
+                        <div class="timeline-item">
+                            <span class="timeline-time">${new Date(v.time).toLocaleTimeString()}</span>
+                            <span class="timeline-event">${v.type === 'random_ring' ? '🔔' : '👤'} ${v.event === 'random_ring' ? 'Random Ring Verified' : 'Face Verified'}</span>
+                            <span class="timeline-detail">${v.success ? '✓ Success' : '✗ Failed'}</span>
+                        </div>
+                    `).join('') : ''}
+                    
+                    <div class="timeline-item">
+                        <span class="timeline-time">${lecture.endTime}</span>
+                        <span class="timeline-event">🏁 Lecture Ended</span>
+                        <span class="timeline-detail">${new Date(lecture.lectureEndedAt).toLocaleTimeString()}</span>
+                    </div>
+                </div>
+            </div>
+            
+            ${lecture.verifications && lecture.verifications.length > 0 ? `
+                <div class="verifications-section">
+                    <h4>🔐 Verification Events</h4>
+                    <div class="verifications-list">
+                        ${lecture.verifications.map(v => `
+                            <div class="verification-item ${v.success ? 'success' : 'failed'}">
+                                <span class="verification-icon">${v.type === 'random_ring' ? '🔔' : '👤'}</span>
+                                <div class="verification-info">
+                                    <div class="verification-type">${v.event.replace('_', ' ').toUpperCase()}</div>
+                                    <div class="verification-time">${new Date(v.time).toLocaleString()}</div>
+                                </div>
+                                <span class="verification-status ${v.success ? 'badge-success' : 'badge-danger'}">
+                                    ${v.success ? '✓ Verified' : '✗ Failed'}
+                                </span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    modal.style.display = 'block';
+}
+
+// Helper function to format seconds to time
+function formatSecondsToTime(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0) {
+        return `${h}h ${m}m ${s}s`;
+    } else if (m > 0) {
+        return `${m}m ${s}s`;
+    } else {
+        return `${s}s`;
+    }
+}
+
+// OLD FUNCTION - Keep for backward compatibility
 function renderDetailedAttendanceModal(student, history) {
     const modal = document.getElementById('detailedAttendanceModal');
     const modalBody = document.getElementById('detailedAttendanceModalBody');

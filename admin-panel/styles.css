@@ -3675,3 +3675,461 @@ ture Details Styles */
         grid-template-columns: 1fr;
     }
 }
+
+/* ============================================
+   NEW ATTENDANCE TRACKING STYLES
+   ============================================ */
+
+/* Student Overview - Dates List */
+.dates-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+}
+
+.date-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.date-card:hover {
+    background: var(--bg-hover);
+    border-color: var(--primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 217, 255, 0.2);
+}
+
+.date-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.date-text {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.date-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.date-stat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.stat-icon {
+    font-size: 16px;
+}
+
+.date-card-footer {
+    text-align: right;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+}
+
+.view-details-link {
+    color: var(--primary);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+/* Date Details - Lectures List */
+.lectures-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.lecture-card {
+    background: var(--bg-card);
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.lecture-card.present {
+    border-left: 4px solid var(--success);
+}
+
+.lecture-card.absent {
+    border-left: 4px solid var(--danger);
+}
+
+.lecture-card:hover {
+    background: var(--bg-hover);
+    border-color: var(--primary);
+    transform: translateX(4px);
+}
+
+.lecture-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.lecture-info {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.lecture-period {
+    background: var(--primary);
+    color: var(--bg-dark);
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.lecture-time {
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.lecture-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.lecture-subject {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.lecture-details {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.lecture-detail {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.detail-icon {
+    font-size: 14px;
+}
+
+.lecture-time-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+}
+
+.time-attended {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.lecture-card-footer {
+    text-align: right;
+    padding-top: 8px;
+    margin-top: 8px;
+    border-top: 1px solid var(--border);
+}
+
+/* Lecture Details - Timeline */
+.lecture-detail-card {
+    background: var(--bg-card);
+    border-radius: 8px;
+    padding: 24px;
+}
+
+.lecture-detail-header {
+    margin-bottom: 24px;
+}
+
+.lecture-detail-header h3 {
+    font-size: 20px;
+    margin-bottom: 4px;
+}
+
+.lecture-detail-header p {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.lecture-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+    padding: 16px;
+    background: var(--bg-dark);
+    border-radius: 8px;
+}
+
+.info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.info-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.info-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.time-breakdown-section,
+.timeline-section,
+.verifications-section {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+}
+
+.time-breakdown-section h4,
+.timeline-section h4,
+.verifications-section h4 {
+    font-size: 16px;
+    margin-bottom: 16px;
+    color: var(--primary);
+}
+
+.time-breakdown-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.time-item {
+    background: var(--bg-dark);
+    padding: 12px;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.time-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.time-value {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Timeline */
+.timeline {
+    position: relative;
+    padding-left: 40px;
+}
+
+.timeline::before {
+    content: '';
+    position: absolute;
+    left: 15px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--border);
+}
+
+.timeline-item {
+    position: relative;
+    padding: 12px 0;
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    gap: 12px;
+    align-items: center;
+}
+
+.timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -29px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: 2px solid var(--bg-card);
+}
+
+.timeline-time {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.timeline-event {
+    font-size: 14px;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.timeline-detail {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* Verifications */
+.verifications-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.verification-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: var(--bg-dark);
+    border-radius: 6px;
+    border-left: 3px solid var(--border);
+}
+
+.verification-item.success {
+    border-left-color: var(--success);
+}
+
+.verification-item.failed {
+    border-left-color: var(--danger);
+}
+
+.verification-icon {
+    font-size: 24px;
+}
+
+.verification-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.verification-type {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.verification-time {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.verification-status {
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* Summary Cards */
+.student-summary-card,
+.date-summary-card {
+    background: var(--bg-dark);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+}
+
+.summary-row {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.summary-row:last-child {
+    margin-bottom: 0;
+}
+
+.summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 150px;
+}
+
+.summary-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.summary-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Attendance Detail Header */
+.attendance-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--border);
+}
+
+.attendance-detail-header h2 {
+    flex: 1;
+    font-size: 24px;
+    color: var(--primary);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .dates-list {
+        grid-template-columns: 1fr;
+    }
+    
+    .lecture-info-grid,
+    .time-breakdown-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .timeline-item {
+        grid-template-columns: 60px 1fr;
+        gap: 8px;
+    }
+    
+    .timeline-detail {
+        grid-column: 2;
+    }
+}
