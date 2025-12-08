@@ -1,4 +1,4 @@
-// Azure deployment trigger - Updated December 8, 2024 - Attendance History System with Admin Panel - Redeploy
+// Azure deployment trigger - Updated December 8, 2024 - v2.1 - Teacher Branch Restrictions & Auto-Filter
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
