@@ -3893,12 +3893,20 @@ app.post('/api/attendance/wifi-event', async (req, res) => {
         if (mongoose.connection.readyState === 1) {
             const student = await StudentManagement.findOne({ 
                 $or: [
-                    { _id: studentId },
+                    { _id: mongoose.Types.ObjectId.isValid(studentId) ? studentId : null },
                     { enrollmentNo: studentId }
-                ]
+                ].filter(query => query._id !== null || query.enrollmentNo)
             });
             
-            if (student && student.attendanceSession) {
+            if (student) {
+                // Initialize attendance session if not exists
+                if (!student.attendanceSession) {
+                    student.attendanceSession = {
+                        wifiConnected: false,
+                        wifiEvents: [],
+                        isActive: false
+                    };
+                }
                 // Update WiFi connection status
                 student.attendanceSession.wifiConnected = (type === 'connected');
                 
@@ -4090,6 +4098,147 @@ app.post('/api/attendance/timer-paused', async (req, res) => {
         }
         
         res.json({ success: true, message: 'Timer paused' });
+    } catch (error) {
+        console.error('❌ Error pausing timer:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Offline attendance sync endpoint
+app.post('/api/attendance/sync-offline', async (req, res) => {
+    try {
+        const {
+            studentId, studentName, semester, branch,
+            offlineStartTime, offlineEndTime, totalOfflineSeconds,
+            lastKnownOnlineSeconds, currentLecture, events, syncTimestamp
+        } = req.body;
+        
+        console.log('🔄 Syncing offline attendance:', {
+            studentId, 
+            offlineMinutes: Math.floor(totalOfflineSeconds / 60),
+            eventCount: events?.length || 0
+        });
+        
+        // Validate offline session
+        if (!studentId || !offlineStartTime || !offlineEndTime) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required offline session data'
+            });
+        }
+        
+        // Find student
+        const student = await StudentManagement.findOne({ 
+            $or: [
+                { _id: mongoose.Types.ObjectId.isValid(studentId) ? studentId : null },
+                { enrollmentNo: studentId }
+            ].filter(query => query._id !== null || query.enrollmentNo)
+        });
+        
+        if (!student) {
+            return res.status(404).json({
+                success: false,
+                error: 'Student not found'
+            });
+        }
+        
+        // Calculate accepted offline time (apply business rules)
+        let acceptedSeconds = totalOfflineSeconds;
+        let rejectionReason = null;
+        
+        // Business rule: Maximum 2 hours offline per session
+        const maxOfflineSeconds = 2 * 60 * 60; // 2 hours
+        if (totalOfflineSeconds > maxOfflineSeconds) {
+            acceptedSeconds = maxOfflineSeconds;
+            rejectionReason = 'exceeded_max_offline_time';
+        }
+        
+        // Business rule: Must have valid lecture during offline period
+        if (!currentLecture || !currentLecture.subject) {
+            acceptedSeconds = Math.floor(acceptedSeconds * 0.5); // 50% penalty
+            rejectionReason = 'no_valid_lecture';
+        }
+        
+        // Business rule: Check for suspicious patterns in events
+        if (events && events.length > 0) {
+            const disconnectEvents = events.filter(e => e.type === 'wifi_disconnected').length;
+            const connectEvents = events.filter(e => e.type === 'wifi_connected').length;
+            
+            // Too many WiFi toggles might indicate manipulation
+            if (disconnectEvents > 10 || Math.abs(disconnectEvents - connectEvents) > 5) {
+                acceptedSeconds = Math.floor(acceptedSeconds * 0.7); // 30% penalty
+                rejectionReason = 'suspicious_wifi_pattern';
+            }
+        }
+        
+        // Update student's attendance session
+        if (!student.attendanceSession) {
+            student.attendanceSession = {};
+        }
+        
+        // Add offline time to total attended seconds
+        const previousAttended = student.attendanceSession.totalAttendedSeconds || lastKnownOnlineSeconds || 0;
+        student.attendanceSession.totalAttendedSeconds = previousAttended + acceptedSeconds;
+        
+        // Log offline sync event
+        if (!student.attendanceSession.offlineSyncs) {
+            student.attendanceSession.offlineSyncs = [];
+        }
+        
+        student.attendanceSession.offlineSyncs.push({
+            syncTimestamp: new Date(syncTimestamp),
+            offlineStartTime: new Date(offlineStartTime),
+            offlineEndTime: new Date(offlineEndTime),
+            totalOfflineSeconds: totalOfflineSeconds,
+            acceptedSeconds: acceptedSeconds,
+            rejectionReason: rejectionReason,
+            currentLecture: currentLecture,
+            eventCount: events?.length || 0
+        });
+        
+        // Keep only last 10 offline syncs
+        if (student.attendanceSession.offlineSyncs.length > 10) {
+            student.attendanceSession.offlineSyncs = student.attendanceSession.offlineSyncs.slice(-10);
+        }
+        
+        await student.save();
+        
+        console.log(`✅ Offline sync completed for ${studentName}:`);
+        console.log(`   Total offline: ${Math.floor(totalOfflineSeconds / 60)} minutes`);
+        console.log(`   Accepted: ${Math.floor(acceptedSeconds / 60)} minutes`);
+        console.log(`   Reason: ${rejectionReason || 'full_acceptance'}`);
+        
+        // Broadcast updated attendance to teachers
+        io.emit('student_update', {
+            studentId: student._id,
+            enrollmentNo: student.enrollmentNo,
+            name: student.name,
+            status: 'present',
+            isRunning: false,
+            timerValue: student.attendanceSession.totalAttendedSeconds,
+            offlineSync: {
+                totalOfflineSeconds,
+                acceptedSeconds,
+                rejectionReason
+            }
+        });
+        
+        res.json({
+            success: true,
+            acceptedSeconds: acceptedSeconds,
+            totalOfflineSeconds: totalOfflineSeconds,
+            rejectionReason: rejectionReason,
+            newTotalSeconds: student.attendanceSession.totalAttendedSeconds,
+            message: rejectionReason ? 
+                `Offline time partially accepted: ${rejectionReason}` : 
+                'Offline time fully accepted'
+        });
+        
+    } catch (error) {
+        console.error('❌ Error syncing offline attendance:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
     } catch (error) {
         console.error('❌ Error handling timer pause:', error);
         res.status(500).json({ success: false, error: error.message });

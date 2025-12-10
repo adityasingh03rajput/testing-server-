@@ -100,30 +100,58 @@ class WiFiManager {
 
   /**
    * Get current WiFi BSSID
-   * Simplified version to prevent crashes
+   * Real implementation with react-native-wifi-reborn
    */
   async getCurrentBSSID() {
     try {
-      // For now, use development BSSID to prevent crashes
-      // TODO: Implement proper WiFi detection after fixing animation issues
-      if (__DEV__) {
-        console.log('📶 Using development BSSID for testing');
-        return 'b4:86:18:6f:fb:ec'; // Example BSSID for testing
+      // Import WiFi module dynamically to prevent crashes
+      let WifiManager;
+      try {
+        WifiManager = require('react-native-wifi-reborn').default;
+      } catch (importError) {
+        console.warn('⚠️ WiFi module not available, using fallback mode');
+        return this.getFallbackBSSID();
       }
 
-      // Skip WiFi detection for now to prevent crashes
-      // TODO: Implement proper WiFi detection after fixing module import
-      console.log('📶 WiFi detection disabled to prevent crashes');
-      return 'b4:86:18:6f:fb:ec'; // Always return fallback BSSID
+      // Check if WiFi is enabled
+      const isEnabled = await WifiManager.isEnabled();
+      if (!isEnabled) {
+        console.log('📶 WiFi is disabled');
+        return null;
+      }
 
-      // Fallback BSSID to prevent null crashes
-      console.warn('⚠️ No WiFi BSSID detected, using fallback');
-      return 'b4:86:18:6f:fb:ec';
+      // Get current WiFi info
+      const wifiInfo = await WifiManager.getCurrentWifiSSID();
+      if (!wifiInfo) {
+        console.log('📶 No WiFi connection detected');
+        return null;
+      }
+
+      // Get BSSID (requires location permission on Android)
+      const bssid = await WifiManager.getBSSID();
+      if (bssid && bssid !== '<unknown ssid>') {
+        console.log(`📶 Current BSSID: ${bssid}`);
+        return bssid.toLowerCase(); // Normalize to lowercase
+      }
+
+      console.log('📶 BSSID not available (may need location permission)');
+      return null;
 
     } catch (error) {
-      console.error('❌ Error getting BSSID, using fallback:', error);
-      return 'b4:86:18:6f:fb:ec'; // Always return a valid BSSID
+      console.error('❌ Error getting BSSID:', error);
+      return this.getFallbackBSSID();
     }
+  }
+
+  /**
+   * Get fallback BSSID for development/testing
+   */
+  getFallbackBSSID() {
+    if (__DEV__) {
+      console.log('📶 Using development BSSID for testing');
+      return 'b4:86:18:6f:fb:ec'; // Example BSSID for testing
+    }
+    return null; // Production should return null if no real BSSID
   }
 
   /**
@@ -141,26 +169,60 @@ class WiFiManager {
 
   /**
    * Load authorized BSSIDs from server and cache locally
+   * Includes automatic room-time matching based on timetable
    */
-  async loadAuthorizedBSSIDs(serverUrl) {
+  async loadAuthorizedBSSIDs(serverUrl, studentData = null) {
     try {
       if (serverUrl) {
         console.log('📥 Fetching authorized BSSIDs from server...');
-        const response = await fetch(`${serverUrl}/api/classrooms`);
-        const data = await response.json();
         
-        if (data.success && data.classrooms) {
-          this.authorizedBSSIDs = data.classrooms
+        // Get classrooms with BSSID data
+        const classroomResponse = await fetch(`${serverUrl}/api/classrooms`);
+        const classroomData = await classroomResponse.json();
+        
+        if (classroomData.success && classroomData.classrooms) {
+          this.authorizedBSSIDs = classroomData.classrooms
             .filter(room => room.wifiBSSID && room.isActive)
             .map(room => ({
-              bssid: room.wifiBSSID,
+              bssid: room.wifiBSSID.toLowerCase(), // Normalize to lowercase
               roomNumber: room.roomNumber,
-              building: room.building
+              building: room.building || 'Main Building',
+              capacity: room.capacity || 60
             }));
+          
+          // If student data available, get current lecture room
+          if (studentData && studentData.semester && studentData.course) {
+            try {
+              const timetableResponse = await fetch(
+                `${serverUrl}/api/timetable/${studentData.semester}/${encodeURIComponent(studentData.course)}`
+              );
+              const timetableData = await timetableResponse.json();
+              
+              if (timetableData.success) {
+                const currentRoom = this.getCurrentLectureRoom(timetableData.timetable);
+                if (currentRoom) {
+                  console.log(`📚 Current lecture room: ${currentRoom}`);
+                  // Mark current room as priority
+                  this.authorizedBSSIDs = this.authorizedBSSIDs.map(room => ({
+                    ...room,
+                    isCurrentLecture: room.roomNumber === currentRoom
+                  }));
+                }
+              }
+            } catch (timetableError) {
+              console.warn('⚠️ Could not fetch timetable for room matching:', timetableError);
+            }
+          }
           
           // Cache for offline use
           await AsyncStorage.setItem(AUTHORIZED_BSSIDS_KEY, JSON.stringify(this.authorizedBSSIDs));
           console.log(`✅ Loaded ${this.authorizedBSSIDs.length} authorized BSSIDs`);
+          
+          // Log current lecture room if found
+          const currentLectureRoom = this.authorizedBSSIDs.find(room => room.isCurrentLecture);
+          if (currentLectureRoom) {
+            console.log(`🎯 Current lecture BSSID: ${currentLectureRoom.bssid} (${currentLectureRoom.roomNumber})`);
+          }
         }
       } else {
         // Load from cache
@@ -172,6 +234,43 @@ class WiFiManager {
       }
     } catch (error) {
       console.error('❌ Error loading authorized BSSIDs:', error);
+    }
+  }
+
+  /**
+   * Get current lecture room based on time and timetable
+   */
+  getCurrentLectureRoom(timetable) {
+    try {
+      const now = new Date();
+      const currentDay = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][now.getDay()];
+      const currentTime = now.getHours() * 60 + now.getMinutes(); // minutes since midnight
+      
+      const daySchedule = timetable.schedule?.[currentDay];
+      if (!daySchedule || !timetable.periods) return null;
+      
+      // Find current period
+      for (let i = 0; i < daySchedule.length; i++) {
+        const period = daySchedule[i];
+        const periodInfo = timetable.periods[i];
+        
+        if (!periodInfo || period.isBreak) continue;
+        
+        const [startH, startM] = periodInfo.startTime.split(':').map(Number);
+        const [endH, endM] = periodInfo.endTime.split(':').map(Number);
+        
+        const periodStart = startH * 60 + startM;
+        const periodEnd = endH * 60 + endM;
+        
+        if (currentTime >= periodStart && currentTime <= periodEnd) {
+          return period.room;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Error getting current lecture room:', error);
+      return null;
     }
   }
 
