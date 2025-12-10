@@ -62,6 +62,45 @@ app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
+// Request logging middleware
+app.use((req, res, next) => {
+    const start = Date.now();
+    console.log(`📥 ${req.method} ${req.path} - ${req.ip}`);
+    
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        const status = res.statusCode;
+        const statusEmoji = status >= 400 ? '❌' : status >= 300 ? '⚠️' : '✅';
+        console.log(`📤 ${statusEmoji} ${req.method} ${req.path} - ${status} (${duration}ms)`);
+    });
+    
+    next();
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('❌ Server Error:', err);
+    
+    if (err.type === 'entity.parse.failed') {
+        return res.status(400).json({ 
+            success: false, 
+            error: 'Invalid JSON in request body' 
+        });
+    }
+    
+    if (err.name === 'ValidationError') {
+        return res.status(400).json({ 
+            success: false, 
+            error: err.message 
+        });
+    }
+    
+    res.status(500).json({ 
+        success: false, 
+        error: 'Internal server error' 
+    });
+});
+
 // Set timeout for all requests
 server.timeout = 120000; // 2 minutes
 server.keepAliveTimeout = 65000; // 65 seconds
@@ -2751,9 +2790,34 @@ function generateSignature(userId, timestamp, match, confidence, descriptorHash)
 
 // ==================== ADMIN PANEL API ENDPOINTS ====================
 
+// Root endpoint
+app.get('/', (req, res) => {
+    res.json({ 
+        message: 'Attendance System API Server',
+        version: '2.4.0',
+        status: 'running',
+        timestamp: new Date().toISOString(),
+        endpoints: {
+            config: '/api/config',
+            time: '/api/time',
+            health: '/api/health',
+            students: '/api/students',
+            timetable: '/api/timetable/:semester/:branch',
+            subjects: '/api/subjects',
+            classrooms: '/api/classrooms'
+        }
+    });
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date() });
+    res.json({ 
+        status: 'ok', 
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+    });
 });
 
 // Server time endpoint (for time synchronization)
@@ -5405,11 +5469,43 @@ app.post('/api/random-ring/teacher-action', async (req, res) => {
     }
 });
 
+// Startup validation
+function validateEnvironment() {
+    const required = ['MONGODB_URI'];
+    const missing = required.filter(key => !process.env[key]);
+    
+    if (missing.length > 0) {
+        console.error('❌ Missing required environment variables:', missing.join(', '));
+        return false;
+    }
+    
+    console.log('✅ Environment validation passed');
+    return true;
+}
+
+// Global error handlers
+process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught Exception:', error);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    process.exit(1);
+});
+
 // All routes must be registered before starting the server
 const PORT = process.env.PORT || 3000;
+
+// Validate environment before starting
+if (!validateEnvironment()) {
+    console.error('❌ Server startup aborted due to configuration errors');
+    process.exit(1);
+}
+
 server.listen(PORT, '0.0.0.0', async () => {
     console.log('========================================');
-    console.log('🚀 Attendance SDUI Server Running');
+    console.log('🚀 Attendance SDUI Server Running v2.4');
     console.log('========================================');
     console.log(`📡 HTTP Server: http://localhost:${PORT}`);
     console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
@@ -5417,7 +5513,9 @@ server.listen(PORT, '0.0.0.0', async () => {
     console.log(`👥 Students API: http://localhost:${PORT}/api/students`);
     console.log(`🔍 Face Verify: http://localhost:${PORT}/api/verify-face`);
     console.log(`⏰ Time Sync: http://localhost:${PORT}/api/time`);
-    console.log(`💾 Database: ${mongoose.connection.readyState === 1 ? 'MongoDB Atlas' : 'In-Memory'}`);
+    console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
+    console.log(`💾 Database: ${mongoose.connection.readyState === 1 ? 'MongoDB Atlas ✅' : 'In-Memory ⚠️'}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log('========================================');
 
     // Display server IP addresses
