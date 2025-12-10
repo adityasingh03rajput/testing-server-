@@ -4531,3 +4531,78 @@ ture Details Styles */
     color: var(--text-secondary);
     margin-bottom: 20px;
 }
+
+/* WiFi Status Badges */
+.wifi-status-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: center;
+    display: inline-block;
+    min-width: 80px;
+}
+
+.wifi-connected {
+    background: rgba(34, 197, 94, 0.2);
+    color: #16a34a;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.wifi-disconnected {
+    background: rgba(239, 68, 68, 0.2);
+    color: #dc2626;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.wifi-grace {
+    background: rgba(245, 158, 11, 0.2);
+    color: #d97706;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.wifi-wrong {
+    background: rgba(168, 85, 247, 0.2);
+    color: #7c3aed;
+    border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.wifi-unknown {
+    background: rgba(107, 114, 128, 0.2);
+    color: #6b7280;
+    border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
+/* WiFi Events in Detailed View */
+.wifi-event {
+    padding: 8px 12px;
+    margin: 4px 0;
+    border-radius: 6px;
+    font-size: 12px;
+    border-left: 3px solid;
+}
+
+.wifi-event.connected {
+    background: rgba(34, 197, 94, 0.1);
+    border-left-color: #16a34a;
+}
+
+.wifi-event.disconnected {
+    background: rgba(239, 68, 68, 0.1);
+    border-left-color: #dc2626;
+}
+
+.wifi-event.grace_expired {
+    background: rgba(245, 158, 11, 0.1);
+    border-left-color: #d97706;
+}
+
+.wifi-event-time {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.wifi-event-details {
+    color: var(--text-secondary);
+    margin-top: 2px;
+}

@@ -20,6 +20,8 @@ import Svg, {
 } from 'react-native-svg';
 import { PlayIcon, PauseIcon } from './Icons';
 import { useServerTime } from './useServerTime';
+import { useWiFiAttendance } from './useWiFiAttendance';
+import WiFiStatusIndicator from './WiFiStatusIndicator';
 
 // Constants for circle dimensions
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -60,6 +62,10 @@ export default function CircularTimer({
   timetable = null,
   currentDay = null,
   lectureInfo = null,
+  serverUrl = null,
+  studentId = null,
+  onTimerPaused = () => { },
+  onTimerResumed = () => { },
 }) {
   const safeTheme = {
     primary: theme.primary || '#d97706',
@@ -76,10 +82,22 @@ export default function CircularTimer({
   const [isLongPressing, setIsLongPressing] = useState(false);
   const currentTime = useServerTime(1000); // Use server time hook
 
+  // WiFi-based attendance tracking
+  const {
+    wifiStatus,
+    timerState,
+    startTimer: startWiFiTimer,
+    stopTimer: stopWiFiTimer,
+    getStatusMessage,
+    refreshWiFiStatus,
+    canStartTimer,
+    shouldPauseTimer,
+    isInValidLocation
+  } = useWiFiAttendance(serverUrl, lectureInfo, studentId);
+
+  // Simplified animations to prevent crashes
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const segmentOpacity = useRef(new Animated.Value(1)).current;
-  const circleScale = useRef(new Animated.Value(0)).current;
   const longPressAnim = useRef(new Animated.Value(0)).current;
 
   // Generate segments from timetable
@@ -237,15 +255,19 @@ export default function CircularTimer({
     }
   }, [timetable, currentDay]);
 
-  // Pulse animation
+  // Simplified pulse animation to prevent crashes
   useEffect(() => {
     if (isRunning) {
-      Animated.loop(
+      // Simple pulse without complex loops
+      const pulse = () => {
         Animated.sequence([
           Animated.timing(pulseAnim, { toValue: 1.02, duration: 1000, useNativeDriver: true }),
           Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
-        ])
-      ).start();
+        ]).start(() => {
+          if (isRunning) pulse(); // Continue only if still running
+        });
+      };
+      pulse();
     } else {
       pulseAnim.setValue(1);
     }
@@ -253,40 +275,24 @@ export default function CircularTimer({
 
   // Current time is now managed by useServerTime hook - no need for manual updates
 
-  // Animate morph when active segment changes
+  // WiFi-based timer control
   useEffect(() => {
-    if (activeSegment !== null) {
-      // Fade out segment, scale in circle
-      Animated.parallel([
-        Animated.timing(segmentOpacity, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.spring(circleScale, {
-          toValue: 1,
-          friction: 7,
-          tension: 40,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      // Fade in segment, scale out circle
-      Animated.parallel([
-        Animated.timing(segmentOpacity, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.spring(circleScale, {
-          toValue: 0,
-          friction: 7,
-          tension: 40,
-          useNativeDriver: true,
-        }),
-      ]).start();
+    // Auto-pause timer if WiFi becomes invalid
+    if (shouldPauseTimer && isRunning) {
+      console.log('⏸️ Auto-pausing timer due to WiFi status');
+      onTimerPaused(timerState.pauseReason || 'wifi_invalid');
     }
-  }, [activeSegment]);
+  }, [shouldPauseTimer, isRunning, timerState.pauseReason]);
+
+  // Notify parent of WiFi timer state changes
+  useEffect(() => {
+    if (timerState.isPaused && isRunning) {
+      onTimerPaused(timerState.pauseReason);
+    }
+  }, [timerState.isPaused, timerState.pauseReason]);
+
+  // Simplified segment animation to prevent crashes
+  // Removed complex morphing animations that cause crashes
 
   // Create arc path for a segment
   const createSegmentPath = (startAngle, endAngle) => {
@@ -421,7 +427,8 @@ export default function CircularTimer({
 
       onPanResponderGrant: (e) => {
         setIsDragging(true);
-        Animated.spring(scaleAnim, { toValue: 1.03, useNativeDriver: true }).start();
+        // Simplified scale animation
+        scaleAnim.setValue(1.03);
         const angle = getAngle(e.nativeEvent.locationX, e.nativeEvent.locationY);
         const seg = findSegment(angle);
         if (seg) {
@@ -441,13 +448,15 @@ export default function CircularTimer({
 
       onPanResponderRelease: () => {
         setIsDragging(false);
-        Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
+        // Simplified scale reset
+        scaleAnim.setValue(1);
         setTimeout(() => setActiveSegment(null), 1500);
       },
 
       onPanResponderTerminate: () => {
         setIsDragging(false);
-        Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
+        // Simplified scale reset
+        scaleAnim.setValue(1);
       },
     })
   ).current;
@@ -495,46 +504,54 @@ export default function CircularTimer({
                   fillOpacity={isActive ? 0 : 0.95}
                 />
 
-                {/* Morphed circle - appears in place */}
+                {/* Simplified active segment display */}
                 {isActive && (
-                  <Animated.View
+                  <View
                     style={{
-                      transform: [{ scale: circleScale }],
-                      opacity: circleScale,
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      justifyContent: 'center',
+                      alignItems: 'center',
                     }}
                   >
-                    <Svg>
-                      <Path
-                        d={createCirclePath(seg)}
-                        fill={safeTheme.cardBackground}
-                        stroke={seg.color}
-                        strokeWidth="3"
-                        opacity={0.98}
-                      />
-                      <SvgText
-                        x={centerPos.x}
-                        y={centerPos.y - 4}
-                        textAnchor="middle"
-                        fill={safeTheme.text}
-                        fontSize="9"
-                        fontWeight="700"
+                    <View
+                      style={{
+                        backgroundColor: safeTheme.cardBackground,
+                        borderColor: seg.color,
+                        borderWidth: 3,
+                        borderRadius: 30,
+                        padding: 8,
+                        minWidth: 60,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: safeTheme.text,
+                          fontSize: 9,
+                          fontWeight: '700',
+                          textAlign: 'center',
+                        }}
                       >
                         {seg.label}
-                      </SvgText>
+                      </Text>
                       {seg.room && (
-                        <SvgText
-                          x={centerPos.x}
-                          y={centerPos.y + 8}
-                          textAnchor="middle"
-                          fill={safeTheme.textSecondary}
-                          fontSize="7"
-                          fontWeight="500"
+                        <Text
+                          style={{
+                            color: safeTheme.textSecondary,
+                            fontSize: 7,
+                            fontWeight: '500',
+                            textAlign: 'center',
+                          }}
                         >
                           {seg.room}
-                        </SvgText>
+                        </Text>
                       )}
-                    </Svg>
-                  </Animated.View>
+                    </View>
+                  </View>
                 )}
               </G>
             );
@@ -572,25 +589,18 @@ export default function CircularTimer({
           style={styles.center}
           onPressIn={() => {
             setIsLongPressing(true);
-            Animated.timing(longPressAnim, {
-              toValue: 1,
-              duration: 800,
-              useNativeDriver: true,
-            }).start();
+            // Simplified long press animation
+            longPressAnim.setValue(1);
           }}
           onPressOut={() => {
             setIsLongPressing(false);
-            Animated.timing(longPressAnim, {
-              toValue: 0,
-              duration: 200,
-              useNativeDriver: true,
-            }).start();
+            // Simplified long press reset
+            longPressAnim.setValue(0);
           }}
           onLongPress={() => {
             console.log('🔒 Long press detected on timer center - triggering face verification');
             Vibration.vibrate(50);
             setIsLongPressing(false);
-            longPressAnim.setValue(0);
             onLongPressCenter();
           }}
           delayLongPress={800}
@@ -614,15 +624,43 @@ export default function CircularTimer({
             TIME ATTENDED
           </Text>
 
-          {/* Only show start button if not running */}
+          {/* Show validation requirements */}
           {!isRunning && (
-            <TouchableOpacity
-              style={[styles.playBtn, { backgroundColor: safeTheme.primary, marginTop: 15 }]}
-              onPress={onToggleTimer}
-              activeOpacity={0.8}
-            >
-              <PlayIcon size={20} color={safeTheme.background} />
-            </TouchableOpacity>
+            <View style={{ alignItems: 'center', marginTop: 15 }}>
+              {/* WiFi + Face verification required message */}
+              <View style={{
+                backgroundColor: safeTheme.cardBackground,
+                borderColor: '#f59e0b',
+                borderWidth: 1,
+                borderRadius: 8,
+                padding: 8,
+                marginBottom: 10,
+                maxWidth: 200,
+              }}>
+                <Text style={{
+                  color: '#f59e0b',
+                  fontSize: 10,
+                  textAlign: 'center',
+                  fontWeight: '600'
+                }}>
+                  📶 Classroom WiFi + 🔒 Face Verification Required
+                </Text>
+              </View>
+
+              {/* Start button */}
+              <TouchableOpacity
+                style={[
+                  styles.playBtn, 
+                  { 
+                    backgroundColor: safeTheme.primary,
+                  }
+                ]}
+                onPress={onToggleTimer}
+                activeOpacity={0.8}
+              >
+                <PlayIcon size={20} color={safeTheme.background} />
+              </TouchableOpacity>
+            </View>
           )}
 
           {/* Show running indicator when active */}
@@ -645,9 +683,9 @@ export default function CircularTimer({
             </TouchableOpacity>
           )}
 
-          {/* Long Press Loader */}
+          {/* Simplified Long Press Indicator */}
           {isLongPressing && (
-            <Animated.View
+            <View
               style={{
                 position: 'absolute',
                 top: 0,
@@ -658,10 +696,9 @@ export default function CircularTimer({
                 alignItems: 'center',
                 backgroundColor: safeTheme.primary + '20',
                 borderRadius: 100,
-                opacity: longPressAnim,
               }}
             >
-              <Animated.View
+              <View
                 style={{
                   width: 60,
                   height: 60,
@@ -669,14 +706,6 @@ export default function CircularTimer({
                   borderWidth: 4,
                   borderColor: safeTheme.primary,
                   borderTopColor: 'transparent',
-                  transform: [
-                    {
-                      rotate: longPressAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: ['0deg', '360deg'],
-                      }),
-                    },
-                  ],
                 }}
               />
               <Text
@@ -690,15 +719,29 @@ export default function CircularTimer({
               >
                 🔒 Hold to Verify
               </Text>
-            </Animated.View>
+            </View>
           )}
         </TouchableOpacity>
       </Animated.View>
 
+      {/* WiFi Status Indicator */}
+      {lectureInfo && (
+        <WiFiStatusIndicator
+          wifiStatus={wifiStatus}
+          timerState={timerState}
+          currentLecture={lectureInfo}
+          onRefresh={refreshWiFiStatus}
+          theme={safeTheme}
+          style={{ marginTop: 20, maxWidth: TIMER_SIZE }}
+        />
+      )}
+
       {/* Hint */}
       <View style={styles.hint}>
         <Text style={[styles.hintText, { color: safeTheme.textSecondary }]}>
-          {isDragging ? 'Γ£¿ Drag around the circle' : '≡ƒæå Tap or drag segments'}
+          {isDragging ? 'Γ£¿ Drag around the circle' : 
+           !isInValidLocation && lectureInfo ? 'Connect to classroom WiFi to start' :
+           '≡ƒæå Tap or drag segments'}
         </Text>
       </View>
     </View>
