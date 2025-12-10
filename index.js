@@ -1,4 +1,4 @@
-// Azure deployment trigger - Updated December 8, 2024 - v2.1 - Teacher Branch Restrictions & Auto-Filter
+// Azure deployment trigger - Updated December 10, 2024 - v2.2 - Latest Attendy Branch State
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
