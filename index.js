@@ -3060,6 +3060,24 @@ const studentManagementSchema = new mongoose.Schema({
             startTime: { type: Date },
             endTime: { type: Date },
             duration: { type: Number }
+        }],
+        // WiFi-based attendance tracking
+        wifiEvents: [{ // Track WiFi connection events
+            timestamp: { type: Date },
+            type: { type: String }, // 'connected', 'disconnected', 'bssid_changed', 'grace_expired'
+            bssid: { type: String },
+            lecture: {
+                subject: String,
+                room: String,
+                startTime: String,
+                endTime: String
+            },
+            gracePeriod: { type: Boolean, default: false }
+        }],
+        pauseEvents: [{ // Track timer pause/resume events
+            type: { type: String }, // 'paused', 'resumed'
+            reason: { type: String }, // 'wifi_disconnected', 'grace_expired', 'wrong_bssid', etc.
+            timestamp: { type: Date }
         }]
     },
     // Current class info
@@ -3845,6 +3863,284 @@ app.get('/api/attendance/teacher/:teacherId/lectures', async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching teacher lectures:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============================================
+// WIFI-BASED ATTENDANCE ENDPOINTS
+// ============================================
+
+// Log WiFi events for attendance tracking
+app.post('/api/attendance/wifi-event', async (req, res) => {
+    try {
+        const { timestamp, type, bssid, lecture, studentId, timerState, gracePeriod } = req.body;
+        
+        console.log('📶 WiFi Event:', { type, studentId, bssid, gracePeriod });
+        
+        // Create WiFi event log entry
+        const wifiEvent = {
+            timestamp: new Date(timestamp),
+            type: type, // 'connected', 'disconnected', 'bssid_changed', 'grace_expired'
+            bssid: bssid,
+            studentId: studentId,
+            lecture: lecture,
+            timerState: timerState,
+            gracePeriod: gracePeriod || false
+        };
+        
+        // Update student's attendance session with WiFi status
+        if (mongoose.connection.readyState === 1) {
+            const student = await StudentManagement.findOne({ 
+                $or: [
+                    { _id: studentId },
+                    { enrollmentNo: studentId }
+                ]
+            });
+            
+            if (student && student.attendanceSession) {
+                // Update WiFi connection status
+                student.attendanceSession.wifiConnected = (type === 'connected');
+                
+                // Add WiFi event to history
+                if (!student.attendanceSession.wifiEvents) {
+                    student.attendanceSession.wifiEvents = [];
+                }
+                student.attendanceSession.wifiEvents.push(wifiEvent);
+                
+                // Keep only last 50 events
+                if (student.attendanceSession.wifiEvents.length > 50) {
+                    student.attendanceSession.wifiEvents = student.attendanceSession.wifiEvents.slice(-50);
+                }
+                
+                // If disconnected and grace period expired, pause timer
+                if (type === 'grace_expired' && student.attendanceSession.isActive) {
+                    student.attendanceSession.isActive = false;
+                    student.status = 'absent';
+                    console.log(`⏸️ Timer paused for ${student.name} - WiFi grace period expired`);
+                }
+                
+                // If reconnected and was paused due to WiFi, resume timer
+                if (type === 'connected' && !student.attendanceSession.isActive && 
+                    student.attendanceSession.wifiEvents.some(e => e.type === 'disconnected' || e.type === 'grace_expired')) {
+                    student.attendanceSession.isActive = true;
+                    student.status = 'attending';
+                    console.log(`▶️ Timer resumed for ${student.name} - WiFi reconnected`);
+                }
+                
+                await student.save();
+            }
+        }
+        
+        res.json({ success: true, message: 'WiFi event logged' });
+    } catch (error) {
+        console.error('❌ Error logging WiFi event:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get authorized BSSIDs for current lecture
+app.get('/api/attendance/authorized-bssid/:studentId', async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        
+        // Get student's current lecture info
+        const student = await StudentManagement.findOne({ 
+            $or: [
+                { _id: studentId },
+                { enrollmentNo: studentId }
+            ]
+        });
+        
+        if (!student || !student.attendanceSession || !student.attendanceSession.currentClass) {
+            return res.json({
+                success: true,
+                authorized: false,
+                reason: 'no_active_lecture',
+                message: 'No active lecture found'
+            });
+        }
+        
+        const currentClass = student.attendanceSession.currentClass;
+        
+        // Get classroom BSSID
+        const classroom = await Classroom.findOne({ roomNumber: currentClass.room });
+        
+        if (!classroom || !classroom.wifiBSSID) {
+            return res.json({
+                success: true,
+                authorized: false,
+                reason: 'room_not_configured',
+                message: `Room ${currentClass.room} WiFi not configured`
+            });
+        }
+        
+        res.json({
+            success: true,
+            authorized: true,
+            bssid: classroom.wifiBSSID,
+            room: currentClass.room,
+            lecture: {
+                subject: currentClass.subject,
+                startTime: currentClass.startTime,
+                endTime: currentClass.endTime
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Error getting authorized BSSID:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Validate BSSID for current lecture
+app.post('/api/attendance/validate-bssid', async (req, res) => {
+    try {
+        const { studentId, currentBSSID, roomNumber } = req.body;
+        
+        console.log('📶 BSSID Validation:', { studentId, currentBSSID, roomNumber });
+        
+        if (!currentBSSID) {
+            return res.json({
+                success: true,
+                authorized: false,
+                reason: 'no_wifi',
+                message: 'Not connected to WiFi'
+            });
+        }
+        
+        // Get classroom's authorized BSSID
+        const classroom = await Classroom.findOne({ roomNumber: roomNumber });
+        
+        if (!classroom || !classroom.wifiBSSID) {
+            return res.json({
+                success: true,
+                authorized: false,
+                reason: 'room_not_configured',
+                message: `Room ${roomNumber} WiFi not configured`
+            });
+        }
+        
+        const isAuthorized = currentBSSID.toLowerCase() === classroom.wifiBSSID.toLowerCase();
+        
+        console.log(`📶 BSSID Check: ${currentBSSID} vs ${classroom.wifiBSSID} = ${isAuthorized ? '✅' : '❌'}`);
+        
+        res.json({
+            success: true,
+            authorized: isAuthorized,
+            expectedBSSID: classroom.wifiBSSID,
+            currentBSSID: currentBSSID,
+            room: {
+                roomNumber: classroom.roomNumber,
+                building: classroom.building
+            },
+            reason: isAuthorized ? 'authorized' : 'wrong_bssid',
+            message: isAuthorized ? 
+                `Connected to ${roomNumber} WiFi` : 
+                `Wrong WiFi - Connect to ${roomNumber} network`
+        });
+        
+    } catch (error) {
+        console.error('❌ Error validating BSSID:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Timer pause/resume events from WiFi system
+app.post('/api/attendance/timer-paused', async (req, res) => {
+    try {
+        const { studentId, reason, timestamp } = req.body;
+        
+        console.log('⏸️ Timer paused by WiFi system:', { studentId, reason });
+        
+        // Update student status
+        const student = await StudentManagement.findOne({ 
+            $or: [
+                { _id: studentId },
+                { enrollmentNo: studentId }
+            ]
+        });
+        
+        if (student && student.attendanceSession) {
+            student.attendanceSession.isActive = false;
+            student.status = 'absent';
+            
+            // Log pause event
+            if (!student.attendanceSession.pauseEvents) {
+                student.attendanceSession.pauseEvents = [];
+            }
+            student.attendanceSession.pauseEvents.push({
+                type: 'paused',
+                reason: reason,
+                timestamp: new Date(timestamp)
+            });
+            
+            await student.save();
+            
+            // Broadcast to teachers
+            io.emit('student_update', {
+                studentId: student._id,
+                enrollmentNo: student.enrollmentNo,
+                name: student.name,
+                status: 'absent',
+                isRunning: false,
+                timerValue: student.attendanceSession.totalAttendedSeconds || 0,
+                pauseReason: reason
+            });
+        }
+        
+        res.json({ success: true, message: 'Timer paused' });
+    } catch (error) {
+        console.error('❌ Error handling timer pause:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/attendance/timer-resumed', async (req, res) => {
+    try {
+        const { studentId, reason, timestamp } = req.body;
+        
+        console.log('▶️ Timer resumed by WiFi system:', { studentId, reason });
+        
+        // Update student status
+        const student = await StudentManagement.findOne({ 
+            $or: [
+                { _id: studentId },
+                { enrollmentNo: studentId }
+            ]
+        });
+        
+        if (student && student.attendanceSession) {
+            student.attendanceSession.isActive = true;
+            student.status = 'attending';
+            
+            // Log resume event
+            if (!student.attendanceSession.pauseEvents) {
+                student.attendanceSession.pauseEvents = [];
+            }
+            student.attendanceSession.pauseEvents.push({
+                type: 'resumed',
+                reason: reason,
+                timestamp: new Date(timestamp)
+            });
+            
+            await student.save();
+            
+            // Broadcast to teachers
+            io.emit('student_update', {
+                studentId: student._id,
+                enrollmentNo: student.enrollmentNo,
+                name: student.name,
+                status: 'attending',
+                isRunning: true,
+                timerValue: student.attendanceSession.totalAttendedSeconds || 0,
+                resumeReason: reason
+            });
+        }
+        
+        res.json({ success: true, message: 'Timer resumed' });
+    } catch (error) {
+        console.error('❌ Error handling timer resume:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });

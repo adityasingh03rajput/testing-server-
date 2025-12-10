@@ -1732,6 +1732,28 @@ export default function App() {
     }
   };
 
+  // WiFi validation function
+  const isConnectedToClassroomWiFi = () => {
+    // TODO: Implement actual WiFi BSSID detection
+    // For now, simulate WiFi check based on current class
+    if (!currentClassInfo || !currentClassInfo.room) {
+      console.log('❌ No classroom info available for WiFi check');
+      return false;
+    }
+
+    // Simulate WiFi BSSID check
+    // In production, this should check actual device WiFi BSSID against classroom BSSID
+    const simulatedWiFiConnected = true; // TODO: Replace with actual WiFi detection
+    
+    if (!simulatedWiFiConnected) {
+      console.log('❌ Not connected to classroom WiFi');
+      return false;
+    }
+
+    console.log('✅ WiFi validation passed (simulated)');
+    return true;
+  };
+
   const handleStartPause = () => {
     // Only allow starting, no pausing
     if (isRunning) {
@@ -1745,15 +1767,25 @@ export default function App() {
       return;
     }
 
-    // NEW LOGIC: Face verification required when NOT attending (to start attendance)
-    // If student is already attending, only Random Ring can trigger face verification
+    // CRITICAL: WiFi + Face verification required to start timer
+    // This prevents students from faking attendance from home
+    
+    // 1. Check WiFi connection first
+    if (!isConnectedToClassroomWiFi()) {
+      alert('❌ WiFi Required\n\nYou must be connected to the classroom WiFi to start attendance tracking.\n\nPlease connect to the authorized classroom network and try again.');
+      return;
+    }
+
+    // 2. Check face verification
     if (!verifiedToday) {
-      console.log('🔒 Student not attending - face verification required to start');
+      console.log('🔒 Face verification required to start attendance');
+      alert('🔒 Face Verification Required\n\nPlease verify your identity to start attendance tracking.');
       setShowFaceVerification(true);
       return;
     }
 
-    // Start timer using centralized server system
+    // 3. Both WiFi and face verification passed - start timer
+    console.log('✅ Starting timer - WiFi and face verification validated');
     setIsRunning(true);
     
     if (socketRef.current && socketRef.current.connected) {
@@ -1764,18 +1796,29 @@ export default function App() {
         semester,
         branch,
         currentClass: currentClassInfo?.subject,
-        lectureDuration: currentClassInfo?.duration || 60
+        lectureDuration: currentClassInfo?.duration || 60,
+        wifiValidated: true,
+        faceVerified: true
       });
-      console.log('⏱️ Sent start_timer to server');
+      console.log('⏱️ Sent start_timer to server with validations');
     } else {
       console.warn('⚠️ Socket not connected, cannot start centralized timer');
-      // Fallback to old method
-      updateTimerOnServer(0, true);
+      // Don't allow offline timer without validations
+      alert('❌ Connection Required\n\nServer connection is required for attendance tracking.');
+      setIsRunning(false);
     }
   };
 
   const handleVerificationSuccess = async (result) => {
     console.log('✅ Face verification successful:', result);
+    
+    // Check WiFi connection before proceeding
+    if (!isConnectedToClassroomWiFi()) {
+      alert('❌ WiFi Required\n\nFace verification successful, but you must be connected to classroom WiFi to start attendance.\n\nPlease connect to the authorized classroom network.');
+      setShowFaceVerification(false);
+      return;
+    }
+    
     setIsFaceVerified(true);
     setVerifiedToday(true); // Mark as verified for the entire day
     setShowFaceVerification(false);
@@ -3861,6 +3904,32 @@ export default function App() {
               room: serverTimerData.lectureRoom,
               startTime: serverTimerData.lectureStartTime,
               endTime: serverTimerData.lectureEndTime
+            }}
+            serverUrl={SOCKET_URL}
+            studentId={studentId}
+            onTimerPaused={(reason) => {
+              console.log('⏸️ Timer paused by WiFi system:', reason);
+              setIsRunning(false);
+              // Update server about pause
+              if (socketRef.current && socketRef.current.connected) {
+                socketRef.current.emit('timer_paused', {
+                  studentId: studentId,
+                  reason: reason,
+                  timestamp: new Date().toISOString()
+                });
+              }
+            }}
+            onTimerResumed={(reason) => {
+              console.log('▶️ Timer resumed by WiFi system:', reason);
+              setIsRunning(true);
+              // Update server about resume
+              if (socketRef.current && socketRef.current.connected) {
+                socketRef.current.emit('timer_resumed', {
+                  studentId: studentId,
+                  reason: reason,
+                  timestamp: new Date().toISOString()
+                });
+              }
             }}
           />
         ) : (

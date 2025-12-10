@@ -5442,7 +5442,7 @@ function renderAttendanceHistoryTable(students) {
     tbody.innerHTML = '';
     
     if (students.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 40px;">No attendance records found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 40px;">No attendance records found</td></tr>';
         return;
     }
     
@@ -5474,6 +5474,11 @@ function renderAttendanceHistoryTable(students) {
             </td>
             <td>${totalHours}h ${totalMinutes}m</td>
             <td>
+                <span class="wifi-status-badge ${getWiFiStatusClass(student.wifiStatus || 'unknown')}">
+                    ${getWiFiStatusText(student.wifiStatus || 'unknown')}
+                </span>
+            </td>
+            <td>
                 <button class="btn-icon" onclick="viewDetailedAttendance('${student.enrollmentNo}')" title="View Details">
                     👁️
                 </button>
@@ -5493,6 +5498,28 @@ function getAttendanceBadgeClass(percentage) {
     if (percentage >= 75) return 'badge-success';
     if (percentage >= 60) return 'badge-warning';
     return 'badge-danger';
+}
+
+// Get WiFi Status Class
+function getWiFiStatusClass(status) {
+    switch (status) {
+        case 'connected': return 'wifi-connected';
+        case 'disconnected': return 'wifi-disconnected';
+        case 'grace_period': return 'wifi-grace';
+        case 'wrong_bssid': return 'wifi-wrong';
+        default: return 'wifi-unknown';
+    }
+}
+
+// Get WiFi Status Text
+function getWiFiStatusText(status) {
+    switch (status) {
+        case 'connected': return '📶 Connected';
+        case 'disconnected': return '📵 Offline';
+        case 'grace_period': return '⏳ Grace Period';
+        case 'wrong_bssid': return '🚫 Wrong WiFi';
+        default: return '❓ Unknown';
+    }
 }
 
 // View Detailed Attendance
