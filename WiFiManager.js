@@ -1,5 +1,9 @@
-import { NativeModules, PermissionsAndroid, Platform } from 'react-native';
+import { NativeModules, PermissionsAndroid, Platform, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NativeWiFiService from './NativeWiFiService';
+
+// Use native Kotlin WiFi module instead of react-native-wifi-reborn
+console.log('📶 Using native Kotlin WiFi module for BSSID detection');
 
 /**
  * WiFi Manager for BSSID Detection and Validation
@@ -22,18 +26,28 @@ class WiFiManager {
 
   /**
    * Initialize WiFi manager
-   * Safe version to prevent crashes
+   * Using native Kotlin WiFi module for reliable BSSID detection
    */
   async initialize() {
     try {
-      console.log('📶 Initializing WiFi Manager (safe mode)...');
+      console.log('📶 Initializing WiFi Manager (native Kotlin mode)...');
       
-      // Request permissions (non-blocking)
-      try {
-        await this.requestPermissions();
-      } catch (permError) {
-        console.warn('⚠️ Permission request failed, continuing anyway:', permError);
+      // Initialize native WiFi service
+      const nativeInitialized = await NativeWiFiService.initialize();
+      
+      if (!nativeInitialized) {
+        console.warn('⚠️ Native WiFi service failed to initialize, using fallback mode');
+        if (__DEV__) {
+          console.log('📱 Development mode: WiFi validation will use fallback');
+        }
+        return true; // Don't crash the app
       }
+      
+      console.log('✅ Native WiFi service initialized');
+      
+      // Test native module connection
+      const connectionTest = await NativeWiFiService.testConnection();
+      console.log('🔗 Native module test:', connectionTest.success ? '✅ Passed' : '⚠️ Issues detected');
       
       // Load cached authorized BSSIDs (non-blocking)
       try {
@@ -49,7 +63,7 @@ class WiFiManager {
         console.warn('⚠️ Failed to start monitoring, using fallback mode:', monitorError);
       }
       
-      console.log('✅ WiFi Manager initialized (safe mode)');
+      console.log('✅ WiFi Manager initialized (native Kotlin mode)');
       return true;
     } catch (error) {
       console.error('❌ WiFi Manager initialization failed, using fallback mode:', error);
@@ -60,86 +74,170 @@ class WiFiManager {
 
   /**
    * Request necessary permissions for WiFi access
-   * Safe version to prevent null permission crashes
+   * Enhanced version with better error handling and user prompts
    */
   async requestPermissions() {
     if (Platform.OS === 'android') {
       try {
-        // Use string literals to prevent undefined permission constants
-        const permissions = [
-          'android.permission.ACCESS_FINE_LOCATION',
-          'android.permission.ACCESS_COARSE_LOCATION',
-          'android.permission.ACCESS_WIFI_STATE',
-          'android.permission.CHANGE_WIFI_STATE',
-        ].filter(permission => permission != null); // Filter out any null/undefined
-
-        if (permissions.length === 0) {
-          console.log('⚠️ No valid permissions to request, skipping...');
-          return;
-        }
-
-        console.log('📱 Requesting WiFi permissions:', permissions);
-        const granted = await PermissionsAndroid.requestMultiple(permissions);
+        console.log('📱 Requesting WiFi permissions...');
         
-        const allGranted = Object.values(granted).every(
-          permission => permission === PermissionsAndroid.RESULTS.GRANTED
-        );
-
-        if (!allGranted) {
-          console.warn('⚠️ Some WiFi permissions not granted, continuing anyway...');
-          console.log('Permission results:', granted);
+        // Check current permission status first
+        const locationFineStatus = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+        const locationCoarseStatus = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION);
+        const wifiStateStatus = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_WIFI_STATE);
+        
+        console.log('📱 Current permission status:');
+        console.log('   ACCESS_FINE_LOCATION:', locationFineStatus ? '✅' : '❌');
+        console.log('   ACCESS_COARSE_LOCATION:', locationCoarseStatus ? '✅' : '❌');
+        console.log('   ACCESS_WIFI_STATE:', wifiStateStatus ? '✅' : '❌');
+        
+        // Request permissions if not granted
+        if (!locationFineStatus || !locationCoarseStatus) {
+          console.log('📱 Requesting location permissions for WiFi BSSID access...');
+          
+          const granted = await PermissionsAndroid.requestMultiple([
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+            PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+            PermissionsAndroid.PERMISSIONS.ACCESS_WIFI_STATE,
+            PermissionsAndroid.PERMISSIONS.CHANGE_WIFI_STATE,
+          ]);
+          
+          console.log('📱 Permission request results:', granted);
+          
+          const locationGranted = granted[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED;
+          
+          if (!locationGranted) {
+            console.warn('⚠️ Location permission denied - BSSID detection will not work');
+            console.warn('   User must manually grant location permission in device settings');
+            return false;
+          } else {
+            console.log('✅ Location permissions granted - BSSID detection should work');
+            return true;
+          }
         } else {
-          console.log('✅ All WiFi permissions granted');
+          console.log('✅ All required permissions already granted');
+          return true;
         }
       } catch (error) {
-        console.error('❌ Permission request failed, continuing without permissions:', error);
-        // Don't throw error - continue without permissions for now
+        console.error('❌ Permission request failed:', error);
+        return false;
       }
     }
+    return true; // iOS or other platforms
   }
 
   /**
    * Get current WiFi BSSID
-   * Real implementation with react-native-wifi-reborn
+   * Using native Kotlin WiFi module for reliable BSSID detection
    */
   async getCurrentBSSID() {
     try {
-      // Import WiFi module dynamically to prevent crashes
-      let WifiManager;
-      try {
-        WifiManager = require('react-native-wifi-reborn').default;
-      } catch (importError) {
-        console.warn('⚠️ WiFi module not available, using fallback mode');
-        return this.getFallbackBSSID();
+      console.log('📶 Getting BSSID using native Kotlin module...');
+      
+      // Use native WiFi service
+      const result = await NativeWiFiService.getCurrentBSSID();
+      
+      if (result && result.bssid && !result.error) {
+        console.log(`✅ BSSID detected: ${result.bssid}`);
+        console.log(`   SSID: ${result.ssid}`);
+        console.log(`   Signal: ${result.rssi} dBm`);
+        return result.bssid.toLowerCase(); // Normalize to lowercase
       }
 
-      // Check if WiFi is enabled
-      const isEnabled = await WifiManager.isEnabled();
-      if (!isEnabled) {
-        console.log('📶 WiFi is disabled');
+      if (result && result.error) {
+        console.warn(`⚠️ BSSID detection failed: ${result.error}`);
+        console.warn(`   Message: ${result.message}`);
+        
+        if (result.error === 'permission_denied') {
+          console.log('💡 Solution: Grant location permission in device settings');
+        } else if (result.error === 'wifi_disabled') {
+          console.log('💡 Solution: Enable WiFi on device');
+        } else if (result.error === 'no_bssid') {
+          console.log('�  Solution: Connect to a WiFi network');
+        }
+        
         return null;
       }
 
-      // Get current WiFi info
-      const wifiInfo = await WifiManager.getCurrentWifiSSID();
-      if (!wifiInfo) {
-        console.log('📶 No WiFi connection detected');
-        return null;
-      }
-
-      // Get BSSID (requires location permission on Android)
-      const bssid = await WifiManager.getBSSID();
-      if (bssid && bssid !== '<unknown ssid>') {
-        console.log(`📶 Current BSSID: ${bssid}`);
-        return bssid.toLowerCase(); // Normalize to lowercase
-      }
-
-      console.log('📶 BSSID not available (may need location permission)');
-      return null;
+      console.log('📶 No BSSID available - using fallback for development');
+      return this.getFallbackBSSID();
 
     } catch (error) {
-      console.error('❌ Error getting BSSID:', error);
+      console.error('❌ Error getting BSSID from native module:', error);
       return this.getFallbackBSSID();
+    }
+  }
+
+  /**
+   * Check if location permissions are granted
+   */
+  async checkLocationPermissions() {
+    if (Platform.OS !== 'android') return true;
+    
+    try {
+      const fineLocation = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+      const coarseLocation = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION);
+      
+      console.log(`📱 Fine location: ${fineLocation}`);
+      console.log(`📱 Coarse location: ${coarseLocation}`);
+      
+      return fineLocation || coarseLocation;
+    } catch (error) {
+      console.error('❌ Error checking location permissions:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Aggressively request location permission with user explanation
+   */
+  async requestLocationPermissionAggressively() {
+    if (Platform.OS !== 'android') return true;
+    
+    try {
+      console.log('🔐 Requesting location permission with explanation...');
+      
+      // First, explain why we need the permission
+      return new Promise((resolve) => {
+        Alert.alert(
+          '📍 Location Permission Required',
+          'This app needs location permission to detect WiFi network details (BSSID) for attendance verification.\n\nThis is required by Android for security reasons.\n\nNo location data is collected or stored.',
+          [
+            {
+              text: 'Cancel',
+              onPress: () => resolve(false),
+              style: 'cancel',
+            },
+            {
+              text: 'Grant Permission',
+              onPress: async () => {
+                try {
+                  const granted = await PermissionsAndroid.request(
+                    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+                    {
+                      title: 'Location Permission for WiFi',
+                      message: 'Required to detect classroom WiFi network for attendance tracking.',
+                      buttonNeutral: 'Ask Me Later',
+                      buttonNegative: 'Cancel',
+                      buttonPositive: 'OK',
+                    }
+                  );
+                  
+                  const isGranted = granted === PermissionsAndroid.RESULTS.GRANTED;
+                  console.log(`🔐 Location permission result: ${granted} (${isGranted})`);
+                  resolve(isGranted);
+                } catch (error) {
+                  console.error('❌ Error requesting location permission:', error);
+                  resolve(false);
+                }
+              },
+            },
+          ]
+        );
+      });
+    } catch (error) {
+      console.error('❌ Error in aggressive permission request:', error);
+      return false;
     }
   }
 
@@ -218,6 +316,12 @@ class WiFiManager {
           await AsyncStorage.setItem(AUTHORIZED_BSSIDS_KEY, JSON.stringify(this.authorizedBSSIDs));
           console.log(`✅ Loaded ${this.authorizedBSSIDs.length} authorized BSSIDs`);
           
+          // Debug: Log all loaded BSSIDs
+          console.log('📋 Authorized BSSIDs loaded:');
+          this.authorizedBSSIDs.forEach((room, index) => {
+            console.log(`   ${index + 1}. Room ${room.roomNumber}: ${room.bssid} (${room.building})`);
+          });
+          
           // Log current lecture room if found
           const currentLectureRoom = this.authorizedBSSIDs.find(room => room.isCurrentLecture);
           if (currentLectureRoom) {
@@ -279,27 +383,45 @@ class WiFiManager {
    */
   async isAuthorizedForRoom(roomNumber) {
     try {
-      const currentBSSID = await this.getCurrentBSSID();
-      if (!currentBSSID) {
-        console.log('📶 No WiFi connection detected');
-        return { authorized: false, reason: 'no_wifi' };
-      }
-
-      // Find room's authorized BSSID
+      // Always try to find room's authorized BSSID first
       const roomBSSID = this.authorizedBSSIDs.find(
         item => item.roomNumber === roomNumber
       );
 
+      console.log(`📶 Checking authorization for room ${roomNumber}:`);
+      console.log(`   Available BSSIDs: ${this.authorizedBSSIDs.length}`);
+      console.log(`   Room data found: ${roomBSSID ? 'YES' : 'NO'}`);
+      
       if (!roomBSSID) {
         console.log(`⚠️ No BSSID configured for room ${roomNumber}`);
-        return { authorized: false, reason: 'room_not_configured' };
+        console.log(`   Available rooms: ${this.authorizedBSSIDs.map(r => r.roomNumber).join(', ')}`);
+        return { 
+          authorized: false, 
+          reason: 'room_not_configured',
+          currentBSSID: 'Not detected',
+          expectedBSSID: 'Not configured'
+        };
+      }
+
+      // Now try to get current BSSID
+      const currentBSSID = await this.getCurrentBSSID();
+      
+      console.log(`📶 BSSID Check for room ${roomNumber}:`);
+      console.log(`   Current: ${currentBSSID || 'Not detected'}`);
+      console.log(`   Expected: ${roomBSSID.bssid}`);
+      
+      if (!currentBSSID) {
+        console.log('📶 No current WiFi BSSID detected');
+        return { 
+          authorized: false, 
+          reason: 'no_wifi',
+          currentBSSID: 'Not detected',
+          expectedBSSID: roomBSSID.bssid,
+          roomInfo: roomBSSID
+        };
       }
 
       const isAuthorized = currentBSSID.toLowerCase() === roomBSSID.bssid.toLowerCase();
-      
-      console.log(`📶 BSSID Check for room ${roomNumber}:`);
-      console.log(`   Current: ${currentBSSID}`);
-      console.log(`   Expected: ${roomBSSID.bssid}`);
       console.log(`   Authorized: ${isAuthorized ? '✅' : '❌'}`);
 
       return {
@@ -311,7 +433,13 @@ class WiFiManager {
       };
     } catch (error) {
       console.error('❌ Error checking BSSID authorization:', error);
-      return { authorized: false, reason: 'error', error: error.message };
+      return { 
+        authorized: false, 
+        reason: 'error', 
+        error: error.message,
+        currentBSSID: 'Error',
+        expectedBSSID: 'Error'
+      };
     }
   }
 

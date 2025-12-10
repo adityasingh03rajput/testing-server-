@@ -208,7 +208,13 @@ function switchSection(sectionName) {
         case 'subjects': loadSubjects(); break;
         case 'classrooms': loadClassrooms(); break;
         case 'calendar': loadCalendar(); break;
-        case 'periods': loadPeriods(); break;
+        case 'periods': 
+            loadPeriods().then(() => {
+                // Ensure periods are rendered after loading
+                renderPeriods();
+                updatePeriodStats();
+            }); 
+            break;
         case 'dashboard':
             loadDashboardData();
             setTimeout(() => initCursorTracking(), 300);
@@ -1291,17 +1297,8 @@ function createNewTimetable() {
         return;
     }
 
-    // Create default timetable structure with actual college timings
-    const periods = [
-        { number: 1, startTime: '09:40', endTime: '10:40' },
-        { number: 2, startTime: '10:40', endTime: '11:40' },
-        { number: 3, startTime: '11:40', endTime: '12:10' },
-        { number: 4, startTime: '12:10', endTime: '13:10' }, // Lunch
-        { number: 5, startTime: '13:10', endTime: '14:10' },
-        { number: 6, startTime: '14:10', endTime: '14:20' }, // Break
-        { number: 7, startTime: '14:20', endTime: '15:30' },
-        { number: 8, startTime: '15:30', endTime: '16:10' }
-    ];
+    // Create default timetable structure with configurable college timings
+    const periods = getDefaultPeriods();
 
     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const timetable = {};
@@ -4089,8 +4086,12 @@ function showPeriodSettings() {
     });
     html += '</div>';
 
-    // Add period button
-    html += '<button class="btn btn-primary" onclick="addNewPeriod()" style="width: 100%; margin-top: 20px;">➕ Add New Period</button>';
+    // Action buttons
+    html += '<div class="period-actions-container" style="margin-top: 20px; display: flex; gap: 10px;">';
+    html += '<button class="btn btn-primary" onclick="addNewPeriod()" style="flex: 1;">➕ Add New Period</button>';
+    html += '<button class="btn btn-secondary" onclick="saveCurrentPeriodsAsDefault()" style="flex: 1;">💾 Save as Default</button>';
+    html += '<button class="btn btn-outline" onclick="resetToDefaultPeriods()" style="flex: 1;">🔄 Reset to Default</button>';
+    html += '</div>';
 
     html += '</div>';
 
@@ -4943,16 +4944,60 @@ function processHolidayCSV() {
 
 let currentPeriods = [];
 
+// Initialize currentPeriods with defaults immediately
+function initializePeriods() {
+    if (currentPeriods.length === 0) {
+        currentPeriods = getDefaultPeriods();
+    }
+}
+
+// Call initialization
+initializePeriods();
+
 async function loadPeriods() {
     try {
-        // Fetch a sample timetable to get current periods
-        const response = await fetch(`${SERVER_URL}/api/timetable/1/CSE`);
-        const data = await response.json();
-
-        if (data.success && data.timetable && data.timetable.periods) {
-            currentPeriods = data.timetable.periods;
-        } else {
-            // Default periods if none exist
+        // Try to get periods from any existing timetable, or use defaults
+        let periodsLoaded = false;
+        
+        // First, try to get periods from localStorage (saved custom periods)
+        const savedPeriods = localStorage.getItem('defaultPeriods');
+        if (savedPeriods) {
+            try {
+                currentPeriods = JSON.parse(savedPeriods);
+                periodsLoaded = true;
+            } catch (e) {
+                console.warn('Invalid saved periods in localStorage');
+            }
+        }
+        
+        // If no saved periods, try to fetch from any available timetable
+        if (!periodsLoaded) {
+            try {
+                // Try different semester/branch combinations to find any timetable
+                const testCombinations = [
+                    { semester: 3, branch: 'B.Tech Data Science' },
+                    { semester: 1, branch: 'B.Tech Computer Science' },
+                    { semester: 2, branch: 'B.Tech Data Science' }
+                ];
+                
+                for (const combo of testCombinations) {
+                    const response = await fetch(`${SERVER_URL}/api/timetable/${combo.semester}/${encodeURIComponent(combo.branch)}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.success && data.timetable && data.timetable.periods && data.timetable.periods.length > 0) {
+                            currentPeriods = data.timetable.periods;
+                            periodsLoaded = true;
+                            break;
+                        }
+                    }
+                }
+            } catch (fetchError) {
+                console.warn('Could not fetch periods from timetables:', fetchError);
+            }
+        }
+        
+        // If still no periods loaded, use system defaults
+        if (!periodsLoaded) {
             currentPeriods = getDefaultPeriods();
         }
 
@@ -4960,40 +5005,72 @@ async function loadPeriods() {
         updatePeriodStats();
     } catch (error) {
         console.error('Error loading periods:', error);
-        showNotification('Failed to load periods', 'error');
+        showNotification('Loading default periods', 'info');
         currentPeriods = getDefaultPeriods();
         renderPeriods();
+        updatePeriodStats();
     }
 }
 
 function getDefaultPeriods() {
+    // Check if there are saved custom periods in localStorage
+    const savedPeriods = localStorage.getItem('defaultPeriods');
+    if (savedPeriods) {
+        try {
+            return JSON.parse(savedPeriods);
+        } catch (e) {
+            console.warn('Invalid saved periods, using system defaults');
+        }
+    }
+    
+    // System default periods (can be customized by admin)
     return [
-        { number: 1, startTime: '09:40', endTime: '10:40' },
-        { number: 2, startTime: '10:40', endTime: '11:40' },
-        { number: 3, startTime: '11:40', endTime: '12:10' },
-        { number: 4, startTime: '12:10', endTime: '13:10' },
-        { number: 5, startTime: '13:10', endTime: '14:10' },
-        { number: 6, startTime: '14:10', endTime: '14:20' },
-        { number: 7, startTime: '14:20', endTime: '15:30' },
-        { number: 8, startTime: '15:30', endTime: '16:10' }
+        { number: 1, startTime: '09:00', endTime: '10:00' },
+        { number: 2, startTime: '10:00', endTime: '11:00' },
+        { number: 3, startTime: '11:00', endTime: '11:15' }, // Break
+        { number: 4, startTime: '11:15', endTime: '12:15' },
+        { number: 5, startTime: '12:15', endTime: '13:15' },
+        { number: 6, startTime: '13:15', endTime: '14:00' }, // Lunch
+        { number: 7, startTime: '14:00', endTime: '15:00' },
+        { number: 8, startTime: '15:00', endTime: '16:00' }
     ];
+}
+
+// Function to save custom default periods
+function saveDefaultPeriods(periods) {
+    try {
+        localStorage.setItem('defaultPeriods', JSON.stringify(periods));
+        showNotification('Default periods saved successfully', 'success');
+    } catch (e) {
+        showNotification('Failed to save default periods', 'error');
+    }
 }
 
 function renderPeriods() {
     const periodsList = document.getElementById('periodsList');
+    
+    // Safety check - ensure currentPeriods exists and has valid data
+    if (!currentPeriods || currentPeriods.length === 0) {
+        periodsList.innerHTML = '<div class="no-periods">No periods configured. Click "Add New Period" to get started.</div>';
+        return;
+    }
 
     periodsList.innerHTML = currentPeriods.map((period, index) => {
-        const duration = calculateDuration(period.startTime, period.endTime);
+        // Ensure period has required properties with defaults
+        const periodNumber = period.number || (index + 1);
+        const startTime = period.startTime || '09:00';
+        const endTime = period.endTime || '10:00';
+        const duration = calculateDuration(startTime, endTime);
 
         return `
             <div class="period-item" data-index="${index}">
-                <div class="period-number">${period.number}</div>
+                <div class="period-number">${periodNumber}</div>
                 
                 <div class="period-time-group">
                     <label>Start Time</label>
                     <input type="time" 
                            class="period-time-input" 
-                           value="${period.startTime}" 
+                           value="${startTime}" 
                            onchange="updatePeriodTime(${index}, 'startTime', this.value)">
                 </div>
                 
@@ -5001,7 +5078,7 @@ function renderPeriods() {
                     <label>End Time</label>
                     <input type="time" 
                            class="period-time-input" 
-                           value="${period.endTime}" 
+                           value="${endTime}" 
                            onchange="updatePeriodTime(${index}, 'endTime', this.value)">
                 </div>
                 
@@ -5023,18 +5100,36 @@ function renderPeriods() {
 }
 
 function calculateDuration(startTime, endTime) {
-    const [startHour, startMin] = startTime.split(':').map(Number);
-    const [endHour, endMin] = endTime.split(':').map(Number);
+    // Safety check for undefined times
+    if (!startTime || !endTime) {
+        return 0;
+    }
+    
+    try {
+        const [startHour, startMin] = startTime.split(':').map(Number);
+        const [endHour, endMin] = endTime.split(':').map(Number);
 
-    const startMinutes = startHour * 60 + startMin;
-    const endMinutes = endHour * 60 + endMin;
+        const startMinutes = startHour * 60 + startMin;
+        const endMinutes = endHour * 60 + endMin;
 
-    return endMinutes - startMinutes;
+        return Math.max(0, endMinutes - startMinutes);
+    } catch (error) {
+        console.warn('Error calculating duration:', error);
+        return 0;
+    }
 }
 
 function updatePeriodTime(index, field, value) {
-    currentPeriods[index][field] = value;
-    renderPeriods();
+    if (currentPeriods[index]) {
+        currentPeriods[index][field] = value;
+        
+        // Ensure the period object has all required properties
+        if (!currentPeriods[index].number) {
+            currentPeriods[index].number = index + 1;
+        }
+        
+        renderPeriods();
+    }
 }
 
 function addNewPeriodSlot() {
@@ -5085,13 +5180,20 @@ function addMinutesToTime(timeStr, minutes) {
 }
 
 function updatePeriodStats() {
-    document.getElementById('totalPeriodsCount').textContent = currentPeriods.length;
+    // Safety check - only update if elements exist
+    const totalPeriodsElement = document.getElementById('totalPeriodsCount');
+    const classDurationElement = document.getElementById('classDuration');
+    
+    if (totalPeriodsElement) {
+        totalPeriodsElement.textContent = currentPeriods.length;
+    }
 
-    if (currentPeriods.length > 0) {
+    if (classDurationElement && currentPeriods.length > 0) {
         const firstPeriod = currentPeriods[0];
         const lastPeriod = currentPeriods[currentPeriods.length - 1];
-        document.getElementById('classDuration').textContent =
-            `${firstPeriod.startTime} - ${lastPeriod.endTime}`;
+        if (firstPeriod.startTime && lastPeriod.endTime) {
+            classDurationElement.textContent = `${firstPeriod.startTime} - ${lastPeriod.endTime}`;
+        }
     }
 }
 
@@ -7393,4 +7495,72 @@ function showFeatureRequestDialog() {
     });
     
     openModal();
+}
+
+// Period Management Functions - Save Current Periods as Default
+function saveCurrentPeriodsAsDefault() {
+    if (!currentPeriods || currentPeriods.length === 0) {
+        showNotification('No periods to save as default', 'warning');
+        return;
+    }
+    
+    if (!confirm('Save current period configuration as default? This will be used for all new timetables.')) {
+        return;
+    }
+    
+    try {
+        // Save to localStorage
+        saveDefaultPeriods(currentPeriods);
+        showNotification(`Saved ${currentPeriods.length} periods as default configuration`, 'success');
+        
+        // Update the UI to reflect the change
+        renderPeriods();
+    } catch (error) {
+        console.error('Error saving default periods:', error);
+        showNotification('Failed to save default periods', 'error');
+    }
+}
+
+// Period Management Functions - Reset to Default Periods
+function resetToDefaultPeriods() {
+    if (!confirm('Reset to default period configuration? This will replace all current periods.')) {
+        return;
+    }
+    
+    try {
+        // Get fresh default periods (ignoring any saved custom defaults)
+        const defaultPeriods = [
+            { number: 1, startTime: '09:00', endTime: '09:45', duration: 45, isBreak: false },
+            { number: 2, startTime: '09:45', endTime: '10:30', duration: 45, isBreak: false },
+            { number: 3, startTime: '10:30', endTime: '10:45', duration: 15, isBreak: true },
+            { number: 4, startTime: '10:45', endTime: '11:30', duration: 45, isBreak: false },
+            { number: 5, startTime: '11:30', endTime: '12:15', duration: 45, isBreak: false },
+            { number: 6, startTime: '12:15', endTime: '13:00', duration: 45, isBreak: false },
+            { number: 7, startTime: '13:00', endTime: '14:00', duration: 60, isBreak: true },
+            { number: 8, startTime: '14:00', endTime: '14:45', duration: 45, isBreak: false },
+            { number: 9, startTime: '14:45', endTime: '15:30', duration: 45, isBreak: false },
+            { number: 10, startTime: '15:30', endTime: '15:45', duration: 15, isBreak: true },
+            { number: 11, startTime: '15:45', endTime: '16:30', duration: 45, isBreak: false },
+            { number: 12, startTime: '16:30', endTime: '17:15', duration: 45, isBreak: false }
+        ];
+        
+        // Update current periods
+        currentPeriods = [...defaultPeriods];
+        
+        // Re-render the periods UI
+        renderPeriods();
+        updatePeriodStats();
+        
+        showNotification(`Reset to default configuration with ${defaultPeriods.length} periods`, 'success');
+        
+        // Clear any saved custom defaults if user wants fresh start
+        if (confirm('Also clear saved custom default periods? (This will affect future new timetables)')) {
+            localStorage.removeItem('defaultPeriods');
+            showNotification('Cleared saved custom default periods', 'info');
+        }
+        
+    } catch (error) {
+        console.error('Error resetting to default periods:', error);
+        showNotification('Failed to reset to default periods', 'error');
+    }
 }
