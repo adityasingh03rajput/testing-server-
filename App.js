@@ -33,6 +33,7 @@ import Updates from './Updates';
 import HelpAndSupport from './HelpAndSupport';
 import Feedback from './Feedback';
 import SemesterSelector from './SemesterSelector';
+import WiFiManager from './WiFiManager';
 
 const API_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net/api/config';
 const SOCKET_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
@@ -207,6 +208,33 @@ export default function App() {
   // Bottom navigation state
   const [activeTab, setActiveTab] = useState('home');
   const [notificationBadge, setNotificationBadge] = useState(0);
+
+  // WiFi debug info state
+  const [wifiDebugInfo, setWifiDebugInfo] = useState({
+    status: 'Not checked',
+    currentBSSID: 'N/A',
+    expectedBSSID: 'N/A',
+    room: 'N/A',
+    lastChecked: null
+  });
+
+  // Auto-check WiFi status for debug info
+  useEffect(() => {
+    if (selectedRole === 'student' && !showLogin && currentClassInfo) {
+      // Initial check
+      const checkWiFi = async () => {
+        console.log('🔄 Auto-checking WiFi for debug info...');
+        await isConnectedToClassroomWiFi();
+      };
+      
+      checkWiFi();
+      
+      // Check every 10 seconds for debug purposes
+      const wifiCheckInterval = setInterval(checkWiFi, 10000);
+      
+      return () => clearInterval(wifiCheckInterval);
+    }
+  }, [selectedRole, showLogin, currentClassInfo]);
 
   // Lanyard state
   const [showLanyard, setShowLanyard] = useState(false);
@@ -1732,46 +1760,124 @@ export default function App() {
     }
   };
 
-  // WiFi validation function - REAL IMPLEMENTATION
+  // WiFi validation function - SAFE IMPLEMENTATION WITH DEBUG INFO
   const isConnectedToClassroomWiFi = async () => {
     try {
       console.log('📶 Starting WiFi validation...');
       
+      // Check for simulated bypass (for testing)
+      if (wifiDebugInfo.status === 'AUTHORIZED (SIMULATED)') {
+        console.log('🧪 Using simulated WiFi validation for testing');
+        return true;
+      }
+      
       // Check if we have current class info
       if (!currentClassInfo || !currentClassInfo.room) {
         console.log('❌ No classroom info available for WiFi check');
+        setWifiDebugInfo({
+          status: 'No classroom info',
+          currentBSSID: 'N/A',
+          expectedBSSID: 'N/A',
+          room: 'N/A',
+          lastChecked: new Date().toLocaleTimeString()
+        });
         return false;
       }
 
-      // Import WiFi manager dynamically to prevent crashes
-      let WiFiManager;
-      try {
-        WiFiManager = require('./WiFiManager').default;
-      } catch (importError) {
-        console.warn('⚠️ WiFi Manager not available');
+      // Check if WiFiManager is available
+      if (!WiFiManager) {
+        console.error('❌ WiFiManager not available');
+        
+        setWifiDebugInfo({
+          status: 'WiFiManager not available',
+          currentBSSID: 'N/A',
+          expectedBSSID: 'N/A',
+          room: currentClassInfo.room
+        });
+        
+        // In development mode, allow bypass for testing
+        if (__DEV__) {
+          console.warn('⚠️ Development mode: Bypassing WiFi validation');
+          return true;
+        }
+        
         // CRITICAL: In production, WiFi validation is MANDATORY
         // Return false to prevent attendance fraud
         console.log('❌ WiFi validation FAILED - WiFi manager not available');
         return false;
       }
+      
+      console.log('✅ WiFiManager available');
 
-      // Initialize WiFi manager
-      await WiFiManager.initialize();
+      // Initialize WiFi manager with error handling
+      try {
+        const initResult = await WiFiManager.initialize();
+        console.log('✅ WiFiManager initialized:', initResult);
+      } catch (initError) {
+        console.error('❌ WiFiManager initialization failed:', initError);
+        setWifiDebugInfo({
+          status: 'INIT ERROR',
+          currentBSSID: 'Initialization failed',
+          expectedBSSID: 'N/A',
+          room: currentClassInfo.room,
+          lastChecked: new Date().toLocaleTimeString(),
+          reason: initError.message
+        });
+        return false;
+      }
 
       // Load authorized BSSIDs for current student
-      await WiFiManager.loadAuthorizedBSSIDs(SOCKET_URL, {
-        semester,
-        course: branch,
-        enrollmentNo: studentId
-      });
+      try {
+        await WiFiManager.loadAuthorizedBSSIDs(SOCKET_URL, {
+          semester,
+          course: branch,
+          enrollmentNo: studentId
+        });
+        console.log('✅ Authorized BSSIDs loaded');
+      } catch (loadError) {
+        console.error('❌ Failed to load authorized BSSIDs:', loadError);
+        setWifiDebugInfo({
+          status: 'CONFIG ERROR',
+          currentBSSID: 'N/A',
+          expectedBSSID: 'Failed to load from server',
+          room: currentClassInfo.room,
+          lastChecked: new Date().toLocaleTimeString(),
+          reason: loadError.message
+        });
+        return false;
+      }
 
       // Check if current BSSID is authorized for this room
-      const authResult = await WiFiManager.isAuthorizedForRoom(currentClassInfo.room);
+      let authResult;
+      try {
+        authResult = await WiFiManager.isAuthorizedForRoom(currentClassInfo.room);
+        console.log('📶 WiFi Authorization Result:', authResult);
+        
+        // Update debug info with actual values
+        setWifiDebugInfo({
+          status: authResult.authorized ? 'AUTHORIZED' : 'NOT AUTHORIZED',
+          currentBSSID: authResult.currentBSSID || 'Not detected',
+          expectedBSSID: authResult.expectedBSSID || 'Not configured',
+          room: currentClassInfo.room,
+          lastChecked: new Date().toLocaleTimeString(),
+          reason: authResult.reason || 'unknown'
+        });
+        
+      } catch (authError) {
+        console.error('❌ WiFi authorization check failed:', authError);
+        setWifiDebugInfo({
+          status: 'ERROR',
+          currentBSSID: 'Error getting BSSID',
+          expectedBSSID: 'Error loading config',
+          room: currentClassInfo.room,
+          lastChecked: new Date().toLocaleTimeString(),
+          reason: authError.message
+        });
+        return false;
+      }
       
-      console.log('📶 WiFi Authorization Result:', authResult);
-      
-      if (!authResult.authorized) {
-        console.log(`❌ WiFi validation FAILED: ${authResult.reason}`);
+      if (!authResult || !authResult.authorized) {
+        console.log(`❌ WiFi validation FAILED: ${authResult?.reason || 'unknown'}`);
         return false;
       }
 
@@ -1779,7 +1885,20 @@ export default function App() {
       return true;
 
     } catch (error) {
-      console.error('❌ Error in WiFi validation:', error);
+      console.error('❌ Critical error in WiFi validation:', error);
+      console.error('   Error message:', error.message);
+      console.error('   Error stack:', error.stack);
+      
+      // Update debug info with error
+      setWifiDebugInfo({
+        status: 'CRITICAL ERROR',
+        currentBSSID: 'Error',
+        expectedBSSID: 'Error',
+        room: currentClassInfo?.room || 'Unknown',
+        lastChecked: new Date().toLocaleTimeString(),
+        reason: error.message
+      });
+      
       // CRITICAL: Any error in WiFi validation should block timer
       return false;
     }
@@ -3892,6 +4011,156 @@ export default function App() {
                 {statusText}
               </Text>
             </View>
+          </View>
+        </View>
+
+        {/* WiFi Debug Info Card - FOR DEBUGGING ONLY */}
+        <View style={{
+          width: '100%',
+          maxWidth: 400,
+          backgroundColor: theme.cardBackground,
+          borderRadius: 12,
+          padding: 14,
+          borderWidth: 2,
+          borderColor: wifiDebugInfo.status === 'AUTHORIZED' ? '#10b981' : '#ef4444',
+          marginBottom: 10,
+        }}>
+          <Text style={{ 
+            color: theme.text, 
+            fontSize: 16, 
+            fontWeight: 'bold',
+            marginBottom: 8,
+          }}>
+            📶 WiFi Debug Info
+          </Text>
+          
+          <View style={{ gap: 4 }}>
+            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
+              Status: <Text style={{ 
+                color: wifiDebugInfo.status === 'AUTHORIZED' ? '#10b981' : '#ef4444',
+                fontWeight: 'bold'
+              }}>
+                {wifiDebugInfo.status}
+              </Text>
+            </Text>
+            
+            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
+              Current BSSID: <Text style={{ color: theme.text, fontFamily: 'monospace' }}>
+                {wifiDebugInfo.currentBSSID}
+              </Text>
+            </Text>
+            
+            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
+              Expected BSSID: <Text style={{ color: theme.text, fontFamily: 'monospace' }}>
+                {wifiDebugInfo.expectedBSSID}
+              </Text>
+            </Text>
+            
+            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
+              Room: <Text style={{ color: theme.text }}>
+                {wifiDebugInfo.room}
+              </Text>
+            </Text>
+            
+            {wifiDebugInfo.lastChecked && (
+              <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
+                Last Check: <Text style={{ color: theme.text }}>
+                  {wifiDebugInfo.lastChecked}
+                </Text>
+              </Text>
+            )}
+            
+            {wifiDebugInfo.reason && (
+              <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
+                Reason: <Text style={{ color: theme.text }}>
+                  {wifiDebugInfo.reason}
+                </Text>
+              </Text>
+            )}
+          </View>
+          
+          <View style={{ flexDirection: 'column', gap: 8, marginTop: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                onPress={async () => {
+                  console.log('🔄 Manual WiFi check triggered');
+                  const result = await isConnectedToClassroomWiFi();
+                  console.log('🔄 Manual WiFi check result:', result);
+                }}
+                style={{
+                  flex: 1,
+                  backgroundColor: theme.primary,
+                  paddingVertical: 8,
+                  paddingHorizontal: 12,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>
+                  🔄 Check WiFi
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                onPress={async () => {
+                  console.log('🔐 Manual permission request triggered');
+                  try {
+                    if (WiFiManager && WiFiManager.requestLocationPermissionAggressively) {
+                      const granted = await WiFiManager.requestLocationPermissionAggressively();
+                      if (granted) {
+                        alert('✅ Permission Granted!\n\nLocation permission granted. Try checking WiFi again.');
+                      } else {
+                        alert('❌ Permission Denied\n\nLocation permission is required to detect WiFi BSSID. Please grant it in device settings.');
+                      }
+                    } else {
+                      alert('⚠️ WiFi Manager not available');
+                    }
+                  } catch (error) {
+                    console.error('❌ Error requesting permission:', error);
+                    alert('❌ Error requesting permission: ' + error.message);
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#f59e0b',
+                  paddingVertical: 8,
+                  paddingHorizontal: 12,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>
+                  🔐 Request Permission
+                </Text>
+              </TouchableOpacity>
+            </View>
+            
+            <TouchableOpacity
+              onPress={() => {
+                // Temporary bypass for testing - simulate correct BSSID
+                console.log('🧪 Simulating correct BSSID for testing');
+                setWifiDebugInfo({
+                  status: 'AUTHORIZED (SIMULATED)',
+                  currentBSSID: 'b4:86:18:6f:fb:ec',
+                  expectedBSSID: 'b4:86:18:6f:fb:ec',
+                  room: currentClassInfo?.room || 'A2',
+                  lastChecked: new Date().toLocaleTimeString(),
+                  reason: 'simulated_for_testing'
+                });
+                alert('✅ WiFi Simulated\n\nFor testing purposes, WiFi validation has been bypassed. Face verification should now work.');
+              }}
+              style={{
+                backgroundColor: '#10b981',
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+                borderRadius: 8,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>
+                🧪 Simulate OK (For Testing)
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 

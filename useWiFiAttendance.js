@@ -7,8 +7,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * Manages timer state based on WiFi BSSID validation
  */
 export const useWiFiAttendance = (serverUrl, currentLecture, studentId) => {
-  // TEMPORARY: Disable WiFi system to prevent crashes
-  console.log('⚠️ WiFi system temporarily disabled to prevent crashes');
+  // ENABLED: Using native Kotlin WiFi module for reliable BSSID detection
+  console.log('📶 WiFi system enabled with native Kotlin module');
   const [wifiStatus, setWifiStatus] = useState({
     isConnected: false,
     currentBSSID: null,
@@ -30,27 +30,43 @@ export const useWiFiAttendance = (serverUrl, currentLecture, studentId) => {
   const graceTimerRef = useRef(null);
   const wifiListenerRef = useRef(null);
 
-  // DISABLED: WiFi Manager initialization to prevent crashes
+  // Initialize WiFi Manager with native Kotlin module
   useEffect(() => {
-    console.log('⚠️ WiFi system disabled - using fallback mode');
+    console.log('📶 Initializing WiFi system with native Kotlin module');
     
-    // Set safe default values
-    setWifiStatus({
-      isConnected: true, // Always show as connected
-      currentBSSID: 'b4:86:18:6f:fb:ec',
-      isAuthorized: true, // Always show as authorized
-      isInGracePeriod: false,
-      graceTimeRemaining: 0,
-      roomInfo: { roomNumber: 'A2', bssid: 'b4:86:18:6f:fb:ec' },
-      lastCheck: new Date()
-    });
+    const initializeWiFi = async () => {
+      try {
+        // Initialize WiFi Manager
+        await WiFiManager.initialize();
+        
+        // Load authorized BSSIDs from server
+        if (serverUrl) {
+          await WiFiManager.loadAuthorizedBSSIDs(serverUrl, { 
+            semester: currentLecture?.semester, 
+            course: currentLecture?.course 
+          });
+        }
+        
+        // Set up WiFi event listener
+        wifiListenerRef.current = WiFiManager.addListener(handleWiFiEvent);
+        
+        // Initial WiFi check
+        await checkWiFiAuthorization();
+        
+        console.log('✅ WiFi system initialized successfully');
+      } catch (error) {
+        console.error('❌ WiFi initialization failed:', error);
+        // Set fallback state
+        setWifiStatus(prev => ({
+          ...prev,
+          isConnected: false,
+          isAuthorized: false,
+          lastCheck: new Date()
+        }));
+      }
+    };
     
-    setTimerState({
-      isRunning: false,
-      isPaused: false,
-      pauseReason: null,
-      canStart: true // Always allow timer to start
-    });
+    initializeWiFi();
 
     // Cleanup on unmount
     return () => {
@@ -382,7 +398,7 @@ export const useWiFiAttendance = (serverUrl, currentLecture, studentId) => {
     await checkWiFiAuthorization();
   };
 
-  // Safe return values (WiFi system disabled)
+  // Return WiFi attendance hook interface
   return {
     // WiFi Status
     wifiStatus,
@@ -390,36 +406,21 @@ export const useWiFiAttendance = (serverUrl, currentLecture, studentId) => {
     // Timer State  
     timerState,
     
-    // Actions (safe no-op functions)
-    startTimer: async () => {
-      console.log('✅ Timer start (WiFi disabled mode)');
-      setTimerState(prev => ({ ...prev, isRunning: true }));
-      return true;
-    },
-    stopTimer: () => {
-      console.log('⏹️ Timer stop (WiFi disabled mode)');
-      setTimerState(prev => ({ ...prev, isRunning: false }));
-    },
-    checkWiFiAuthorization: async () => {
-      console.log('📶 WiFi check (disabled mode)');
-      return { authorized: true, reason: 'disabled_mode' };
-    },
-    refreshWiFiStatus: async () => {
-      console.log('🔄 WiFi refresh (disabled mode)');
-    },
+    // Actions
+    startTimer,
+    stopTimer,
+    checkWiFiAuthorization,
+    refreshWiFiStatus,
     
     // Status
-    getStatusMessage: () => ({
-      message: 'WiFi system disabled - timer available',
-      type: 'info'
-    }),
+    getStatusMessage,
     
     // History
-    attendanceHistory: [],
+    attendanceHistory,
     
-    // Computed values (always allow timer)
-    canStartTimer: true,
-    shouldPauseTimer: false,
-    isInValidLocation: true
+    // Computed values
+    canStartTimer: timerState.canStart && wifiStatus.isAuthorized,
+    shouldPauseTimer: timerState.isPaused,
+    isInValidLocation: wifiStatus.isAuthorized
   };
 };
