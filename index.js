@@ -1,4 +1,4 @@
-// Azure deployment trigger - Updated December 10, 2024 - v2.2 - Latest Attendy Branch State
+// Azure deployment trigger - Updated December 10, 2024 - v2.3 - Server Fix Deployment
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -4236,11 +4236,6 @@ app.post('/api/attendance/sync-offline', async (req, res) => {
         
     } catch (error) {
         console.error('❌ Error syncing offline attendance:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-    } catch (error) {
-        console.error('❌ Error handling timer pause:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
