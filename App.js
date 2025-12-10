@@ -1732,29 +1732,60 @@ export default function App() {
     }
   };
 
-  // WiFi validation function
-  const isConnectedToClassroomWiFi = () => {
-    // TODO: Implement actual WiFi BSSID detection
-    // For now, simulate WiFi check based on current class
-    if (!currentClassInfo || !currentClassInfo.room) {
-      console.log('❌ No classroom info available for WiFi check');
+  // WiFi validation function - REAL IMPLEMENTATION
+  const isConnectedToClassroomWiFi = async () => {
+    try {
+      console.log('📶 Starting WiFi validation...');
+      
+      // Check if we have current class info
+      if (!currentClassInfo || !currentClassInfo.room) {
+        console.log('❌ No classroom info available for WiFi check');
+        return false;
+      }
+
+      // Import WiFi manager dynamically to prevent crashes
+      let WiFiManager;
+      try {
+        WiFiManager = require('./WiFiManager').default;
+      } catch (importError) {
+        console.warn('⚠️ WiFi Manager not available');
+        // CRITICAL: In production, WiFi validation is MANDATORY
+        // Return false to prevent attendance fraud
+        console.log('❌ WiFi validation FAILED - WiFi manager not available');
+        return false;
+      }
+
+      // Initialize WiFi manager
+      await WiFiManager.initialize();
+
+      // Load authorized BSSIDs for current student
+      await WiFiManager.loadAuthorizedBSSIDs(SOCKET_URL, {
+        semester,
+        course: branch,
+        enrollmentNo: studentId
+      });
+
+      // Check if current BSSID is authorized for this room
+      const authResult = await WiFiManager.isAuthorizedForRoom(currentClassInfo.room);
+      
+      console.log('📶 WiFi Authorization Result:', authResult);
+      
+      if (!authResult.authorized) {
+        console.log(`❌ WiFi validation FAILED: ${authResult.reason}`);
+        return false;
+      }
+
+      console.log(`✅ WiFi validation PASSED - Connected to ${currentClassInfo.room}`);
+      return true;
+
+    } catch (error) {
+      console.error('❌ Error in WiFi validation:', error);
+      // CRITICAL: Any error in WiFi validation should block timer
       return false;
     }
-
-    // Simulate WiFi BSSID check
-    // In production, this should check actual device WiFi BSSID against classroom BSSID
-    const simulatedWiFiConnected = true; // TODO: Replace with actual WiFi detection
-    
-    if (!simulatedWiFiConnected) {
-      console.log('❌ Not connected to classroom WiFi');
-      return false;
-    }
-
-    console.log('✅ WiFi validation passed (simulated)');
-    return true;
   };
 
-  const handleStartPause = () => {
+  const handleStartPause = async () => {
     // Only allow starting, no pausing
     if (isRunning) {
       // Already running, do nothing
@@ -1763,29 +1794,38 @@ export default function App() {
 
     // Check if there's an active class
     if (!currentClassInfo) {
-      alert('No active class right now. Please wait for the next lecture to start.');
+      alert('❌ No Active Class\n\nNo lecture is currently scheduled.\n\nPlease wait for the next lecture to start.');
       return;
     }
+
+    console.log('🔒 Starting attendance validation process...');
 
     // CRITICAL: WiFi + Face verification required to start timer
     // This prevents students from faking attendance from home
     
-    // 1. Check WiFi connection first
-    if (!isConnectedToClassroomWiFi()) {
-      alert('❌ WiFi Required\n\nYou must be connected to the classroom WiFi to start attendance tracking.\n\nPlease connect to the authorized classroom network and try again.');
+    // 1. Check WiFi connection first (ASYNC)
+    console.log('📶 Step 1: Validating WiFi connection...');
+    const wifiValid = await isConnectedToClassroomWiFi();
+    if (!wifiValid) {
+      alert('❌ WiFi Validation Failed\n\nYou must be connected to the classroom WiFi to start attendance tracking.\n\nPlease connect to the authorized classroom network and try again.');
       return;
     }
 
     // 2. Check face verification
+    console.log('🔒 Step 2: Checking face verification...');
     if (!verifiedToday) {
       console.log('🔒 Face verification required to start attendance');
-      alert('🔒 Face Verification Required\n\nPlease verify your identity to start attendance tracking.');
+      alert('🔒 Face Verification Required\n\nWiFi validation passed!\n\nNow please verify your identity to start attendance tracking.');
       setShowFaceVerification(true);
       return;
     }
 
     // 3. Both WiFi and face verification passed - start timer
-    console.log('✅ Starting timer - WiFi and face verification validated');
+    console.log('✅ All validations passed - Starting timer');
+    console.log('   ✅ WiFi: Connected to classroom network');
+    console.log('   ✅ Face: Verified today');
+    console.log('   ✅ Class: Active lecture in progress');
+    
     setIsRunning(true);
     
     if (socketRef.current && socketRef.current.connected) {
@@ -1798,13 +1838,14 @@ export default function App() {
         currentClass: currentClassInfo?.subject,
         lectureDuration: currentClassInfo?.duration || 60,
         wifiValidated: true,
-        faceVerified: true
+        faceVerified: true,
+        validationTimestamp: new Date().toISOString()
       });
-      console.log('⏱️ Sent start_timer to server with validations');
+      console.log('⏱️ Sent start_timer to server with full validations');
     } else {
       console.warn('⚠️ Socket not connected, cannot start centralized timer');
-      // Don't allow offline timer without validations
-      alert('❌ Connection Required\n\nServer connection is required for attendance tracking.');
+      // Don't allow offline timer without server validation
+      alert('❌ Server Connection Required\n\nServer connection is required for attendance tracking.\n\nPlease check your internet connection.');
       setIsRunning(false);
     }
   };
@@ -1812,8 +1853,10 @@ export default function App() {
   const handleVerificationSuccess = async (result) => {
     console.log('✅ Face verification successful:', result);
     
-    // Check WiFi connection before proceeding
-    if (!isConnectedToClassroomWiFi()) {
+    // Check WiFi connection before proceeding (ASYNC)
+    console.log('📶 Re-validating WiFi after face verification...');
+    const wifiValid = await isConnectedToClassroomWiFi();
+    if (!wifiValid) {
       alert('❌ WiFi Required\n\nFace verification successful, but you must be connected to classroom WiFi to start attendance.\n\nPlease connect to the authorized classroom network.');
       setShowFaceVerification(false);
       return;
