@@ -22,6 +22,7 @@ import { PlayIcon, PauseIcon } from './Icons';
 import { useServerTime } from './useServerTime';
 import { useWiFiAttendance } from './useWiFiAttendance';
 import WiFiStatusIndicator from './WiFiStatusIndicator';
+import OfflineAttendanceManager from './OfflineAttendanceManager';
 
 // Constants for circle dimensions
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
