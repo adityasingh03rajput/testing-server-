@@ -6,7 +6,7 @@ require('dotenv').config();
 // MongoDB Connection
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb+srv://adityarajsir162_db_user:fkfWRAFNcVNoVFWW@letsbunk.cdxihb7.mongodb.net/attendance_app?retryWrites=true&w=majority&appName=letsbunk';
 
-// Student Schema (matching the one in index.js)
+// Student Schema (matching the one in server.js)
 const studentManagementSchema = new mongoose.Schema({
     name: { type: String, required: true },
     enrollmentNo: { type: String, required: true, unique: true },
@@ -330,7 +330,7 @@ async function createSyncFixEndpoint() {
     console.log('========================================');
     
     const syncFixCode = `
-// Add this endpoint to index.js to prevent future sync issues
+// Add this endpoint to server.js to prevent future sync issues
 app.post('/api/attendance/sync-collections', async (req, res) => {
     try {
         const { studentId, enrollmentNo } = req.body;
@@ -399,12 +399,12 @@ app.post('/api/attendance/sync-collections', async (req, res) => {
     }
 });
 
-// Add this to the student login process in index.js
+// Add this to the student login process in server.js
 // Call this endpoint after successful login to ensure data sync
 `;
     
     console.log('📝 Sync fix endpoint code generated');
-    console.log('📝 Add this to index.js to prevent future sync issues');
+    console.log('📝 Add this to server.js to prevent future sync issues');
     
     return syncFixCode;
 }
