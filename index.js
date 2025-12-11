@@ -1794,6 +1794,32 @@ app.post('/api/attendance/update-timer', async (req, res) => {
             }
         );
 
+        // Find student for broadcasting
+        const student = await StudentManagement.findOne({
+            $or: [
+                { _id: studentId },
+                { enrollmentNo: studentId }
+            ]
+        });
+
+        if (student) {
+            // Broadcast timer update to teachers
+            io.emit('student_update', {
+                studentId: student._id.toString(),
+                enrollmentNo: student.enrollmentNo,
+                name: student.name,
+                status: wifiConnected ? 'attending' : 'present',
+                isRunning: wifiConnected,
+                timerValue: timerValue,
+                attendedSeconds: timerValue,
+                attendedMinutes: Math.floor(timerValue / 60),
+                wifiConnected: wifiConnected,
+                lastUpdated: new Date().toISOString()
+            });
+
+            console.log(`📡 Timer update broadcasted: ${student.name} - ${Math.floor(timerValue / 60)}min`);
+        }
+
         res.json({ success: true, message: 'Timer updated' });
 
     } catch (error) {
@@ -1888,6 +1914,31 @@ app.post('/api/attendance/enhanced-heartbeat', async (req, res) => {
                 }
 
                 console.log(`✅ Heartbeat processed for ${studentName}: ${Math.floor(timerValue / 60)}min attended`);
+
+                // Broadcast real-time update to teachers
+                io.emit('student_update', {
+                    studentId: student._id.toString(),
+                    enrollmentNo: student.enrollmentNo,
+                    name: student.name,
+                    status: shouldStop ? 'present' : 'attending',
+                    isRunning: !shouldStop,
+                    timerValue: timerValue,
+                    attendedSeconds: timerValue,
+                    attendedMinutes: Math.floor(timerValue / 60),
+                    wifiConnected: wifiConnected,
+                    faceVerified: faceVerified,
+                    currentClass: currentClass,
+                    lastUpdated: new Date().toISOString(),
+                    // Enhanced data for teachers
+                    totalLectureSeconds: serverTimerData?.totalLectureSeconds || 0,
+                    elapsedLectureSeconds: serverTimerData?.elapsedLectureSeconds || 0,
+                    remainingLectureSeconds: serverTimerData?.remainingLectureSeconds || 0,
+                    lectureSubject: serverTimerData?.lectureSubject,
+                    lectureTeacher: serverTimerData?.lectureTeacher,
+                    lectureRoom: serverTimerData?.lectureRoom
+                });
+
+                console.log(`📡 Broadcasted update to teachers: ${studentName} - ${Math.floor(timerValue / 60)}min attended`);
 
                 res.json({
                     success: true,
