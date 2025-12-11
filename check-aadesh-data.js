@@ -6,7 +6,7 @@ require('dotenv').config();
 // MongoDB Connection
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb+srv://adityarajsir162_db_user:fkfWRAFNcVNoVFWW@letsbunk.cdxihb7.mongodb.net/attendance_app?retryWrites=true&w=majority&appName=letsbunk';
 
-// Student Schema (matching the one in index.js)
+// Student Schema (matching the one in server.js)
 const studentManagementSchema = new mongoose.Schema({
     name: { type: String, required: true },
     enrollmentNo: { type: String, required: true, unique: true },
