@@ -79,6 +79,26 @@ const StudentCard = ({ student, onToggleAttendance, isDark, theme }) => {
           <Text style={[styles.rollNumber, { color: theme.textSecondary }]}>
             {student.enrollmentNo || student.enrollmentNumber || 'N/A'}
           </Text>
+          {/* Show timer info for teachers */}
+          {student.isRunning && (student.attendedMinutes !== undefined || student.timerValue !== undefined) && (
+            <Text style={[styles.timerInfo, { color: theme.primary, fontSize: 12, fontWeight: '600' }]}>
+              ⏱️ {student.attendedMinutes || Math.floor((student.timerValue || 0) / 60)}min attended
+              {student.currentClass?.subject && ` • ${student.currentClass.subject}`}
+              {student.lectureSubject && ` • ${student.lectureSubject}`}
+            </Text>
+          )}
+          {!student.isRunning && (student.attendedMinutes > 0 || (student.timerValue && student.timerValue > 0)) && (
+            <Text style={[styles.timerInfo, { color: theme.textSecondary, fontSize: 12 }]}>
+              📊 Final: {student.attendedMinutes || Math.floor((student.timerValue || 0) / 60)}min
+            </Text>
+          )}
+          {/* Show lecture progress for active students */}
+          {student.isRunning && student.totalLectureSeconds && (
+            <Text style={[styles.lectureProgress, { color: theme.textSecondary, fontSize: 10 }]}>
+              📚 Lecture: {Math.floor((student.elapsedLectureSeconds || 0) / 60)}/{Math.floor(student.totalLectureSeconds / 60)}min
+              {student.remainingLectureSeconds > 0 && ` (${Math.floor(student.remainingLectureSeconds / 60)}min left)`}
+            </Text>
+          )}
         </View>
 
         <View style={[styles.statusBadge, { backgroundColor: statusStyle.backgroundColor }]}>
@@ -270,6 +290,15 @@ const styles = StyleSheet.create({
   },
   rollNumber: {
     fontSize: 14,
+  },
+  timerInfo: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  lectureProgress: {
+    fontSize: 10,
+    marginTop: 1,
+    fontStyle: 'italic',
   },
   statusBadge: {
     paddingVertical: 6,
