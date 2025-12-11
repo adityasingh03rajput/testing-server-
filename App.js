@@ -34,6 +34,10 @@ import HelpAndSupport from './HelpAndSupport';
 import Feedback from './Feedback';
 import SemesterSelector from './SemesterSelector';
 import WiFiManager from './WiFiManager';
+// WiFi BSSID Integration from LetsBunk
+import WiFiBSSIDTest from './WiFiBSSIDTest';
+import WiFiStatusIndicator from './WiFiStatusIndicator';
+import useWiFiBSSID from './useWiFiBSSID';
 
 const API_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net/api/config';
 const SOCKET_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
@@ -4164,6 +4168,16 @@ export default function App() {
           </View>
         </View>
 
+        {/* WiFi Status Indicator */}
+        <WiFiStatusIndicator 
+          authorizedBSSID="ee:ee:6d:9d:6f:ba"
+          showDetails={false}
+          style={{ marginHorizontal: 20, marginBottom: 10 }}
+          onBSSIDChange={(info) => {
+            console.log('📶 WiFi BSSID Changed:', info);
+          }}
+        />
+
         {/* Circular Timer */}
         {(() => {
           console.log('🎯 Passing to CircularTimer - currentDay:', currentDay);
@@ -4651,6 +4665,13 @@ export default function App() {
           setTimeout(() => setShowProfile(true), 300);
         }}
       />
+
+      {/* WiFi BSSID Test Screen */}
+      {activeTab === 'wifi' && (
+        <View style={{ flex: 1, backgroundColor: theme.background }}>
+          <WiFiBSSIDTest />
+        </View>
+      )}
 
       {/* Floating Brand Button - Only on Home tab */}
       {activeTab === 'home' && (
