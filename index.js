@@ -1,4 +1,4 @@
-// Azure deployment trigger - Updated December 10, 2024 - v2.4 - Force Redeploy After Autofix
+// Azure deployment trigger - Updated December 11, 2024 - v2.5 - Force Redeploy After Rename to index.js
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
