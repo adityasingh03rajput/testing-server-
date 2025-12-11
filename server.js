@@ -1186,6 +1186,41 @@ function createDefaultTimetable(semester, branch) {
 io.on('connection', (socket) => {
     console.log('📱 Client connected:', socket.id);
 
+    // Enhanced student heartbeat for continuous tracking
+    socket.on('student_heartbeat', async (data) => {
+        try {
+            const { studentId, enrollmentNo, name, attendedSeconds, currentClass, wifiConnected, faceVerified, timestamp } = data;
+            
+            console.log(`💓 Student heartbeat: ${name} - ${Math.floor(attendedSeconds / 60)}min attended`);
+
+            if (mongoose.connection.readyState === 1) {
+                const student = await StudentManagement.findOne({
+                    $or: [
+                        { _id: studentId },
+                        { enrollmentNo: enrollmentNo }
+                    ]
+                });
+
+                if (student) {
+                    // Update with heartbeat data
+                    await StudentManagement.findByIdAndUpdate(student._id, {
+                        'attendanceSession.totalAttendedSeconds': attendedSeconds,
+                        'attendanceSession.wifiConnected': wifiConnected,
+                        'attendanceSession.faceVerified': faceVerified,
+                        'attendanceSession.lastHeartbeat': new Date(),
+                        lastUpdated: new Date()
+                    });
+
+                    console.log(`✅ Heartbeat processed for ${name}: ${Math.floor(attendedSeconds / 60)}min`);
+                } else {
+                    console.log(`⚠️ Student not found for heartbeat: ${enrollmentNo}`);
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error processing student heartbeat:', error);
+        }
+    });
+
     // Student updates timer
     socket.on('timer_update', async (data) => {
         try {
@@ -1764,6 +1799,198 @@ app.post('/api/attendance/update-timer', async (req, res) => {
     } catch (error) {
         console.error('Error updating timer:', error);
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Enhanced Heartbeat with full state management
+app.post('/api/attendance/enhanced-heartbeat', async (req, res) => {
+    try {
+        const { 
+            studentId, enrollmentNo, studentName, timerValue, wifiConnected, 
+            faceVerified, currentClass, semester, branch, timestamp 
+        } = req.body;
+
+        console.log(`💓 Enhanced heartbeat from ${studentName} (${enrollmentNo}): ${Math.floor(timerValue / 60)}min`);
+
+        if (mongoose.connection.readyState === 1) {
+            // Find student in StudentManagement
+            const student = await StudentManagement.findOne({
+                $or: [
+                    { _id: studentId },
+                    { enrollmentNo: enrollmentNo }
+                ]
+            });
+
+            if (student) {
+                // Update student with heartbeat data
+                const updateData = {
+                    isRunning: true,
+                    status: 'attending',
+                    lastUpdated: new Date(),
+                    'attendanceSession.totalAttendedSeconds': timerValue,
+                    'attendanceSession.wifiConnected': wifiConnected,
+                    'attendanceSession.faceVerified': faceVerified,
+                    'attendanceSession.lastHeartbeat': new Date()
+                };
+
+                if (currentClass) {
+                    updateData['attendanceSession.currentClass'] = {
+                        subject: currentClass.subject,
+                        room: currentClass.room,
+                        startTime: currentClass.startTime,
+                        endTime: currentClass.endTime
+                    };
+                }
+
+                await StudentManagement.findByIdAndUpdate(student._id, updateData);
+
+                // Get current lecture info for response
+                const lectureInfo = await getCurrentLectureInfo(semester, branch);
+                
+                let serverTimerData = null;
+                let shouldStop = false;
+                let stopReason = null;
+
+                if (lectureInfo) {
+                    // Calculate server-side timer data
+                    serverTimerData = {
+                        totalLectureSeconds: lectureInfo.totalSeconds,
+                        elapsedLectureSeconds: lectureInfo.elapsedSeconds,
+                        remainingLectureSeconds: lectureInfo.remainingSeconds,
+                        attendedSeconds: timerValue,
+                        lectureSubject: lectureInfo.subject,
+                        lectureTeacher: lectureInfo.teacher,
+                        lectureRoom: lectureInfo.room,
+                        lectureStartTime: lectureInfo.startTime,
+                        lectureEndTime: lectureInfo.endTime
+                    };
+
+                    // Check if lecture is ending
+                    if (lectureInfo.remainingSeconds <= 0) {
+                        shouldStop = true;
+                        stopReason = 'Lecture ended';
+                    }
+                } else {
+                    // No active lecture
+                    shouldStop = true;
+                    stopReason = 'No active lecture';
+                }
+
+                // Security checks
+                if (!wifiConnected) {
+                    shouldStop = true;
+                    stopReason = 'WiFi disconnected - attendance tracking stopped';
+                }
+
+                if (!faceVerified) {
+                    shouldStop = true;
+                    stopReason = 'Face verification required - attendance tracking stopped';
+                }
+
+                console.log(`✅ Heartbeat processed for ${studentName}: ${Math.floor(timerValue / 60)}min attended`);
+
+                res.json({
+                    success: true,
+                    message: 'Enhanced heartbeat received',
+                    serverTimerData,
+                    shouldStop,
+                    reason: stopReason,
+                    serverTime: new Date().toISOString()
+                });
+
+            } else {
+                console.log(`⚠️ Student not found: ${studentId} / ${enrollmentNo}`);
+                res.status(404).json({ 
+                    success: false, 
+                    error: 'Student not found',
+                    shouldStop: true,
+                    reason: 'Student record not found'
+                });
+            }
+        } else {
+            // Database not connected
+            console.log('📝 Enhanced heartbeat saved to memory (DB not connected)');
+            res.json({ 
+                success: true, 
+                message: 'Heartbeat saved to memory',
+                shouldStop: false
+            });
+        }
+
+    } catch (error) {
+        console.error('❌ Error processing enhanced heartbeat:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message,
+            shouldStop: true,
+            reason: 'Server error during heartbeat processing'
+        });
+    }
+});
+
+// Offline Recovery Sync
+app.post('/api/attendance/sync-offline-recovery', async (req, res) => {
+    try {
+        const { studentId, offlineData, recoveryTimestamp } = req.body;
+
+        console.log(`🔄 Processing offline recovery for student: ${studentId}`);
+        console.log(`📱 Offline data: ${Math.floor(offlineData.attendedSeconds / 60)}min from ${offlineData.lastHeartbeat}`);
+
+        if (mongoose.connection.readyState === 1) {
+            const student = await StudentManagement.findOne({
+                $or: [
+                    { _id: studentId },
+                    { enrollmentNo: studentId }
+                ]
+            });
+
+            if (student) {
+                // Calculate offline duration
+                const offlineStart = new Date(offlineData.offlineStartTime);
+                const recoveryTime = new Date(recoveryTimestamp);
+                const offlineDurationSeconds = Math.floor((recoveryTime - offlineStart) / 1000);
+
+                // Add offline time to existing attended time
+                const totalAttendedSeconds = offlineData.attendedSeconds + Math.min(offlineDurationSeconds, 3600); // Cap at 1 hour
+
+                await StudentManagement.findByIdAndUpdate(student._id, {
+                    'attendanceSession.totalAttendedSeconds': totalAttendedSeconds,
+                    'attendanceSession.offlineRecovery': {
+                        recoveredAt: new Date(),
+                        offlineDuration: offlineDurationSeconds,
+                        recoveredSeconds: Math.min(offlineDurationSeconds, 3600)
+                    },
+                    lastUpdated: new Date()
+                });
+
+                console.log(`✅ Offline recovery completed: ${Math.floor(totalAttendedSeconds / 60)}min total`);
+
+                res.json({
+                    success: true,
+                    message: 'Offline data recovered successfully',
+                    totalAttendedSeconds,
+                    recoveredSeconds: Math.min(offlineDurationSeconds, 3600)
+                });
+
+            } else {
+                res.status(404).json({
+                    success: false,
+                    error: 'Student not found for recovery'
+                });
+            }
+        } else {
+            res.json({
+                success: false,
+                error: 'Database not available for recovery'
+            });
+        }
+
+    } catch (error) {
+        console.error('❌ Error in offline recovery:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
 });
 

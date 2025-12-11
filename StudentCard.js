@@ -79,6 +79,18 @@ const StudentCard = ({ student, onToggleAttendance, isDark, theme }) => {
           <Text style={[styles.rollNumber, { color: theme.textSecondary }]}>
             {student.enrollmentNo || student.enrollmentNumber || 'N/A'}
           </Text>
+          {/* Show timer info for teachers */}
+          {student.isRunning && student.attendedMinutes !== undefined && (
+            <Text style={[styles.timerInfo, { color: theme.primary, fontSize: 12, fontWeight: '600' }]}>
+              ⏱️ {student.attendedMinutes}min attended
+              {student.currentClass?.subject && ` • ${student.currentClass.subject}`}
+            </Text>
+          )}
+          {!student.isRunning && student.attendedMinutes > 0 && (
+            <Text style={[styles.timerInfo, { color: theme.textSecondary, fontSize: 12 }]}>
+              📊 Final: {student.attendedMinutes}min
+            </Text>
+          )}
         </View>
 
         <View style={[styles.statusBadge, { backgroundColor: statusStyle.backgroundColor }]}>
@@ -270,6 +282,10 @@ const styles = StyleSheet.create({
   },
   rollNumber: {
     fontSize: 14,
+  },
+  timerInfo: {
+    fontSize: 12,
+    marginTop: 2,
   },
   statusBadge: {
     paddingVertical: 6,

@@ -607,67 +607,43 @@ export default function CircularTimer({
           delayLongPress={800}
           activeOpacity={1}
         >
-          {/* Attendance Percentage (smaller) */}
+          {/* Current Lecture Time Remaining - Clean Display */}
           <Text style={[styles.time, { color: safeTheme.text, fontSize: 32 }]}>
-            {totalLectureTime > 0 ? Math.round((initialTime / totalLectureTime) * 100) : 0}%
-          </Text>
-
-          {/* Time Display in HH:MM:SS format */}
-          <Text style={{ color: safeTheme.text, fontSize: 20, fontWeight: 'bold', marginTop: 8 }}>
             {(() => {
-              const hours = Math.floor(initialTime / 3600);
-              const minutes = Math.floor((initialTime % 3600) / 60);
-              const seconds = initialTime % 60;
-              return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+              // Show remaining time for current lecture only
+              if (remainingTime > 0) {
+                const minutes = Math.floor(remainingTime / 60);
+                const seconds = remainingTime % 60;
+                return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+              }
+              return '00:00';
             })()}
           </Text>
-          <Text style={[styles.timeLabel, { color: safeTheme.textSecondary, fontSize: 10, marginTop: 3 }]}>
-            TIME ATTENDED
+          <Text style={[styles.timeLabel, { color: safeTheme.textSecondary, fontSize: 10, marginTop: 2 }]}>
+            TIME LEFT
           </Text>
 
-          {/* Show validation requirements */}
+          {/* Show start button when not running */}
           {!isRunning && (
-            <View style={{ alignItems: 'center', marginTop: 15 }}>
-              {/* WiFi + Face verification required message */}
-              <View style={{
-                backgroundColor: safeTheme.cardBackground,
-                borderColor: '#f59e0b',
-                borderWidth: 1,
-                borderRadius: 8,
-                padding: 8,
-                marginBottom: 10,
-                maxWidth: 200,
-              }}>
-                <Text style={{
-                  color: '#f59e0b',
-                  fontSize: 10,
-                  textAlign: 'center',
-                  fontWeight: '600'
-                }}>
-                  📶 Classroom WiFi + 🔒 Face Verification Required
-                </Text>
-              </View>
-
-              {/* Start button */}
-              <TouchableOpacity
-                style={[
-                  styles.playBtn, 
-                  { 
-                    backgroundColor: safeTheme.primary,
-                  }
-                ]}
-                onPress={onToggleTimer}
-                activeOpacity={0.8}
-              >
-                <PlayIcon size={20} color={safeTheme.background} />
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={[
+                styles.playBtn, 
+                { 
+                  backgroundColor: safeTheme.primary,
+                  marginTop: 15,
+                }
+              ]}
+              onPress={onToggleTimer}
+              activeOpacity={0.8}
+            >
+              <PlayIcon size={20} color={safeTheme.background} />
+            </TouchableOpacity>
           )}
 
-          {/* Show running indicator when active */}
+          {/* Show clean running indicator when active */}
           {isRunning && (
-            <View style={[styles.runningBadge, { backgroundColor: '#22c55e', marginTop: 15 }]}>
-              <Text style={styles.runningText}>🔴 TRACKING</Text>
+            <View style={[styles.runningBadge, { backgroundColor: '#22c55e', marginTop: 12 }]}>
+              <Text style={styles.runningText}>✅ Attendance tracking active</Text>
             </View>
           )}
 
