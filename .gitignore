@@ -84,3 +84,6 @@ server/models/*
 *.pem
 *.key
 *.cert
+
+# Embedded repositories
+khatam-aaj/
