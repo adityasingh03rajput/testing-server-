@@ -1,4 +1,4 @@
-// Azure deployment trigger - Updated December 13, 2024 - v2.8 - Fixed naming conflicts: server.js (Node.js server) + index.js (React Native entry)
+// Azure deployment trigger - Updated December 13, 2024 - v2.9 - APK build successful + Metro config fixed
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
