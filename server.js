@@ -1,4 +1,4 @@
-// Azure deployment trigger - Updated December 13, 2024 - v2.9 - APK build successful + Metro config fixed
+// Azure deployment trigger - Updated December 13, 2024 - v3.0 - Index file restored + Full system deployment
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
