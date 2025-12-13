@@ -53,7 +53,7 @@ async function checkDeploymentStatus() {
         },
         {
             name: 'Student Management',
-            url: `${SERVER_URL}/api/student-management`,
+            url: `${SERVER_URL}/api/students`,
             expected: 'Student management endpoint should respond'
         },
         {
