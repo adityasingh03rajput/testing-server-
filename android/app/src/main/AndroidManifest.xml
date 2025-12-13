@@ -20,6 +20,18 @@
   <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
   
+  <!-- Android 13+ (API 33+) WiFi permissions for BSSID access -->
+  <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation"/>
+  
+  <!-- MIUI and OEM-specific permissions -->
+  <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
+  <uses-permission android:name="android.permission.WRITE_SETTINGS" android:maxSdkVersion="22"/>
+  
+  <!-- Runtime permission declarations for Android 13+ -->
+  <uses-permission-sdk-23 android:name="android.permission.ACCESS_FINE_LOCATION"/>
+  <uses-permission-sdk-23 android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+  <uses-permission-sdk-23 android:name="android.permission.NEARBY_WIFI_DEVICES" android:maxSdkVersion="32"/>
+  
   <!-- Feature declarations for WiFi -->
   <uses-feature android:name="android.hardware.wifi" android:required="true"/>
   <uses-feature android:name="android.hardware.location" android:required="true"/>

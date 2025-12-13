@@ -2205,10 +2205,10 @@ export default function App() {
     }
   };
 
-  // WiFi validation function - Simplified for production
+  // Enhanced WiFi validation function for Android 13+ and MIUI
   const isConnectedToClassroomWiFi = async () => {
     try {
-      console.log('📶 Checking WiFi connection...');
+      console.log('📶 Enhanced WiFi connection check starting...');
       
       // Check if we have current class info
       if (!currentClassInfo || !currentClassInfo.room) {
@@ -2227,6 +2227,22 @@ export default function App() {
         }
         
         return false;
+      }
+
+      // Enhanced debugging for Xiaomi/MIUI devices
+      console.log('📱 Device info check...');
+      try {
+        const { WifiModule } = require('react-native').NativeModules;
+        if (WifiModule) {
+          const deviceInfo = await WifiModule.getWifiState();
+          console.log(`📱 Device: ${deviceInfo.manufacturer} ${deviceInfo.model} (Android ${deviceInfo.sdkVersion})`);
+          
+          if (deviceInfo.manufacturer?.toLowerCase().includes('xiaomi')) {
+            console.log('🎯 Xiaomi device detected - using enhanced BSSID detection');
+          }
+        }
+      } catch (deviceError) {
+        console.log('⚠️ Could not get device info:', deviceError);
       }
 
       // Initialize WiFi manager
