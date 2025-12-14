@@ -1,0 +1,7 @@
+employeeId,name,email,password,department,subject,dob,phone,photoUrl,semester,canEditTimetable
+EMP001,"Prof. Zohaib Hasan","zohaib.cs@global.org.in","sirzohaib","DS","Data Structure","1980-01-01","+91-9876543119","","3","true"
+EMP002,"Prof. Zeba Vishwakarma","zeba.cs@global.org.in","mamzeba","DS","Database Management Systems","1980-01-01","+91-9876543119","","3","false"
+EMP003,"Prof. Pankaj Singhai","pankaj.cse@global.org.in","sirpankaj","DS","Object Oriented Programming & Methodology","1980-01-01","+91-9876543119","","3","true"
+EMP004,"Prof. Zoya Afreen","zoya.cs@global.org.in","mamzoya","DS","Introduction to Probability and Statistics","1980-01-01","+91-9876543119","","3","false"
+EMP005,"Prof. Sabiya Khan","sabiya.core@global.org.in","mamsabiya","DS","Technical Communication","1980-01-01","+91-9876543119","","3","false"
+EMP006,"Mr. Deepak Vishwakarma","deepak.trainer@global.org.in","sirdeepak","DS","Computer Workshop - Introduction to Python","1980-01-01","+91-9876543119","","3","false"

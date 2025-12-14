@@ -5620,7 +5620,7 @@ if (!validateEnvironment()) {
 
 server.listen(PORT, '0.0.0.0', async () => {
     console.log('========================================');
-    console.log('🚀 Attendance SDUI Server Running v2.4');
+    console.log('🚀 Attendance SDUI Server Running v2.5 - Bulk Import Fixed');
     console.log('========================================');
     console.log(`📡 HTTP Server: http://localhost:${PORT}`);
     console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
