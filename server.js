@@ -1,4 +1,4 @@
-// Azure deployment trigger - Updated December 10, 2024 - v2.4 - Force Redeploy After Autofix
+// Azure deployment trigger - Updated December 10, 2024 - v2.4 - Force Redeploy After Autofix.
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
