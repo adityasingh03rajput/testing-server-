@@ -3562,45 +3562,152 @@ app.get('/api/teachers', async (req, res) => {
 
 app.post('/api/teachers', async (req, res) => {
     try {
-        console.log('Received teacher data:', req.body);
+        console.log('📝 Adding new teacher:', req.body.name, req.body.employeeId);
+        
         if (mongoose.connection.readyState === 1) {
             const teacher = new Teacher(req.body);
             await teacher.save();
-            res.json({ success: true, teacher });
+            console.log('✅ Teacher saved to database:', teacher.name);
+            res.json({ 
+                success: true, 
+                teacher,
+                message: `Teacher ${teacher.name} added successfully`
+            });
         } else {
+            // Check for duplicates in memory
+            const exists = teachersMemory.find(t => 
+                t.employeeId === req.body.employeeId || t.email === req.body.email
+            );
+            
+            if (exists) {
+                return res.status(400).json({ 
+                    success: false, 
+                    error: 'Teacher with this Employee ID or Email already exists' 
+                });
+            }
+            
             const teacher = {
                 _id: 'teacher_' + Date.now(),
                 ...req.body,
                 createdAt: new Date()
             };
             teachersMemory.push(teacher);
-            res.json({ success: true, teacher });
+            console.log('✅ Teacher added to memory storage:', teacher.name);
+            res.json({ 
+                success: true, 
+                teacher,
+                message: `Teacher ${teacher.name} added successfully`
+            });
         }
     } catch (error) {
-        console.error('Error saving teacher:', error);
-        res.status(500).json({ success: false, error: error.message });
+        console.error('❌ Error saving teacher:', error);
+        
+        // Handle duplicate key errors
+        if (error.code === 11000) {
+            const duplicateField = error.message.includes('email') ? 'email' : 'employeeId';
+            res.status(400).json({ 
+                success: false, 
+                error: `A teacher with this ${duplicateField} already exists`,
+                details: error.message
+            });
+        } else if (error.name === 'ValidationError') {
+            const validationErrors = Object.values(error.errors).map(err => err.message);
+            res.status(400).json({ 
+                success: false, 
+                error: 'Validation failed',
+                details: validationErrors.join(', ')
+            });
+        } else {
+            res.status(500).json({ 
+                success: false, 
+                error: 'Internal server error',
+                details: error.message 
+            });
+        }
     }
 });
 
 app.post('/api/teachers/bulk', async (req, res) => {
     try {
         const { teachers } = req.body;
-        if (mongoose.connection.readyState === 1) {
-            const result = await Teacher.insertMany(teachers, { ordered: false });
-            res.json({ success: true, count: result.length });
-        } else {
-            teachers.forEach(t => {
-                teachersMemory.push({
-                    _id: 'teacher_' + Date.now() + Math.random(),
-                    ...t,
-                    createdAt: new Date()
-                });
+        
+        if (!teachers || !Array.isArray(teachers) || teachers.length === 0) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Invalid request: teachers array is required and must not be empty' 
             });
-            res.json({ success: true, count: teachers.length });
+        }
+        
+        console.log(`📥 Bulk importing ${teachers.length} teachers...`);
+        
+        if (mongoose.connection.readyState === 1) {
+            // Use insertMany with ordered: false to continue on duplicates
+            const result = await Teacher.insertMany(teachers, { 
+                ordered: false,
+                rawResult: true 
+            });
+            
+            const insertedCount = result.insertedCount || result.length;
+            console.log(`✅ Successfully inserted ${insertedCount} teachers`);
+            
+            res.json({ 
+                success: true, 
+                count: insertedCount,
+                message: `Successfully imported ${insertedCount} teacher${insertedCount !== 1 ? 's' : ''}`,
+                total: teachers.length
+            });
+        } else {
+            // Fallback to memory storage
+            let addedCount = 0;
+            teachers.forEach(t => {
+                // Check for duplicates in memory
+                const exists = teachersMemory.find(existing => 
+                    existing.employeeId === t.employeeId || existing.email === t.email
+                );
+                
+                if (!exists) {
+                    teachersMemory.push({
+                        _id: 'teacher_' + Date.now() + Math.random(),
+                        ...t,
+                        createdAt: new Date()
+                    });
+                    addedCount++;
+                }
+            });
+            
+            console.log(`✅ Added ${addedCount} teachers to memory storage`);
+            res.json({ 
+                success: true, 
+                count: addedCount,
+                message: `Successfully imported ${addedCount} teacher${addedCount !== 1 ? 's' : ''}`,
+                total: teachers.length
+            });
         }
     } catch (error) {
-        console.error('Error bulk importing teachers:', error);
-        res.status(500).json({ success: false, error: error.message });
+        console.error('❌ Error bulk importing teachers:', error);
+        
+        // Handle duplicate key errors
+        if (error.code === 11000) {
+            const duplicateField = error.message.includes('email') ? 'email' : 'employeeId';
+            res.status(400).json({ 
+                success: false, 
+                error: `Duplicate ${duplicateField} found. Please check your data for duplicates.`,
+                details: error.message
+            });
+        } else if (error.name === 'ValidationError') {
+            const validationErrors = Object.values(error.errors).map(err => err.message);
+            res.status(400).json({ 
+                success: false, 
+                error: 'Validation failed',
+                details: validationErrors.join(', ')
+            });
+        } else {
+            res.status(500).json({ 
+                success: false, 
+                error: 'Internal server error during bulk import',
+                details: error.message 
+            });
+        }
     }
 });
 

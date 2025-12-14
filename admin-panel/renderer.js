@@ -960,12 +960,21 @@ async function handleAddTeacher(e) {
             body: JSON.stringify(teacherData)
         });
 
-        if (response.ok) {
-            showNotification('Teacher added successfully', 'success');
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            showNotification('✅ Teacher added successfully', 'success');
             closeModal();
             loadTeachers();
+            
+            // Refresh department filter after adding teacher
+            setTimeout(() => {
+                loadDepartmentsFilter();
+            }, 500);
         } else {
-            showNotification('Failed to add teacher', 'error');
+            const errorMsg = result.error || result.message || 'Failed to add teacher';
+            showNotification(`❌ Failed to add teacher: ${errorMsg}`, 'error');
+            console.error('Add teacher error:', result);
         }
     } catch (error) {
         showNotification('Error: ' + error.message, 'error');
@@ -997,40 +1006,102 @@ function showBulkTeacherModal() {
 
 async function processBulkTeachers() {
     const csvData = document.getElementById('csvPreview').value;
-    const lines = csvData.split('\n');
+    
+    if (!csvData.trim()) {
+        showNotification('Please upload a CSV file first', 'error');
+        return;
+    }
+    
+    const lines = csvData.split('\n').filter(line => line.trim());
+    
+    if (lines.length < 2) {
+        showNotification('CSV file must have at least a header row and one data row', 'error');
+        return;
+    }
+    
     const headers = lines[0].split(',').map(h => h.trim());
+    
+    // Validate required headers
+    const requiredHeaders = ['employeeId', 'name', 'email', 'password', 'department', 'subject', 'dob'];
+    const missingHeaders = requiredHeaders.filter(header => !headers.includes(header));
+    
+    if (missingHeaders.length > 0) {
+        showNotification(`Missing required columns: ${missingHeaders.join(', ')}`, 'error');
+        return;
+    }
 
     const teachers = [];
+    const errors = [];
+    
     for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
-        const values = lines[i].split(',').map(v => v.trim());
+        
+        const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, '')); // Remove quotes
         const teacher = {};
+        
         headers.forEach((header, index) => {
             if (header === 'canEditTimetable') {
-                teacher[header] = values[index].toLowerCase() === 'true';
+                teacher[header] = values[index] && values[index].toLowerCase() === 'true';
             } else {
-                teacher[header] = values[index];
+                teacher[header] = values[index] || '';
             }
         });
+        
+        // Validate required fields for this teacher
+        const missingFields = requiredHeaders.filter(field => !teacher[field]);
+        if (missingFields.length > 0) {
+            errors.push(`Row ${i + 1}: Missing ${missingFields.join(', ')}`);
+            continue;
+        }
+        
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(teacher.email)) {
+            errors.push(`Row ${i + 1}: Invalid email format`);
+            continue;
+        }
+        
         teachers.push(teacher);
+    }
+    
+    if (errors.length > 0) {
+        showNotification(`Validation errors:\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? '\n...and more' : ''}`, 'error');
+        return;
+    }
+    
+    if (teachers.length === 0) {
+        showNotification('No valid teachers found in CSV file', 'error');
+        return;
     }
 
     try {
+        showNotification(`Processing ${teachers.length} teachers...`, 'info');
+        
         const response = await fetch(`${SERVER_URL}/api/teachers/bulk`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ teachers })
         });
 
-        if (response.ok) {
-            showNotification(`${teachers.length} teachers imported successfully`, 'success');
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+            showNotification(`✅ Successfully imported ${result.count || teachers.length} teachers`, 'success');
             closeModal();
             loadTeachers();
+            
+            // Refresh department filter after adding teachers
+            setTimeout(() => {
+                loadDepartmentsFilter();
+            }, 500);
         } else {
-            showNotification('Failed to import teachers', 'error');
+            const errorMsg = result.error || result.message || 'Failed to import teachers';
+            showNotification(`❌ Import failed: ${errorMsg}`, 'error');
+            console.error('Bulk import error:', result);
         }
     } catch (error) {
-        showNotification('Error: ' + error.message, 'error');
+        console.error('Error importing teachers:', error);
+        showNotification(`❌ Network error: ${error.message}`, 'error');
     }
 }
 
