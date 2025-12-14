@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "CountdownTimer",
+    "slug": "countdown-timer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.countdowntimer.app"
+    },
+    "android": {
+      "package": "com.countdowntimer.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

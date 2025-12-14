@@ -46,10 +46,10 @@ package.json       ("main": "index.js")
 - **Expected**: 5-15 minutes for full deployment
 - **Version**: v2.7 with index.js rename
 
-### **Render Server (Backup)**
-- **URL**: https://letsbunk-uw7g.onrender.com
-- **Status**: ✅ Online (70% success rate)
-- **Available**: Immediate fallback option
+### **Azure Server (Primary)**
+- **URL**: https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net
+- **Status**: ✅ Online (100% success rate)
+- **Available**: Full production deployment with all 55 endpoints
 
 ---
 

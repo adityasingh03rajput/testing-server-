@@ -1,0 +1,724 @@
+{
+  "serverUrl": "https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net",
+  "timestamp": "2025-12-14T20:24:58.513Z",
+  "discoveredEndpoints": [
+    {
+      "method": "GET",
+      "path": "/",
+      "status": 200,
+      "success": true,
+      "data": {
+        "message": "Attendance System API Server",
+        "version": "2.4.0",
+        "status": "running",
+        "timestamp": "2025-12-14T20:24:52.045Z",
+        "endpoints": {
+          "config": "/api/config",
+          "time": "/api/time",
+          "health": "/api/health",
+          "students": "/api/students",
+          "timetable": "/api/timetable/:semester/:branch",
+          "subjects": "/api/subjects",
+          "classrooms": "/api/classrooms"
+        }
+      },
+      "headers": {
+        "content-length": "329",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:52 GMT",
+        "access-control-allow-origin": "*",
+        "etag": "W/\"149-V5TmurkP0rPUtD3ZaDVAWNt/lMg\"",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "142",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:52 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "status": 200,
+      "success": true,
+      "data": {
+        "status": "ok",
+        "timestamp": "2025-12-14T20:24:52.370Z",
+        "uptime": 3478.034451625,
+        "memory": {
+          "rss": 131481600,
+          "heapTotal": 64438272,
+          "heapUsed": 57900440,
+          "external": 47183782,
+          "arrayBuffers": 43767312
+        },
+        "database": "connected"
+      },
+      "headers": {
+        "content-length": "213",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:52 GMT",
+        "access-control-allow-origin": "*",
+        "etag": "W/\"d5-EBMOK792/9onop71jZmrAD/ERTA\"",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/status</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "149",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:52 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/info",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/info</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "147",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:52 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/version",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/version</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "150",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:52 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/config",
+      "status": 200,
+      "success": true,
+      "data": {
+        "version": "2.0.0",
+        "roleSelection": {
+          "backgroundColor": "#0a1628",
+          "title": {
+            "text": "Who are you?",
+            "fontSize": 36,
+            "color": "#00f5ff",
+            "fontWeight": "bold"
+          },
+          "subtitle": {
+            "text": "Select your role to continue",
+            "fontSize": 16,
+            "color": "#00d9ff"
+          },
+          "roles": [
+            {
+              "id": "student",
+              "text": "Student",
+              "icon": "🎓",
+              "backgroundColor": "#00d9ff",
+              "textColor": "#0a1628"
+            },
+            {
+              "id": "teacher",
+              "text": "Teacher",
+              "icon": "👨‍🏫",
+              "backgroundColor": "#00bfff",
+              "textColor": "#0a1628"
+            }
+          ]
+        },
+        "studentNameInput": {
+          "backgroundColor": "#0a1628",
+          "title": {
+            "text": "Enter Your Name",
+            "fontSize": 32,
+            "color": "#00f5ff",
+            "fontWeight": "bold"
+          },
+          "subtitle": {
+            "text": "This will be visible to your teacher",
+            "fontSize": 14,
+            "color": "#00d9ff"
+          },
+          "placeholder": "Your Name",
+          "buttonText": "START SESSION",
+          "inputBackgroundColor": "#0d1f3c",
+          "inputTextColor": "#00f5ff",
+          "inputBorderColor": "#00d9ff"
+        },
+        "studentScreen": {
+          "backgroundColor": "#0a1628",
+          "title": {
+            "text": "Countdown Timer",
+            "fontSize": 32,
+            "color": "#00f5ff",
+            "fontWeight": "bold"
+          },
+          "timer": {
+            "duration": 120,
+            "backgroundColor": "#0d1f3c",
+            "textColor": "#00f5ff",
+            "fontSize": 72,
+            "borderRadius": 20
+          },
+          "buttons": [
+            {
+              "id": "startPause",
+              "text": "START",
+              "pauseText": "PAUSE",
+              "backgroundColor": "#00f5ff",
+              "textColor": "#0a1628",
+              "fontSize": 18
+            },
+            {
+              "id": "reset",
+              "text": "RESET",
+              "backgroundColor": "#00d9ff",
+              "textColor": "#0a1628",
+              "fontSize": 18
+            }
+          ]
+        },
+        "teacherScreen": {
+          "backgroundColor": "#0a1628",
+          "title": {
+            "text": "Live Attendance",
+            "fontSize": 32,
+            "color": "#00f5ff",
+            "fontWeight": "bold"
+          },
+          "subtitle": {
+            "text": "Real-time student tracking",
+            "fontSize": 16,
+            "color": "#00d9ff"
+          },
+          "statusColors": {
+            "attending": "#00ff88",
+            "absent": "#ff4444",
+            "present": "#00d9ff"
+          },
+          "cardBackgroundColor": "#0d1f3c",
+          "cardBorderColor": "#00d9ff"
+        }
+      },
+      "headers": {
+        "content-length": "1633",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:53 GMT",
+        "access-control-allow-origin": "*",
+        "etag": "W/\"661-pnLsVrqSUoiRscuGuRtb0MCwW/M\"",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/time",
+      "status": 200,
+      "success": true,
+      "data": {
+        "success": true,
+        "serverTime": 1765743893230,
+        "serverTimeISO": "2025-12-14T20:24:53.230Z",
+        "timezone": "UTC"
+      },
+      "headers": {
+        "content-length": "103",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:53 GMT",
+        "access-control-allow-origin": "*",
+        "etag": "W/\"67-nbpuZsDgP/7xc0W/g0Np0edFSxs\"",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /health</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "145",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:53 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/status",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /status</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "145",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:53 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/info",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /info</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "143",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:53 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/version",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /version</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "146",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:53 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/ping",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /ping</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "143",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:54 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/docs",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /docs</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "143",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:54 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/swagger",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /swagger</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "146",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:54 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api-docs",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api-docs</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "147",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:54 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/openapi.json",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /openapi.json</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "151",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:54 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/swagger.json",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /swagger.json</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "151",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:54 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/v1</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "145",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:55 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/v2</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "145",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:55 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/users",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/users</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "148",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:55 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/auth</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "147",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:55 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/login",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/login</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "148",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:55 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/register",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/register</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "151",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:55 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/data",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/data</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "147",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:56 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/search",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/search</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "149",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:56 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/list",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/list</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "147",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:56 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/get",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/get</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "146",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:56 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/post",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/post</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "147",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:56 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/update",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/update</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "149",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:56 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/delete",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/delete</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "149",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:57 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/robots.txt",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /robots.txt</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "149",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:57 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/sitemap.xml",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /sitemap.xml</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "150",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:57 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/favicon.ico",
+      "status": 404,
+      "success": false,
+      "data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /favicon.ico</pre>\n</body>\n</html>\n",
+      "headers": {
+        "content-length": "150",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Sun, 14 Dec 2025 20:24:57 GMT",
+        "access-control-allow-origin": "*",
+        "request-context": "appId=cid-v1:",
+        "x-powered-by": "Express",
+        "content-security-policy": "default-src 'none'",
+        "x-content-type-options": "nosniff"
+      }
+    }
+  ],
+  "summary": {
+    "totalEndpoints": 34,
+    "workingEndpoints": 4,
+    "statusDistribution": {
+      "200": 4,
+      "404": 30
+    }
+  }
+}
