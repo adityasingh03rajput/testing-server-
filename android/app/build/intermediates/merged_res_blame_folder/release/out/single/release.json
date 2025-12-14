@@ -1,0 +1,50 @@
+[
+    {
+        "merged": "com.countdowntimer.app-merged_res-51:/mipmap-xxxhdpi_ic_launcher_round.png.flat",
+        "source": "com.countdowntimer.app-main-52:/mipmap-xxxhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.countdowntimer.app-merged_res-51:/mipmap-xxhdpi_ic_launcher_round.png.flat",
+        "source": "com.countdowntimer.app-main-52:/mipmap-xxhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.countdowntimer.app-merged_res-51:/drawable_splashscreen.xml.flat",
+        "source": "com.countdowntimer.app-main-52:/drawable/splashscreen.xml"
+    },
+    {
+        "merged": "com.countdowntimer.app-merged_res-51:/mipmap-hdpi_ic_launcher_round.png.flat",
+        "source": "com.countdowntimer.app-main-52:/mipmap-hdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.countdowntimer.app-merged_res-51:/mipmap-mdpi_ic_launcher_round.png.flat",
+        "source": "com.countdowntimer.app-main-52:/mipmap-mdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.countdowntimer.app-merged_res-51:/mipmap-xxxhdpi_ic_launcher.png.flat",
+        "source": "com.countdowntimer.app-main-52:/mipmap-xxxhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.countdowntimer.app-merged_res-51:/mipmap-hdpi_ic_launcher.png.flat",
+        "source": "com.countdowntimer.app-main-52:/mipmap-hdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.countdowntimer.app-merged_res-51:/drawable_rn_edit_text_material.xml.flat",
+        "source": "com.countdowntimer.app-main-52:/drawable/rn_edit_text_material.xml"
+    },
+    {
+        "merged": "com.countdowntimer.app-merged_res-51:/mipmap-xhdpi_ic_launcher.png.flat",
+        "source": "com.countdowntimer.app-main-52:/mipmap-xhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.countdowntimer.app-merged_res-51:/mipmap-mdpi_ic_launcher.png.flat",
+        "source": "com.countdowntimer.app-main-52:/mipmap-mdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.countdowntimer.app-merged_res-51:/mipmap-xxhdpi_ic_launcher.png.flat",
+        "source": "com.countdowntimer.app-main-52:/mipmap-xxhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.countdowntimer.app-merged_res-51:/mipmap-xhdpi_ic_launcher_round.png.flat",
+        "source": "com.countdowntimer.app-main-52:/mipmap-xhdpi/ic_launcher_round.png"
+    }
+]

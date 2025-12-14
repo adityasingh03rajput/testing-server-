@@ -1,4 +1,4 @@
-@echo off
+echo off
 echo ========================================
 echo Building Android APK with Environment Setup
 echo ========================================

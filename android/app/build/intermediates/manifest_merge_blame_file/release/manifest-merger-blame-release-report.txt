@@ -1,0 +1,756 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.countdowntimer.app"
+4    android:versionCode="1"
+5    android:versionName="1.0.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="23"
+9        android:targetSdkVersion="34" />
+10
+11    <uses-permission android:name="android.permission.CAMERA" />
+11-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:2:3-62
+11-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:2:20-60
+12    <uses-permission android:name="android.permission.INTERNET" />
+12-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:3:3-64
+12-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:3:20-62
+13    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+13-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:4:3-77
+13-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:4:20-75
+14    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+14-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:5:3-68
+14-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:5:20-66
+15    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+15-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:6:3-75
+15-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:6:20-73
+16    <uses-permission android:name="android.permission.VIBRATE" />
+16-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:7:3-63
+16-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:7:20-61
+17    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+17-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:8:3-78
+17-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:8:20-76
+18
+19    <!-- WiFi and Location permissions for BSSID detection -->
+20    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+20-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:11:3-73
+20-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:11:20-71
+21    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+21-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:12:3-73
+21-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:12:20-71
+22    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+22-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:13:3-76
+22-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:13:20-74
+23    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+23-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:14:3-78
+23-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:14:20-76
+24
+25    <queries>
+25-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:15:3-21:13
+26        <intent>
+26-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:16:5-20:14
+27            <action android:name="android.intent.action.VIEW" />
+27-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:17:7-58
+27-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:17:15-56
+28
+29            <category android:name="android.intent.category.BROWSABLE" />
+29-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:18:7-67
+29-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:18:17-65
+30
+31            <data android:scheme="https" />
+31-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:19:7-37
+31-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:19:13-35
+32        </intent>
+33        <!-- Query open documents -->
+34        <intent>
+34-->[:expo-file-system] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-file-system\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:15:9-17:18
+35            <action android:name="android.intent.action.OPEN_DOCUMENT_TREE" />
+35-->[:expo-file-system] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-file-system\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:16:13-79
+35-->[:expo-file-system] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-file-system\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:16:21-76
+36        </intent>
+37        <intent>
+37-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:15:9-19:18
+38
+39            <!-- Required for picking images from the camera roll if targeting API 30 -->
+40            <action android:name="android.media.action.IMAGE_CAPTURE" />
+40-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:18:13-73
+40-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:18:21-70
+41        </intent>
+42        <intent>
+42-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:20:9-24:18
+43
+44            <!-- Required for picking images from the camera if targeting API 30 -->
+45            <action android:name="android.media.action.ACTION_VIDEO_CAPTURE" />
+45-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:23:13-80
+45-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:23:21-77
+46        </intent>
+47        <intent>
+47-->[androidx.camera:camera-extensions:1.4.0-beta02] C:\Users\Victus\.gradle\caches\8.8\transforms\cc8145fbb8f8d173c5026937675b3e0b\transformed\jetified-camera-extensions-1.4.0-beta02\AndroidManifest.xml:23:9-25:18
+48            <action android:name="androidx.camera.extensions.action.VENDOR_ACTION" />
+48-->[androidx.camera:camera-extensions:1.4.0-beta02] C:\Users\Victus\.gradle\caches\8.8\transforms\cc8145fbb8f8d173c5026937675b3e0b\transformed\jetified-camera-extensions-1.4.0-beta02\AndroidManifest.xml:24:13-86
+48-->[androidx.camera:camera-extensions:1.4.0-beta02] C:\Users\Victus\.gradle\caches\8.8\transforms\cc8145fbb8f8d173c5026937675b3e0b\transformed\jetified-camera-extensions-1.4.0-beta02\AndroidManifest.xml:24:21-83
+49        </intent>
+50        <intent>
+50-->[com.github.CanHub:Android-Image-Cropper:4.3.1] C:\Users\Victus\.gradle\caches\8.8\transforms\f5ccf560c73870d63ab46a8d6e4c3898\transformed\jetified-Android-Image-Cropper-4.3.1\AndroidManifest.xml:10:9-16:18
+51            <action android:name="android.intent.action.GET_CONTENT" />
+51-->[com.github.CanHub:Android-Image-Cropper:4.3.1] C:\Users\Victus\.gradle\caches\8.8\transforms\f5ccf560c73870d63ab46a8d6e4c3898\transformed\jetified-Android-Image-Cropper-4.3.1\AndroidManifest.xml:11:13-72
+51-->[com.github.CanHub:Android-Image-Cropper:4.3.1] C:\Users\Victus\.gradle\caches\8.8\transforms\f5ccf560c73870d63ab46a8d6e4c3898\transformed\jetified-Android-Image-Cropper-4.3.1\AndroidManifest.xml:11:21-69
+52
+53            <category android:name="android.intent.category.OPENABLE" />
+53-->[com.github.CanHub:Android-Image-Cropper:4.3.1] C:\Users\Victus\.gradle\caches\8.8\transforms\f5ccf560c73870d63ab46a8d6e4c3898\transformed\jetified-Android-Image-Cropper-4.3.1\AndroidManifest.xml:13:13-73
+53-->[com.github.CanHub:Android-Image-Cropper:4.3.1] C:\Users\Victus\.gradle\caches\8.8\transforms\f5ccf560c73870d63ab46a8d6e4c3898\transformed\jetified-Android-Image-Cropper-4.3.1\AndroidManifest.xml:13:23-70
+54
+55            <data android:mimeType="*/*" />
+55-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:19:7-37
+56        </intent>
+57    </queries>
+58
+59    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+59-->[:react-native-wifi-reborn] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-wifi-reborn\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:10:5-79
+59-->[:react-native-wifi-reborn] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-wifi-reborn\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:10:22-76
+60    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+60-->[:react-native-wifi-reborn] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-wifi-reborn\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:11:5-79
+60-->[:react-native-wifi-reborn] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-wifi-reborn\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:11:22-76
+61    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+61-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:7:5-81
+61-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:7:22-78
+62    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+62-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:8:5-77
+62-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:8:22-74
+63    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+63-->[:expo-sensors] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-sensors\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:7:5-79
+63-->[:expo-sensors] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-sensors\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:7:22-76
+64
+65    <uses-feature
+65-->[com.google.android:cameraview:1.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\79b45363286783fe77d2955c21f6479d\transformed\jetified-cameraview-1.0.0\AndroidManifest.xml:25:5-27:36
+66        android:name="android.hardware.camera"
+66-->[com.google.android:cameraview:1.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\79b45363286783fe77d2955c21f6479d\transformed\jetified-cameraview-1.0.0\AndroidManifest.xml:26:9-47
+67        android:required="false" />
+67-->[com.google.android:cameraview:1.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\79b45363286783fe77d2955c21f6479d\transformed\jetified-cameraview-1.0.0\AndroidManifest.xml:27:9-33
+68    <uses-feature
+68-->[com.google.android:cameraview:1.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\79b45363286783fe77d2955c21f6479d\transformed\jetified-cameraview-1.0.0\AndroidManifest.xml:28:5-30:36
+69        android:name="android.hardware.camera.autofocus"
+69-->[com.google.android:cameraview:1.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\79b45363286783fe77d2955c21f6479d\transformed\jetified-cameraview-1.0.0\AndroidManifest.xml:29:9-57
+70        android:required="false" />
+70-->[com.google.android:cameraview:1.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\79b45363286783fe77d2955c21f6479d\transformed\jetified-cameraview-1.0.0\AndroidManifest.xml:30:9-33
+71
+72    <uses-permission android:name="android.permission.WAKE_LOCK" /> <!-- Required by older versions of Google Play services to create IID tokens -->
+72-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:24:5-68
+72-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:24:22-65
+73    <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE" />
+73-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:26:5-82
+73-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:26:22-79
+74
+75    <permission
+75-->[androidx.core:core:1.12.0] C:\Users\Victus\.gradle\caches\8.8\transforms\a48b025998af6606546beb70da9439b2\transformed\core-1.12.0\AndroidManifest.xml:22:5-24:47
+76        android:name="com.countdowntimer.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+76-->[androidx.core:core:1.12.0] C:\Users\Victus\.gradle\caches\8.8\transforms\a48b025998af6606546beb70da9439b2\transformed\core-1.12.0\AndroidManifest.xml:23:9-81
+77        android:protectionLevel="signature" />
+77-->[androidx.core:core:1.12.0] C:\Users\Victus\.gradle\caches\8.8\transforms\a48b025998af6606546beb70da9439b2\transformed\core-1.12.0\AndroidManifest.xml:24:9-44
+78
+79    <uses-permission android:name="com.countdowntimer.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+79-->[androidx.core:core:1.12.0] C:\Users\Victus\.gradle\caches\8.8\transforms\a48b025998af6606546beb70da9439b2\transformed\core-1.12.0\AndroidManifest.xml:26:5-97
+79-->[androidx.core:core:1.12.0] C:\Users\Victus\.gradle\caches\8.8\transforms\a48b025998af6606546beb70da9439b2\transformed\core-1.12.0\AndroidManifest.xml:26:22-94
+80    <uses-permission android:name="com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE" /> <!-- for android -->
+80-->[com.android.installreferrer:installreferrer:2.2] C:\Users\Victus\.gradle\caches\8.8\transforms\b7cdac37edf8433744a6c317f783fb0e\transformed\jetified-installreferrer-2.2\AndroidManifest.xml:9:5-110
+80-->[com.android.installreferrer:installreferrer:2.2] C:\Users\Victus\.gradle\caches\8.8\transforms\b7cdac37edf8433744a6c317f783fb0e\transformed\jetified-installreferrer-2.2\AndroidManifest.xml:9:22-107
+81    <!-- <uses-permission android:name="com.android.launcher.permission.READ_SETTINGS"/> -->
+82    <!-- <uses-permission android:name="com.android.launcher.permission.WRITE_SETTINGS"/> -->
+83    <!-- <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT" /> -->
+84    <!-- <uses-permission android:name="com.android.launcher.permission.UNINSTALL_SHORTCUT" /> -->
+85    <!-- for Samsung -->
+86    <uses-permission android:name="com.sec.android.provider.badge.permission.READ" />
+86-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:19:5-86
+86-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:19:22-83
+87    <uses-permission android:name="com.sec.android.provider.badge.permission.WRITE" /> <!-- for htc -->
+87-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:20:5-87
+87-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:20:22-84
+88    <uses-permission android:name="com.htc.launcher.permission.READ_SETTINGS" />
+88-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:23:5-81
+88-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:23:22-78
+89    <uses-permission android:name="com.htc.launcher.permission.UPDATE_SHORTCUT" /> <!-- for sony -->
+89-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:24:5-83
+89-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:24:22-80
+90    <uses-permission android:name="com.sonyericsson.home.permission.BROADCAST_BADGE" />
+90-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:27:5-88
+90-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:27:22-85
+91    <uses-permission android:name="com.sonymobile.home.permission.PROVIDER_INSERT_BADGE" /> <!-- for apex -->
+91-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:28:5-92
+91-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:28:22-89
+92    <uses-permission android:name="com.anddoes.launcher.permission.UPDATE_COUNT" /> <!-- for solid -->
+92-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:31:5-84
+92-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:31:22-81
+93    <uses-permission android:name="com.majeur.launcher.permission.UPDATE_BADGE" /> <!-- for huawei -->
+93-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:34:5-83
+93-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:34:22-80
+94    <uses-permission android:name="com.huawei.android.launcher.permission.CHANGE_BADGE" />
+94-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:37:5-91
+94-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:37:22-88
+95    <uses-permission android:name="com.huawei.android.launcher.permission.READ_SETTINGS" />
+95-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:38:5-92
+95-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:38:22-89
+96    <uses-permission android:name="com.huawei.android.launcher.permission.WRITE_SETTINGS" /> <!-- for ZUK -->
+96-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:39:5-93
+96-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:39:22-90
+97    <uses-permission android:name="android.permission.READ_APP_BADGE" /> <!-- for OPPO -->
+97-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:42:5-73
+97-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:42:22-70
+98    <uses-permission android:name="com.oppo.launcher.permission.READ_SETTINGS" />
+98-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:45:5-82
+98-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:45:22-79
+99    <uses-permission android:name="com.oppo.launcher.permission.WRITE_SETTINGS" /> <!-- for EvMe -->
+99-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:46:5-83
+99-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:46:22-80
+100    <uses-permission android:name="me.everything.badger.permission.BADGE_COUNT_READ" />
+100-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:49:5-88
+100-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:49:22-85
+101    <uses-permission android:name="me.everything.badger.permission.BADGE_COUNT_WRITE" />
+101-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:50:5-89
+101-->[me.leolin:ShortcutBadger:1.1.22] C:\Users\Victus\.gradle\caches\8.8\transforms\4e088a10340eec921c0b078d513a0495\transformed\jetified-ShortcutBadger-1.1.22\AndroidManifest.xml:50:22-86
+102
+103    <application
+103-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:22:3-39:17
+104        android:name="com.countdowntimer.app.MainApplication"
+104-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:22:16-47
+105        android:allowBackup="true"
+105-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:22:162-188
+106        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+106-->[androidx.core:core:1.12.0] C:\Users\Victus\.gradle\caches\8.8\transforms\a48b025998af6606546beb70da9439b2\transformed\core-1.12.0\AndroidManifest.xml:28:18-86
+107        android:extractNativeLibs="false"
+108        android:icon="@mipmap/ic_launcher"
+108-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:22:81-115
+109        android:label="@string/app_name"
+109-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:22:48-80
+110        android:roundIcon="@mipmap/ic_launcher_round"
+110-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:22:116-161
+111        android:theme="@style/AppTheme" >
+111-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:22:189-220
+112        <meta-data
+112-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:23:5-83
+113            android:name="expo.modules.updates.ENABLED"
+113-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:23:16-59
+114            android:value="false" />
+114-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:23:60-81
+115        <meta-data
+115-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:24:5-105
+116            android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH"
+116-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:24:16-80
+117            android:value="ALWAYS" />
+117-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:24:81-103
+118        <meta-data
+118-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:25:5-99
+119            android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS"
+119-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:25:16-79
+120            android:value="0" />
+120-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:25:80-97
+121
+122        <activity
+122-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:26:5-37:16
+123            android:name="com.countdowntimer.app.MainActivity"
+123-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:26:15-43
+124            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode"
+124-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:26:44-134
+125            android:exported="true"
+125-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:26:256-279
+126            android:launchMode="singleTask"
+126-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:26:135-166
+127            android:screenOrientation="portrait"
+127-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:26:280-316
+128            android:theme="@style/Theme.App.SplashScreen"
+128-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:26:210-255
+129            android:windowSoftInputMode="adjustResize" >
+129-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:26:167-209
+130            <intent-filter>
+130-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:27:7-30:23
+131                <action android:name="android.intent.action.MAIN" />
+131-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:28:9-60
+131-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:28:17-58
+132
+133                <category android:name="android.intent.category.LAUNCHER" />
+133-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:29:9-68
+133-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:29:19-66
+134            </intent-filter>
+135            <intent-filter>
+135-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:31:7-36:23
+136                <action android:name="android.intent.action.VIEW" />
+136-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:17:7-58
+136-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:17:15-56
+137
+138                <category android:name="android.intent.category.DEFAULT" />
+138-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:33:9-67
+138-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:33:19-65
+139                <category android:name="android.intent.category.BROWSABLE" />
+139-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:18:7-67
+139-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:18:17-65
+140
+141                <data android:scheme="com.countdowntimer.app" />
+141-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:19:7-37
+141-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:19:13-35
+142            </intent-filter>
+143        </activity>
+144        <activity
+144-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:38:5-106
+145            android:name="com.facebook.react.devsupport.DevSettingsActivity"
+145-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:38:15-79
+146            android:exported="false" />
+146-->D:\letsbunking\AttendanceApp-Hybrid\android\app\src\main\AndroidManifest.xml:38:80-104
+147
+148        <provider
+148-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:8:9-16:20
+149            android:name="com.reactnativecommunity.webview.RNCWebViewFileProvider"
+149-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:9:13-83
+150            android:authorities="com.countdowntimer.app.fileprovider"
+150-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:10:13-64
+151            android:exported="false"
+151-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:11:13-37
+152            android:grantUriPermissions="true" >
+152-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:12:13-47
+153            <meta-data
+153-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:13:13-15:63
+154                android:name="android.support.FILE_PROVIDER_PATHS"
+154-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:14:17-67
+155                android:resource="@xml/file_provider_paths" />
+155-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:15:17-60
+156        </provider>
+157        <provider
+157-->[:expo-file-system] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-file-system\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:21:9-30:20
+158            android:name="expo.modules.filesystem.FileSystemFileProvider"
+158-->[:expo-file-system] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-file-system\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:22:13-74
+159            android:authorities="com.countdowntimer.app.FileSystemFileProvider"
+159-->[:expo-file-system] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-file-system\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:23:13-74
+160            android:exported="false"
+160-->[:expo-file-system] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-file-system\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:24:13-37
+161            android:grantUriPermissions="true" >
+161-->[:expo-file-system] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-file-system\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:25:13-47
+162            <meta-data
+162-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:13:13-15:63
+163                android:name="android.support.FILE_PROVIDER_PATHS"
+163-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:14:17-67
+164                android:resource="@xml/file_system_provider_paths" />
+164-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:15:17-60
+165        </provider>
+166
+167        <service
+167-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:28:9-40:19
+168            android:name="com.google.android.gms.metadata.ModuleDependencies"
+168-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:29:13-78
+169            android:enabled="false"
+169-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:30:13-36
+170            android:exported="false" >
+170-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:31:13-37
+171            <intent-filter>
+171-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:33:13-35:29
+172                <action android:name="com.google.android.gms.metadata.MODULE_DEPENDENCIES" />
+172-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:34:17-94
+172-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:34:25-91
+173            </intent-filter>
+174
+175            <meta-data
+175-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:37:13-39:36
+176                android:name="photopicker_activity:0:required"
+176-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:38:17-63
+177                android:value="" />
+177-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:39:17-33
+178        </service>
+179
+180        <activity
+180-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:42:9-44:59
+181            android:name="com.canhub.cropper.CropImageActivity"
+181-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:43:13-64
+182            android:exported="true"
+182-->[com.github.CanHub:Android-Image-Cropper:4.3.1] C:\Users\Victus\.gradle\caches\8.8\transforms\f5ccf560c73870d63ab46a8d6e4c3898\transformed\jetified-Android-Image-Cropper-4.3.1\AndroidManifest.xml:35:13-36
+183            android:theme="@style/Base.Theme.AppCompat" /> <!-- https://developer.android.com/guide/topics/manifest/provider-element.html -->
+183-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:44:13-56
+184        <provider
+184-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:46:9-54:20
+185            android:name="expo.modules.imagepicker.fileprovider.ImagePickerFileProvider"
+185-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:47:13-89
+186            android:authorities="com.countdowntimer.app.ImagePickerFileProvider"
+186-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:48:13-75
+187            android:exported="false"
+187-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:49:13-37
+188            android:grantUriPermissions="true" >
+188-->[:expo-image-picker] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-image-picker\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:50:13-47
+189            <meta-data
+189-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:13:13-15:63
+190                android:name="android.support.FILE_PROVIDER_PATHS"
+190-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:14:17-67
+191                android:resource="@xml/image_picker_provider_paths" />
+191-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:15:17-60
+192        </provider>
+193
+194        <service
+194-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:11:9-17:19
+195            android:name="expo.modules.notifications.service.ExpoFirebaseMessagingService"
+195-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:12:13-91
+196            android:exported="false" >
+196-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:13:13-37
+197            <intent-filter android:priority="-1" >
+197-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:14:13-16:29
+197-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:14:28-49
+198                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+198-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:15:17-78
+198-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:15:25-75
+199            </intent-filter>
+200        </service>
+201
+202        <receiver
+202-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:19:9-31:20
+203            android:name="expo.modules.notifications.service.NotificationsService"
+203-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:20:13-83
+204            android:enabled="true"
+204-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:21:13-35
+205            android:exported="false" >
+205-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:22:13-37
+206            <intent-filter android:priority="-1" >
+206-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:23:13-30:29
+206-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:23:28-49
+207                <action android:name="expo.modules.notifications.NOTIFICATION_EVENT" />
+207-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:24:17-88
+207-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:24:25-85
+208                <action android:name="android.intent.action.BOOT_COMPLETED" />
+208-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:25:17-79
+208-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:25:25-76
+209                <action android:name="android.intent.action.REBOOT" />
+209-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:26:17-71
+209-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:26:25-68
+210                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+210-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:27:17-82
+210-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:27:25-79
+211                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+211-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:28:17-82
+211-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:28:25-79
+212                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+212-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:29:17-84
+212-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:29:25-81
+213            </intent-filter>
+214        </receiver>
+215
+216        <activity
+216-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:33:9-40:75
+217            android:name="expo.modules.notifications.service.NotificationForwarderActivity"
+217-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:34:13-92
+218            android:excludeFromRecents="true"
+218-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:35:13-46
+219            android:exported="false"
+219-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:36:13-37
+220            android:launchMode="standard"
+220-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:37:13-42
+221            android:noHistory="true"
+221-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:38:13-37
+222            android:taskAffinity=""
+222-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:39:13-36
+223            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+223-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:40:13-72
+224
+225        <meta-data
+225-->[:expo-modules-core] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-modules-core\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:9:9-11:89
+226            android:name="org.unimodules.core.AppLoader#react-native-headless"
+226-->[:expo-modules-core] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-modules-core\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:10:13-79
+227            android:value="expo.modules.adapters.react.apploader.RNHeadlessAppLoader" />
+227-->[:expo-modules-core] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-modules-core\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:11:13-86
+228        <meta-data
+228-->[:expo-modules-core] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-modules-core\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:12:9-15:45
+229            android:name="com.facebook.soloader.enabled"
+229-->[:expo-modules-core] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-modules-core\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:13:13-57
+230            android:value="true" />
+230-->[:expo-modules-core] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-modules-core\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:14:13-33
+231
+232        <uses-library
+232-->[androidx.camera:camera-extensions:1.4.0-beta02] C:\Users\Victus\.gradle\caches\8.8\transforms\cc8145fbb8f8d173c5026937675b3e0b\transformed\jetified-camera-extensions-1.4.0-beta02\AndroidManifest.xml:29:9-31:40
+233            android:name="androidx.camera.extensions.impl"
+233-->[androidx.camera:camera-extensions:1.4.0-beta02] C:\Users\Victus\.gradle\caches\8.8\transforms\cc8145fbb8f8d173c5026937675b3e0b\transformed\jetified-camera-extensions-1.4.0-beta02\AndroidManifest.xml:30:13-59
+234            android:required="false" />
+234-->[androidx.camera:camera-extensions:1.4.0-beta02] C:\Users\Victus\.gradle\caches\8.8\transforms\cc8145fbb8f8d173c5026937675b3e0b\transformed\jetified-camera-extensions-1.4.0-beta02\AndroidManifest.xml:31:13-37
+235
+236        <service
+236-->[androidx.camera:camera-camera2:1.4.0-beta02] C:\Users\Victus\.gradle\caches\8.8\transforms\1f2b671bf292e031fb149286d560791f\transformed\jetified-camera-camera2-1.4.0-beta02\AndroidManifest.xml:24:9-33:19
+237            android:name="androidx.camera.core.impl.MetadataHolderService"
+237-->[androidx.camera:camera-camera2:1.4.0-beta02] C:\Users\Victus\.gradle\caches\8.8\transforms\1f2b671bf292e031fb149286d560791f\transformed\jetified-camera-camera2-1.4.0-beta02\AndroidManifest.xml:25:13-75
+238            android:enabled="false"
+238-->[androidx.camera:camera-camera2:1.4.0-beta02] C:\Users\Victus\.gradle\caches\8.8\transforms\1f2b671bf292e031fb149286d560791f\transformed\jetified-camera-camera2-1.4.0-beta02\AndroidManifest.xml:26:13-36
+239            android:exported="false" >
+239-->[androidx.camera:camera-camera2:1.4.0-beta02] C:\Users\Victus\.gradle\caches\8.8\transforms\1f2b671bf292e031fb149286d560791f\transformed\jetified-camera-camera2-1.4.0-beta02\AndroidManifest.xml:27:13-37
+240            <meta-data
+240-->[androidx.camera:camera-camera2:1.4.0-beta02] C:\Users\Victus\.gradle\caches\8.8\transforms\1f2b671bf292e031fb149286d560791f\transformed\jetified-camera-camera2-1.4.0-beta02\AndroidManifest.xml:30:13-32:89
+241                android:name="androidx.camera.core.impl.MetadataHolderService.DEFAULT_CONFIG_PROVIDER"
+241-->[androidx.camera:camera-camera2:1.4.0-beta02] C:\Users\Victus\.gradle\caches\8.8\transforms\1f2b671bf292e031fb149286d560791f\transformed\jetified-camera-camera2-1.4.0-beta02\AndroidManifest.xml:31:17-103
+242                android:value="androidx.camera.camera2.Camera2Config$DefaultProvider" />
+242-->[androidx.camera:camera-camera2:1.4.0-beta02] C:\Users\Victus\.gradle\caches\8.8\transforms\1f2b671bf292e031fb149286d560791f\transformed\jetified-camera-camera2-1.4.0-beta02\AndroidManifest.xml:32:17-86
+243        </service>
+244
+245        <provider
+245-->[com.github.CanHub:Android-Image-Cropper:4.3.1] C:\Users\Victus\.gradle\caches\8.8\transforms\f5ccf560c73870d63ab46a8d6e4c3898\transformed\jetified-Android-Image-Cropper-4.3.1\AndroidManifest.xml:23:9-31:20
+246            android:name="com.canhub.cropper.CropFileProvider"
+246-->[com.github.CanHub:Android-Image-Cropper:4.3.1] C:\Users\Victus\.gradle\caches\8.8\transforms\f5ccf560c73870d63ab46a8d6e4c3898\transformed\jetified-Android-Image-Cropper-4.3.1\AndroidManifest.xml:24:13-63
+247            android:authorities="com.countdowntimer.app.cropper.fileprovider"
+247-->[com.github.CanHub:Android-Image-Cropper:4.3.1] C:\Users\Victus\.gradle\caches\8.8\transforms\f5ccf560c73870d63ab46a8d6e4c3898\transformed\jetified-Android-Image-Cropper-4.3.1\AndroidManifest.xml:25:13-72
+248            android:exported="false"
+248-->[com.github.CanHub:Android-Image-Cropper:4.3.1] C:\Users\Victus\.gradle\caches\8.8\transforms\f5ccf560c73870d63ab46a8d6e4c3898\transformed\jetified-Android-Image-Cropper-4.3.1\AndroidManifest.xml:26:13-37
+249            android:grantUriPermissions="true" >
+249-->[com.github.CanHub:Android-Image-Cropper:4.3.1] C:\Users\Victus\.gradle\caches\8.8\transforms\f5ccf560c73870d63ab46a8d6e4c3898\transformed\jetified-Android-Image-Cropper-4.3.1\AndroidManifest.xml:27:13-47
+250            <meta-data
+250-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:13:13-15:63
+251                android:name="android.support.FILE_PROVIDER_PATHS"
+251-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:14:17-67
+252                android:resource="@xml/library_file_paths" />
+252-->[:react-native-webview] D:\letsbunking\AttendanceApp-Hybrid\node_modules\react-native-webview\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:15:17-60
+253        </provider>
+254
+255        <receiver
+255-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:29:9-40:20
+256            android:name="com.google.firebase.iid.FirebaseInstanceIdReceiver"
+256-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:30:13-78
+257            android:exported="true"
+257-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:31:13-36
+258            android:permission="com.google.android.c2dm.permission.SEND" >
+258-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:32:13-73
+259            <intent-filter>
+259-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:33:13-35:29
+260                <action android:name="com.google.android.c2dm.intent.RECEIVE" />
+260-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:34:17-81
+260-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:34:25-78
+261            </intent-filter>
+262
+263            <meta-data
+263-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:37:13-39:40
+264                android:name="com.google.android.gms.cloudmessaging.FINISHED_AFTER_HANDLED"
+264-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:38:17-92
+265                android:value="true" />
+265-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:39:17-37
+266        </receiver>
+267        <!--
+268             FirebaseMessagingService performs security checks at runtime,
+269             but set to not exported to explicitly avoid allowing another app to call it.
+270        -->
+271        <service
+271-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:46:9-53:19
+272            android:name="com.google.firebase.messaging.FirebaseMessagingService"
+272-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:47:13-82
+273            android:directBootAware="true"
+273-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:48:13-43
+274            android:exported="false" >
+274-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:49:13-37
+275            <intent-filter android:priority="-500" >
+275-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:14:13-16:29
+275-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:14:28-49
+276                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+276-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:15:17-78
+276-->[:expo-notifications] D:\letsbunking\AttendanceApp-Hybrid\node_modules\expo-notifications\android\build\intermediates\merged_manifest\release\AndroidManifest.xml:15:25-75
+277            </intent-filter>
+278        </service>
+279        <service
+279-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:54:9-63:19
+280            android:name="com.google.firebase.components.ComponentDiscoveryService"
+280-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:55:13-84
+281            android:directBootAware="true"
+281-->[com.google.firebase:firebase-common:21.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\6ee1d1583fb698ffc39b2be446432f47\transformed\jetified-firebase-common-21.0.0\AndroidManifest.xml:32:13-43
+282            android:exported="false" >
+282-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:56:13-37
+283            <meta-data
+283-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:57:13-59:85
+284                android:name="com.google.firebase.components:com.google.firebase.messaging.FirebaseMessagingKtxRegistrar"
+284-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:58:17-122
+285                android:value="com.google.firebase.components.ComponentRegistrar" />
+285-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:59:17-82
+286            <meta-data
+286-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:60:13-62:85
+287                android:name="com.google.firebase.components:com.google.firebase.messaging.FirebaseMessagingRegistrar"
+287-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:61:17-119
+288                android:value="com.google.firebase.components.ComponentRegistrar" />
+288-->[com.google.firebase:firebase-messaging:24.0.1] C:\Users\Victus\.gradle\caches\8.8\transforms\93c7d15c65f53289cef23c70a3f7f016\transformed\jetified-firebase-messaging-24.0.1\AndroidManifest.xml:62:17-82
+289            <meta-data
+289-->[com.google.firebase:firebase-installations:17.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\1bef2ccfdff61bf0076c567c479ee7a7\transformed\jetified-firebase-installations-17.2.0\AndroidManifest.xml:15:13-17:85
+290                android:name="com.google.firebase.components:com.google.firebase.installations.FirebaseInstallationsKtxRegistrar"
+290-->[com.google.firebase:firebase-installations:17.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\1bef2ccfdff61bf0076c567c479ee7a7\transformed\jetified-firebase-installations-17.2.0\AndroidManifest.xml:16:17-130
+291                android:value="com.google.firebase.components.ComponentRegistrar" />
+291-->[com.google.firebase:firebase-installations:17.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\1bef2ccfdff61bf0076c567c479ee7a7\transformed\jetified-firebase-installations-17.2.0\AndroidManifest.xml:17:17-82
+292            <meta-data
+292-->[com.google.firebase:firebase-installations:17.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\1bef2ccfdff61bf0076c567c479ee7a7\transformed\jetified-firebase-installations-17.2.0\AndroidManifest.xml:18:13-20:85
+293                android:name="com.google.firebase.components:com.google.firebase.installations.FirebaseInstallationsRegistrar"
+293-->[com.google.firebase:firebase-installations:17.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\1bef2ccfdff61bf0076c567c479ee7a7\transformed\jetified-firebase-installations-17.2.0\AndroidManifest.xml:19:17-127
+294                android:value="com.google.firebase.components.ComponentRegistrar" />
+294-->[com.google.firebase:firebase-installations:17.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\1bef2ccfdff61bf0076c567c479ee7a7\transformed\jetified-firebase-installations-17.2.0\AndroidManifest.xml:20:17-82
+295            <meta-data
+295-->[com.google.firebase:firebase-common-ktx:21.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0989b17d72861659a21adfec96b8a50\transformed\jetified-firebase-common-ktx-21.0.0\AndroidManifest.xml:12:13-14:85
+296                android:name="com.google.firebase.components:com.google.firebase.ktx.FirebaseCommonLegacyRegistrar"
+296-->[com.google.firebase:firebase-common-ktx:21.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0989b17d72861659a21adfec96b8a50\transformed\jetified-firebase-common-ktx-21.0.0\AndroidManifest.xml:13:17-116
+297                android:value="com.google.firebase.components.ComponentRegistrar" />
+297-->[com.google.firebase:firebase-common-ktx:21.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0989b17d72861659a21adfec96b8a50\transformed\jetified-firebase-common-ktx-21.0.0\AndroidManifest.xml:14:17-82
+298            <meta-data
+298-->[com.google.firebase:firebase-common:21.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\6ee1d1583fb698ffc39b2be446432f47\transformed\jetified-firebase-common-21.0.0\AndroidManifest.xml:35:13-37:85
+299                android:name="com.google.firebase.components:com.google.firebase.FirebaseCommonKtxRegistrar"
+299-->[com.google.firebase:firebase-common:21.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\6ee1d1583fb698ffc39b2be446432f47\transformed\jetified-firebase-common-21.0.0\AndroidManifest.xml:36:17-109
+300                android:value="com.google.firebase.components.ComponentRegistrar" />
+300-->[com.google.firebase:firebase-common:21.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\6ee1d1583fb698ffc39b2be446432f47\transformed\jetified-firebase-common-21.0.0\AndroidManifest.xml:37:17-82
+301            <meta-data
+301-->[com.google.firebase:firebase-datatransport:18.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\b00c8182a75a66a4b8fad4ead3b421a5\transformed\jetified-firebase-datatransport-18.2.0\AndroidManifest.xml:25:13-27:85
+302                android:name="com.google.firebase.components:com.google.firebase.datatransport.TransportRegistrar"
+302-->[com.google.firebase:firebase-datatransport:18.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\b00c8182a75a66a4b8fad4ead3b421a5\transformed\jetified-firebase-datatransport-18.2.0\AndroidManifest.xml:26:17-115
+303                android:value="com.google.firebase.components.ComponentRegistrar" />
+303-->[com.google.firebase:firebase-datatransport:18.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\b00c8182a75a66a4b8fad4ead3b421a5\transformed\jetified-firebase-datatransport-18.2.0\AndroidManifest.xml:27:17-82
+304        </service>
+305        <service
+305-->[com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\2e145b53590f16b7ff1df76454c1fb2c\transformed\jetified-play-services-mlkit-barcode-scanning-18.3.0\AndroidManifest.xml:9:9-15:19
+306            android:name="com.google.mlkit.common.internal.MlKitComponentDiscoveryService"
+306-->[com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\2e145b53590f16b7ff1df76454c1fb2c\transformed\jetified-play-services-mlkit-barcode-scanning-18.3.0\AndroidManifest.xml:10:13-91
+307            android:directBootAware="true"
+307-->[com.google.mlkit:common:18.9.0] C:\Users\Victus\.gradle\caches\8.8\transforms\653def4015fda21bf507ad1b63fa32ff\transformed\jetified-common-18.9.0\AndroidManifest.xml:17:13-43
+308            android:exported="false" >
+308-->[com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\2e145b53590f16b7ff1df76454c1fb2c\transformed\jetified-play-services-mlkit-barcode-scanning-18.3.0\AndroidManifest.xml:11:13-37
+309            <meta-data
+309-->[com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\2e145b53590f16b7ff1df76454c1fb2c\transformed\jetified-play-services-mlkit-barcode-scanning-18.3.0\AndroidManifest.xml:12:13-14:85
+310                android:name="com.google.firebase.components:com.google.mlkit.vision.barcode.internal.BarcodeRegistrar"
+310-->[com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\2e145b53590f16b7ff1df76454c1fb2c\transformed\jetified-play-services-mlkit-barcode-scanning-18.3.0\AndroidManifest.xml:13:17-120
+311                android:value="com.google.firebase.components.ComponentRegistrar" />
+311-->[com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\2e145b53590f16b7ff1df76454c1fb2c\transformed\jetified-play-services-mlkit-barcode-scanning-18.3.0\AndroidManifest.xml:14:17-82
+312            <meta-data
+312-->[com.google.mlkit:vision-common:17.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\5f4baff6fe0c8ee212cb89add2024b84\transformed\jetified-vision-common-17.3.0\AndroidManifest.xml:12:13-14:85
+313                android:name="com.google.firebase.components:com.google.mlkit.vision.common.internal.VisionCommonRegistrar"
+313-->[com.google.mlkit:vision-common:17.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\5f4baff6fe0c8ee212cb89add2024b84\transformed\jetified-vision-common-17.3.0\AndroidManifest.xml:13:17-124
+314                android:value="com.google.firebase.components.ComponentRegistrar" />
+314-->[com.google.mlkit:vision-common:17.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\5f4baff6fe0c8ee212cb89add2024b84\transformed\jetified-vision-common-17.3.0\AndroidManifest.xml:14:17-82
+315            <meta-data
+315-->[com.google.mlkit:common:18.9.0] C:\Users\Victus\.gradle\caches\8.8\transforms\653def4015fda21bf507ad1b63fa32ff\transformed\jetified-common-18.9.0\AndroidManifest.xml:20:13-22:85
+316                android:name="com.google.firebase.components:com.google.mlkit.common.internal.CommonComponentRegistrar"
+316-->[com.google.mlkit:common:18.9.0] C:\Users\Victus\.gradle\caches\8.8\transforms\653def4015fda21bf507ad1b63fa32ff\transformed\jetified-common-18.9.0\AndroidManifest.xml:21:17-120
+317                android:value="com.google.firebase.components.ComponentRegistrar" />
+317-->[com.google.mlkit:common:18.9.0] C:\Users\Victus\.gradle\caches\8.8\transforms\653def4015fda21bf507ad1b63fa32ff\transformed\jetified-common-18.9.0\AndroidManifest.xml:22:17-82
+318        </service>
+319
+320        <provider
+320-->[com.google.mlkit:common:18.9.0] C:\Users\Victus\.gradle\caches\8.8\transforms\653def4015fda21bf507ad1b63fa32ff\transformed\jetified-common-18.9.0\AndroidManifest.xml:9:9-13:38
+321            android:name="com.google.mlkit.common.internal.MlKitInitProvider"
+321-->[com.google.mlkit:common:18.9.0] C:\Users\Victus\.gradle\caches\8.8\transforms\653def4015fda21bf507ad1b63fa32ff\transformed\jetified-common-18.9.0\AndroidManifest.xml:10:13-78
+322            android:authorities="com.countdowntimer.app.mlkitinitprovider"
+322-->[com.google.mlkit:common:18.9.0] C:\Users\Victus\.gradle\caches\8.8\transforms\653def4015fda21bf507ad1b63fa32ff\transformed\jetified-common-18.9.0\AndroidManifest.xml:11:13-69
+323            android:exported="false"
+323-->[com.google.mlkit:common:18.9.0] C:\Users\Victus\.gradle\caches\8.8\transforms\653def4015fda21bf507ad1b63fa32ff\transformed\jetified-common-18.9.0\AndroidManifest.xml:12:13-37
+324            android:initOrder="99" />
+324-->[com.google.mlkit:common:18.9.0] C:\Users\Victus\.gradle\caches\8.8\transforms\653def4015fda21bf507ad1b63fa32ff\transformed\jetified-common-18.9.0\AndroidManifest.xml:13:13-35
+325
+326        <activity
+326-->[com.google.android.gms:play-services-base:18.1.0] C:\Users\Victus\.gradle\caches\8.8\transforms\aa0044783c7cdea1a004988ce17ad36f\transformed\jetified-play-services-base-18.1.0\AndroidManifest.xml:20:9-22:45
+327            android:name="com.google.android.gms.common.api.GoogleApiActivity"
+327-->[com.google.android.gms:play-services-base:18.1.0] C:\Users\Victus\.gradle\caches\8.8\transforms\aa0044783c7cdea1a004988ce17ad36f\transformed\jetified-play-services-base-18.1.0\AndroidManifest.xml:20:19-85
+328            android:exported="false"
+328-->[com.google.android.gms:play-services-base:18.1.0] C:\Users\Victus\.gradle\caches\8.8\transforms\aa0044783c7cdea1a004988ce17ad36f\transformed\jetified-play-services-base-18.1.0\AndroidManifest.xml:22:19-43
+329            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+329-->[com.google.android.gms:play-services-base:18.1.0] C:\Users\Victus\.gradle\caches\8.8\transforms\aa0044783c7cdea1a004988ce17ad36f\transformed\jetified-play-services-base-18.1.0\AndroidManifest.xml:21:19-78
+330
+331        <provider
+331-->[com.google.firebase:firebase-common:21.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\6ee1d1583fb698ffc39b2be446432f47\transformed\jetified-firebase-common-21.0.0\AndroidManifest.xml:23:9-28:39
+332            android:name="com.google.firebase.provider.FirebaseInitProvider"
+332-->[com.google.firebase:firebase-common:21.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\6ee1d1583fb698ffc39b2be446432f47\transformed\jetified-firebase-common-21.0.0\AndroidManifest.xml:24:13-77
+333            android:authorities="com.countdowntimer.app.firebaseinitprovider"
+333-->[com.google.firebase:firebase-common:21.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\6ee1d1583fb698ffc39b2be446432f47\transformed\jetified-firebase-common-21.0.0\AndroidManifest.xml:25:13-72
+334            android:directBootAware="true"
+334-->[com.google.firebase:firebase-common:21.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\6ee1d1583fb698ffc39b2be446432f47\transformed\jetified-firebase-common-21.0.0\AndroidManifest.xml:26:13-43
+335            android:exported="false"
+335-->[com.google.firebase:firebase-common:21.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\6ee1d1583fb698ffc39b2be446432f47\transformed\jetified-firebase-common-21.0.0\AndroidManifest.xml:27:13-37
+336            android:initOrder="100" />
+336-->[com.google.firebase:firebase-common:21.0.0] C:\Users\Victus\.gradle\caches\8.8\transforms\6ee1d1583fb698ffc39b2be446432f47\transformed\jetified-firebase-common-21.0.0\AndroidManifest.xml:28:13-36
+337        <provider
+337-->[androidx.emoji2:emoji2:1.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d18f42b4ba3c3565a539149b18a46937\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:24:9-32:20
+338            android:name="androidx.startup.InitializationProvider"
+338-->[androidx.emoji2:emoji2:1.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d18f42b4ba3c3565a539149b18a46937\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:25:13-67
+339            android:authorities="com.countdowntimer.app.androidx-startup"
+339-->[androidx.emoji2:emoji2:1.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d18f42b4ba3c3565a539149b18a46937\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:26:13-68
+340            android:exported="false" >
+340-->[androidx.emoji2:emoji2:1.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d18f42b4ba3c3565a539149b18a46937\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:27:13-37
+341            <meta-data
+341-->[androidx.emoji2:emoji2:1.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d18f42b4ba3c3565a539149b18a46937\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:29:13-31:52
+342                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+342-->[androidx.emoji2:emoji2:1.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d18f42b4ba3c3565a539149b18a46937\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:30:17-75
+343                android:value="androidx.startup" />
+343-->[androidx.emoji2:emoji2:1.2.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d18f42b4ba3c3565a539149b18a46937\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:31:17-49
+344            <meta-data
+344-->[androidx.lifecycle:lifecycle-process:2.6.1] C:\Users\Victus\.gradle\caches\8.8\transforms\212636bf4c200849be2496ecd75aaa79\transformed\jetified-lifecycle-process-2.6.1\AndroidManifest.xml:29:13-31:52
+345                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+345-->[androidx.lifecycle:lifecycle-process:2.6.1] C:\Users\Victus\.gradle\caches\8.8\transforms\212636bf4c200849be2496ecd75aaa79\transformed\jetified-lifecycle-process-2.6.1\AndroidManifest.xml:30:17-78
+346                android:value="androidx.startup" />
+346-->[androidx.lifecycle:lifecycle-process:2.6.1] C:\Users\Victus\.gradle\caches\8.8\transforms\212636bf4c200849be2496ecd75aaa79\transformed\jetified-lifecycle-process-2.6.1\AndroidManifest.xml:31:17-49
+347            <meta-data
+347-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:29:13-31:52
+348                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+348-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:30:17-85
+349                android:value="androidx.startup" />
+349-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:31:17-49
+350        </provider>
+351
+352        <meta-data
+352-->[com.google.android.gms:play-services-basement:18.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\0e8b1276c773a7da6e53d32c2923d909\transformed\jetified-play-services-basement-18.3.0\AndroidManifest.xml:21:9-23:69
+353            android:name="com.google.android.gms.version"
+353-->[com.google.android.gms:play-services-basement:18.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\0e8b1276c773a7da6e53d32c2923d909\transformed\jetified-play-services-basement-18.3.0\AndroidManifest.xml:22:13-58
+354            android:value="@integer/google_play_services_version" />
+354-->[com.google.android.gms:play-services-basement:18.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\0e8b1276c773a7da6e53d32c2923d909\transformed\jetified-play-services-basement-18.3.0\AndroidManifest.xml:23:13-66
+355
+356        <receiver
+356-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:34:9-52:20
+357            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+357-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:35:13-76
+358            android:directBootAware="false"
+358-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:36:13-44
+359            android:enabled="true"
+359-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:37:13-35
+360            android:exported="true"
+360-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:38:13-36
+361            android:permission="android.permission.DUMP" >
+361-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:39:13-57
+362            <intent-filter>
+362-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:40:13-42:29
+363                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+363-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:41:17-91
+363-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:41:25-88
+364            </intent-filter>
+365            <intent-filter>
+365-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:43:13-45:29
+366                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+366-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:44:17-85
+366-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:44:25-82
+367            </intent-filter>
+368            <intent-filter>
+368-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:46:13-48:29
+369                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+369-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:47:17-88
+369-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:47:25-85
+370            </intent-filter>
+371            <intent-filter>
+371-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:49:13-51:29
+372                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+372-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:50:17-95
+372-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\Victus\.gradle\caches\8.8\transforms\d0b56a60cd3618b9be08f9c26f2a339e\transformed\jetified-profileinstaller-1.3.0\AndroidManifest.xml:50:25-92
+373            </intent-filter>
+374        </receiver>
+375
+376        <service
+376-->[com.google.android.datatransport:transport-backend-cct:3.1.9] C:\Users\Victus\.gradle\caches\8.8\transforms\de7a99e94fa655e58725cd7c0d6853f4\transformed\jetified-transport-backend-cct-3.1.9\AndroidManifest.xml:28:9-34:19
+377            android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"
+377-->[com.google.android.datatransport:transport-backend-cct:3.1.9] C:\Users\Victus\.gradle\caches\8.8\transforms\de7a99e94fa655e58725cd7c0d6853f4\transformed\jetified-transport-backend-cct-3.1.9\AndroidManifest.xml:29:13-103
+378            android:exported="false" >
+378-->[com.google.android.datatransport:transport-backend-cct:3.1.9] C:\Users\Victus\.gradle\caches\8.8\transforms\de7a99e94fa655e58725cd7c0d6853f4\transformed\jetified-transport-backend-cct-3.1.9\AndroidManifest.xml:30:13-37
+379            <meta-data
+379-->[com.google.android.datatransport:transport-backend-cct:3.1.9] C:\Users\Victus\.gradle\caches\8.8\transforms\de7a99e94fa655e58725cd7c0d6853f4\transformed\jetified-transport-backend-cct-3.1.9\AndroidManifest.xml:31:13-33:39
+380                android:name="backend:com.google.android.datatransport.cct.CctBackendFactory"
+380-->[com.google.android.datatransport:transport-backend-cct:3.1.9] C:\Users\Victus\.gradle\caches\8.8\transforms\de7a99e94fa655e58725cd7c0d6853f4\transformed\jetified-transport-backend-cct-3.1.9\AndroidManifest.xml:32:17-94
+381                android:value="cct" />
+381-->[com.google.android.datatransport:transport-backend-cct:3.1.9] C:\Users\Victus\.gradle\caches\8.8\transforms\de7a99e94fa655e58725cd7c0d6853f4\transformed\jetified-transport-backend-cct-3.1.9\AndroidManifest.xml:33:17-36
+382        </service>
+383        <service
+383-->[com.google.android.datatransport:transport-runtime:3.1.9] C:\Users\Victus\.gradle\caches\8.8\transforms\9abbef6761b207a940e6c494e319180b\transformed\jetified-transport-runtime-3.1.9\AndroidManifest.xml:26:9-30:19
+384            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
+384-->[com.google.android.datatransport:transport-runtime:3.1.9] C:\Users\Victus\.gradle\caches\8.8\transforms\9abbef6761b207a940e6c494e319180b\transformed\jetified-transport-runtime-3.1.9\AndroidManifest.xml:27:13-117
+385            android:exported="false"
+385-->[com.google.android.datatransport:transport-runtime:3.1.9] C:\Users\Victus\.gradle\caches\8.8\transforms\9abbef6761b207a940e6c494e319180b\transformed\jetified-transport-runtime-3.1.9\AndroidManifest.xml:28:13-37
+386            android:permission="android.permission.BIND_JOB_SERVICE" >
+386-->[com.google.android.datatransport:transport-runtime:3.1.9] C:\Users\Victus\.gradle\caches\8.8\transforms\9abbef6761b207a940e6c494e319180b\transformed\jetified-transport-runtime-3.1.9\AndroidManifest.xml:29:13-69
+387        </service>
+388
+389        <receiver
+389-->[com.google.android.datatransport:transport-runtime:3.1.9] C:\Users\Victus\.gradle\caches\8.8\transforms\9abbef6761b207a940e6c494e319180b\transformed\jetified-transport-runtime-3.1.9\AndroidManifest.xml:32:9-34:40
+390            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver"
+390-->[com.google.android.datatransport:transport-runtime:3.1.9] C:\Users\Victus\.gradle\caches\8.8\transforms\9abbef6761b207a940e6c494e319180b\transformed\jetified-transport-runtime-3.1.9\AndroidManifest.xml:33:13-132
+391            android:exported="false" />
+391-->[com.google.android.datatransport:transport-runtime:3.1.9] C:\Users\Victus\.gradle\caches\8.8\transforms\9abbef6761b207a940e6c494e319180b\transformed\jetified-transport-runtime-3.1.9\AndroidManifest.xml:34:13-37
+392    </application>
+393
+394</manifest>

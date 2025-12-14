@@ -1,5 +1,0 @@
-employeeId,name,email,password,department,subject,dob,phone,photoUrl,semester,canEditTimetable
-EMP007,Dr. Sarah Johnson,sarah.johnson@college.edu,password123,DS,Machine Learning,1984-03-15,+91-9876543220,,5,true
-EMP008,Prof. Michael Brown,michael.brown@college.edu,password123,DS,Data Analytics,1987-11-28,+91-9876543221,,6,false
-EMP009,Dr. Lisa Wilson,lisa.wilson@college.edu,password123,CE,Structural Design,1979-07-03,+91-9876543222,,4,true
-EMP010,Prof. David Lee,david.lee@college.edu,password123,CE,Construction Management,1985-09-12,+91-9876543223,,7,false
