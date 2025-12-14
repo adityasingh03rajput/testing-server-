@@ -660,18 +660,33 @@ function showBulkStudentModal() {
     modalBody.innerHTML = `
         <h2>Bulk Import Students</h2>
         <p style="color: var(--text-secondary); margin-bottom: 20px;">
-            Upload a CSV file with columns: enrollmentNo, name, email, password, course, semester, dob, phone, photoUrl
+            Upload a CSV file with the required columns. Need help? Download the template below.
             <br><small><strong>Required:</strong> enrollmentNo, name, email, password, course, semester, dob</small>
+            <br><small><strong>Optional:</strong> phone, photoUrl</small>
         </p>
+        
+        <div class="form-group" style="margin-bottom: 20px;">
+            <button class="btn btn-secondary" onclick="downloadStudentTemplate()" style="margin-right: 10px;">
+                📥 Download CSV Template
+            </button>
+            <button class="btn btn-info" onclick="showStudentTemplateExample()">
+                👁️ View Example
+            </button>
+        </div>
+        
         <div class="form-group">
             <label>CSV File</label>
             <input type="file" id="csvFile" accept=".csv" class="form-input">
         </div>
         <div class="form-group">
             <label>Preview</label>
-            <textarea id="csvPreview" class="form-textarea" readonly></textarea>
+            <textarea id="csvPreview" class="form-textarea" readonly placeholder="Upload a CSV file to see preview here..."></textarea>
         </div>
-        <button class="btn btn-primary" onclick="processBulkStudents()">Import Students</button>
+        
+        <div class="modal-actions" style="margin-top: 20px;">
+            <button class="btn btn-primary" onclick="processBulkStudents()">Import Students</button>
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        </div>
     `;
 
     document.getElementById('csvFile').addEventListener('change', handleCSVUpload);
@@ -986,18 +1001,33 @@ function showBulkTeacherModal() {
     modalBody.innerHTML = `
         <h2>Bulk Import Teachers</h2>
         <p style="color: var(--text-secondary); margin-bottom: 20px;">
-            Upload a CSV file with columns: employeeId, name, email, password, department, subject, dob, phone, photoUrl, semester, canEditTimetable
+            Upload a CSV file with the required columns. Need help? Download the template below.
             <br><small><strong>Required:</strong> employeeId, name, email, password, department, subject, dob</small>
+            <br><small><strong>Optional:</strong> phone, photoUrl, semester, canEditTimetable</small>
         </p>
+        
+        <div class="form-group" style="margin-bottom: 20px;">
+            <button class="btn btn-secondary" onclick="downloadTeacherTemplate()" style="margin-right: 10px;">
+                📥 Download CSV Template
+            </button>
+            <button class="btn btn-info" onclick="showTemplateExample()">
+                👁️ View Example
+            </button>
+        </div>
+        
         <div class="form-group">
             <label>CSV File</label>
             <input type="file" id="csvFile" accept=".csv" class="form-input">
         </div>
         <div class="form-group">
             <label>Preview</label>
-            <textarea id="csvPreview" class="form-textarea" readonly></textarea>
+            <textarea id="csvPreview" class="form-textarea" readonly placeholder="Upload a CSV file to see preview here..."></textarea>
         </div>
-        <button class="btn btn-primary" onclick="processBulkTeachers()">Import Teachers</button>
+        
+        <div class="modal-actions" style="margin-top: 20px;">
+            <button class="btn btn-primary" onclick="processBulkTeachers()">Import Teachers</button>
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        </div>
     `;
 
     document.getElementById('csvFile').addEventListener('change', handleCSVUpload);
@@ -1103,6 +1133,185 @@ async function processBulkTeachers() {
         console.error('Error importing teachers:', error);
         showNotification(`❌ Network error: ${error.message}`, 'error');
     }
+}
+
+// Download CSV template for bulk teacher import
+function downloadTeacherTemplate() {
+    const templateData = [
+        // Header row
+        ['employeeId', 'name', 'email', 'password', 'department', 'subject', 'dob', 'phone', 'photoUrl', 'semester', 'canEditTimetable'],
+        // Example rows
+        ['EMP001', 'Dr. John Smith', 'john.smith@college.edu', 'password123', 'CSE', 'Data Structures', '1980-05-15', '+91-9876543210', '', '3', 'true'],
+        ['EMP002', 'Prof. Jane Doe', 'jane.doe@college.edu', 'password123', 'ECE', 'Digital Electronics', '1985-08-22', '+91-9876543211', '', '2', 'false'],
+        ['EMP003', 'Dr. Mike Johnson', 'mike.johnson@college.edu', 'password123', 'ME', 'Thermodynamics', '1978-12-10', '+91-9876543212', '', '4', 'true']
+    ];
+    
+    // Convert to CSV format
+    const csvContent = templateData.map(row => 
+        row.map(cell => `"${cell}"`).join(',')
+    ).join('\n');
+    
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'teachers_import_template.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showNotification('📥 Template downloaded successfully! Check your Downloads folder.', 'success');
+}
+
+// Show template example in modal
+function showTemplateExample() {
+    const exampleModal = document.createElement('div');
+    exampleModal.className = 'modal-overlay';
+    exampleModal.innerHTML = `
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h3>CSV Template Example</h3>
+                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+            </div>
+            <div class="modal-body">
+                <h4>Required Columns:</h4>
+                <ul style="margin-bottom: 20px;">
+                    <li><strong>employeeId</strong> - Unique identifier (e.g., EMP001)</li>
+                    <li><strong>name</strong> - Full name (e.g., Dr. John Smith)</li>
+                    <li><strong>email</strong> - Valid email address (e.g., john.smith@college.edu)</li>
+                    <li><strong>password</strong> - Login password (e.g., password123)</li>
+                    <li><strong>department</strong> - Department code (CSE, ECE, ME, CE, DS, IT, AI)</li>
+                    <li><strong>subject</strong> - Primary subject (e.g., Data Structures)</li>
+                    <li><strong>dob</strong> - Date of birth in YYYY-MM-DD format (e.g., 1980-05-15)</li>
+                </ul>
+                
+                <h4>Optional Columns:</h4>
+                <ul style="margin-bottom: 20px;">
+                    <li><strong>phone</strong> - Contact number (e.g., +91-9876543210)</li>
+                    <li><strong>photoUrl</strong> - Profile photo URL (leave empty for default)</li>
+                    <li><strong>semester</strong> - Associated semester (e.g., 3)</li>
+                    <li><strong>canEditTimetable</strong> - Permission to edit timetable (true/false)</li>
+                </ul>
+                
+                <h4>Example CSV Content:</h4>
+                <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 12px; overflow-x: auto;">
+                    employeeId,name,email,password,department,subject,dob,phone,photoUrl,semester,canEditTimetable<br>
+                    EMP001,"Dr. John Smith","john.smith@college.edu","password123","CSE","Data Structures","1980-05-15","+91-9876543210","","3","true"<br>
+                    EMP002,"Prof. Jane Doe","jane.doe@college.edu","password123","ECE","Digital Electronics","1985-08-22","+91-9876543211","","2","false"
+                </div>
+                
+                <div style="margin-top: 20px; padding: 15px; background: #e3f2fd; border-radius: 5px;">
+                    <strong>💡 Tips:</strong>
+                    <ul style="margin: 10px 0;">
+                        <li>Use quotes around text values that contain commas</li>
+                        <li>Date format must be YYYY-MM-DD</li>
+                        <li>canEditTimetable should be "true" or "false"</li>
+                        <li>Employee IDs and emails must be unique</li>
+                        <li>Save your file with .csv extension</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="downloadTeacherTemplate()">📥 Download Template</button>
+                <button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove()">Close</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(exampleModal);
+}
+
+// Download CSV template for bulk student import
+function downloadStudentTemplate() {
+    const templateData = [
+        // Header row
+        ['enrollmentNo', 'name', 'email', 'password', 'course', 'semester', 'dob', 'phone', 'photoUrl'],
+        // Example rows
+        ['2024001', 'Alice Johnson', 'alice.johnson@student.edu', 'password123', 'B.Tech Computer Science', '3', '2002-03-15', '+91-9876543220', ''],
+        ['2024002', 'Bob Smith', 'bob.smith@student.edu', 'password123', 'B.Tech Data Science', '3', '2002-07-22', '+91-9876543221', ''],
+        ['2024003', 'Carol Davis', 'carol.davis@student.edu', 'password123', 'B.Tech Electronics', '2', '2003-01-10', '+91-9876543222', '']
+    ];
+    
+    // Convert to CSV format
+    const csvContent = templateData.map(row => 
+        row.map(cell => `"${cell}"`).join(',')
+    ).join('\n');
+    
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'students_import_template.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showNotification('📥 Student template downloaded successfully! Check your Downloads folder.', 'success');
+}
+
+// Show student template example in modal
+function showStudentTemplateExample() {
+    const exampleModal = document.createElement('div');
+    exampleModal.className = 'modal-overlay';
+    exampleModal.innerHTML = `
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h3>Student CSV Template Example</h3>
+                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+            </div>
+            <div class="modal-body">
+                <h4>Required Columns:</h4>
+                <ul style="margin-bottom: 20px;">
+                    <li><strong>enrollmentNo</strong> - Unique student ID (e.g., 2024001)</li>
+                    <li><strong>name</strong> - Full name (e.g., Alice Johnson)</li>
+                    <li><strong>email</strong> - Valid email address (e.g., alice.johnson@student.edu)</li>
+                    <li><strong>password</strong> - Login password (e.g., password123)</li>
+                    <li><strong>course</strong> - Course name (e.g., B.Tech Computer Science)</li>
+                    <li><strong>semester</strong> - Current semester (e.g., 3)</li>
+                    <li><strong>dob</strong> - Date of birth in YYYY-MM-DD format (e.g., 2002-03-15)</li>
+                </ul>
+                
+                <h4>Optional Columns:</h4>
+                <ul style="margin-bottom: 20px;">
+                    <li><strong>phone</strong> - Contact number (e.g., +91-9876543220)</li>
+                    <li><strong>photoUrl</strong> - Profile photo URL (leave empty for default)</li>
+                </ul>
+                
+                <h4>Available Courses:</h4>
+                <div style="background: #f0f8ff; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
+                    B.Tech Computer Science, B.Tech Data Science, B.Tech Electronics, B.Tech Mechanical, B.Tech Civil, B.Tech Information Technology, B.Tech Artificial Intelligence
+                </div>
+                
+                <h4>Example CSV Content:</h4>
+                <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 12px; overflow-x: auto;">
+                    enrollmentNo,name,email,password,course,semester,dob,phone,photoUrl<br>
+                    2024001,"Alice Johnson","alice.johnson@student.edu","password123","B.Tech Computer Science","3","2002-03-15","+91-9876543220",""<br>
+                    2024002,"Bob Smith","bob.smith@student.edu","password123","B.Tech Data Science","3","2002-07-22","+91-9876543221",""
+                </div>
+                
+                <div style="margin-top: 20px; padding: 15px; background: #e8f5e8; border-radius: 5px;">
+                    <strong>💡 Tips:</strong>
+                    <ul style="margin: 10px 0;">
+                        <li>Use quotes around text values that contain commas</li>
+                        <li>Date format must be YYYY-MM-DD</li>
+                        <li>Enrollment numbers and emails must be unique</li>
+                        <li>Semester should be a number (1-8)</li>
+                        <li>Save your file with .csv extension</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="downloadStudentTemplate()">📥 Download Template</button>
+                <button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove()">Close</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(exampleModal);
 }
 
 async function toggleTimetableAccess(teacherId, canEdit) {
