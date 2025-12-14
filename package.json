@@ -31,10 +31,7 @@
     "express-rate-limit": "^8.2.1",
     "face-api.js": "^0.22.2",
     "mongoose": "^8.19.1",
-<<<<<<< HEAD
     "node-fetch": "^3.3.2",
-=======
->>>>>>> origin/main
     "react": "^18.2.0",
     "react-native": "^0.74.5",
     "react-native-svg": "^15.2.0",
