@@ -1,4 +1,4 @@
-// Azure deployment trigger - Updated December 14, 2024 - v2.8 - Fix hardcoded break periods with intelligent detection.
+// Azure deployment trigger - Updated December 14, 2024 - v2.9 - Fix rate limiting for concurrent student logins.
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -3002,13 +3002,22 @@ app.get('/api/config/app', async (req, res) => {
     }
 });
 
-// Rate limiting for login endpoints
+// Rate limiting for login endpoints - Per User ID instead of Per IP
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // 5 attempts per 15 minutes
-    message: { success: false, error: 'Too many login attempts. Please try again in 15 minutes.' },
+    max: 10, // 10 attempts per user per 15 minutes (increased for legitimate retries)
+    message: { success: false, error: 'Too many login attempts for this account. Please try again in 15 minutes.' },
     standardHeaders: true,
     legacyHeaders: false,
+    // Use user ID instead of IP address for rate limiting
+    keyGenerator: (req) => {
+        // Use the login ID (student enrollment or teacher employee ID) as the key
+        return req.body.id || req.ip; // Fallback to IP if no ID provided
+    },
+    // Skip rate limiting for successful logins
+    skipSuccessfulRequests: true,
+    // Only count failed login attempts
+    skipFailedRequests: false,
 });
 
 // Login endpoint
