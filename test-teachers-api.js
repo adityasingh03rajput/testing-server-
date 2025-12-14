@@ -3,7 +3,7 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 // Test the teachers API endpoint
 async function testTeachersAPI() {
     try {
-        const SERVER_URL = 'http://localhost:3001';
+        const SERVER_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
         
         console.log('🌐 Testing Teachers API...');
         console.log(`📡 Server URL: ${SERVER_URL}`);
