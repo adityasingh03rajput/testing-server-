@@ -1,4 +1,4 @@
-// Azure deployment trigger - Updated December 14, 2024 - v2.8 - Fix hardcoded break periods with intelligent detection.
+// Azure deployment trigger - Updated December 14, 2024 - v2.9 - Fix rate limiting for concurrent student logins.
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -1180,30 +1180,12 @@ function createDefaultTimetable(semester, branch) {
     const timetable = {};
     days.forEach(day => {
         timetable[day] = periods.map(p => {
-            // Calculate period duration in minutes
-            const [startH, startM] = p.startTime.split(':').map(Number);
-            const [endH, endM] = p.endTime.split(':').map(Number);
-            const duration = (endH * 60 + endM) - (startH * 60 + startM);
-            
-            // Auto-detect break periods based on duration and time
-            let subject = '';
-            let isBreak = false;
-            
-            if (duration <= 30) {
-                // Short periods (≤30 min) are likely breaks
-                subject = 'Break';
-                isBreak = true;
-            } else if (startH >= 13 && startH < 14 && duration <= 60) {
-                // Periods between 1-2 PM with ≤60 min duration are likely lunch
-                subject = 'Lunch Break';
-                isBreak = true;
-            }
-            
+            // All periods start as regular periods - no hardcoded breaks
             return {
                 period: p.number,
-                subject: subject,
+                subject: '',
                 room: '',
-                isBreak: isBreak,
+                isBreak: false,
                 teacher: '',
                 teacherName: ''
             };
@@ -3002,13 +2984,22 @@ app.get('/api/config/app', async (req, res) => {
     }
 });
 
-// Rate limiting for login endpoints
+// Rate limiting for login endpoints - Per User ID instead of Per IP
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // 5 attempts per 15 minutes
-    message: { success: false, error: 'Too many login attempts. Please try again in 15 minutes.' },
+    max: 10, // 10 attempts per user per 15 minutes (increased for legitimate retries)
+    message: { success: false, error: 'Too many login attempts for this account. Please try again in 15 minutes.' },
     standardHeaders: true,
     legacyHeaders: false,
+    // Use user ID instead of IP address for rate limiting
+    keyGenerator: (req) => {
+        // Use the login ID (student enrollment or teacher employee ID) as the key
+        return req.body.id || req.ip; // Fallback to IP if no ID provided
+    },
+    // Skip rate limiting for successful logins
+    skipSuccessfulRequests: true,
+    // Only count failed login attempts
+    skipFailedRequests: false,
 });
 
 // Login endpoint
