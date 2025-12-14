@@ -1180,30 +1180,12 @@ function createDefaultTimetable(semester, branch) {
     const timetable = {};
     days.forEach(day => {
         timetable[day] = periods.map(p => {
-            // Calculate period duration in minutes
-            const [startH, startM] = p.startTime.split(':').map(Number);
-            const [endH, endM] = p.endTime.split(':').map(Number);
-            const duration = (endH * 60 + endM) - (startH * 60 + startM);
-            
-            // Auto-detect break periods based on duration and time
-            let subject = '';
-            let isBreak = false;
-            
-            if (duration <= 30) {
-                // Short periods (≤30 min) are likely breaks
-                subject = 'Break';
-                isBreak = true;
-            } else if (startH >= 13 && startH < 14 && duration <= 60) {
-                // Periods between 1-2 PM with ≤60 min duration are likely lunch
-                subject = 'Lunch Break';
-                isBreak = true;
-            }
-            
+            // All periods start as regular periods - no hardcoded breaks
             return {
                 period: p.number,
-                subject: subject,
+                subject: '',
                 room: '',
-                isBreak: isBreak,
+                isBreak: false,
                 teacher: '',
                 teacherName: ''
             };

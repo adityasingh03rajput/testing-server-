@@ -1624,30 +1624,12 @@ function createNewTimetable() {
     const timetable = {};
     days.forEach(day => {
         timetable[day] = periods.map(p => {
-            // Calculate period duration in minutes
-            const [startH, startM] = p.startTime.split(':').map(Number);
-            const [endH, endM] = p.endTime.split(':').map(Number);
-            const duration = (endH * 60 + endM) - (startH * 60 + startM);
-            
-            // Auto-detect break periods based on duration and time
-            let subject = '';
-            let isBreak = false;
-            
-            if (duration <= 30) {
-                // Short periods (≤30 min) are likely breaks
-                subject = 'Break';
-                isBreak = true;
-            } else if (startH >= 13 && startH < 14 && duration <= 60) {
-                // Periods between 1-2 PM with ≤60 min duration are likely lunch
-                subject = 'Lunch Break';
-                isBreak = true;
-            }
-            
+            // All periods start as regular periods - no hardcoded breaks
             return {
                 period: p.number,
-                subject: subject,
+                subject: '',
                 room: '',
-                isBreak: isBreak,
+                isBreak: false,
                 teacher: '',
                 color: ''
             };
@@ -1774,9 +1756,9 @@ function renderAdvancedTimetableEditor(timetable) {
     // Header row
     html += '<div class="tt-cell tt-header tt-corner">Day/Period</div>';
     timetable.periods.forEach(period => {
-        const isBreak = period.isBreak || period.number === 4 || period.number === 6;
-        html += `<div class="tt-cell tt-header ${isBreak ? 'tt-break-header' : ''}">
-            <div class="period-number">${isBreak ? (period.number === 4 ? '🍽️' : '☕') : `P${period.number}`}</div>
+        // Remove hardcoded break detection - all periods look the same in header
+        html += `<div class="tt-cell tt-header">
+            <div class="period-number">P${period.number}</div>
             <div class="period-time">${period.startTime}-${period.endTime}</div>
         </div>`;
     });
@@ -1789,25 +1771,29 @@ function renderAdvancedTimetableEditor(timetable) {
         // Ensure each day has exactly numPeriods cells
         for (let periodIdx = 0; periodIdx < numPeriods; periodIdx++) {
             const period = daySchedule[periodIdx] || { subject: '', teacher: '', room: '', isBreak: false };
-            const isBreak = period.isBreak || period.subject.includes('Break');
+            const isBreak = period.isBreak || false;
             const cellId = `cell-${dayIdx}-${periodIdx}`;
             const bgColor = period.color || '';
 
-            html += `<div class="tt-cell ${isBreak ? 'tt-break-cell' : 'tt-editable'}" 
+            // All cells are now editable and look the same, with break indicator
+            html += `<div class="tt-cell tt-editable ${isBreak ? 'tt-break-marked' : ''}" 
                 id="${cellId}"
                 data-day="${dayIdx}" 
                 data-period="${periodIdx}"
+                data-is-break="${isBreak}"
                 style="${bgColor ? `background-color: ${bgColor}` : ''}"
-                ${!isBreak ? `onclick="handleCellClick(event, ${dayIdx}, ${periodIdx})"` : ''}
-                ${!isBreak ? `ondblclick="editAdvancedCell(${dayIdx}, ${periodIdx})"` : ''}
-                ${!isBreak ? `oncontextmenu="showCellContextMenu(event, ${dayIdx}, ${periodIdx}); return false;"` : ''}>
-                ${isBreak ? `<div class="break-label">${period.subject}</div>` : `
-                    <div class="cell-content">
-                        <div class="subject-name">${period.subject || '-'}</div>
-                        ${period.teacher ? `<div class="teacher-name">👨‍🏫 ${period.teacher}</div>` : ''}
-                        ${period.room ? `<div class="room-name">🏢 ${period.room}</div>` : ''}
-                    </div>
-                `}
+                onclick="handleCellClick(event, ${dayIdx}, ${periodIdx})"
+                ondblclick="editAdvancedCell(${dayIdx}, ${periodIdx})"
+                oncontextmenu="showCellContextMenu(event, ${dayIdx}, ${periodIdx}); return false;">
+                <div class="cell-content">
+                    ${isBreak ? `<div class="break-indicator">🔔 BREAK</div>` : ''}
+                    <div class="subject-name">${isBreak ? (period.subject || 'Break') : (period.subject || '-')}</div>
+                    ${!isBreak && period.teacher ? `<div class="teacher-name">👨‍🏫 ${period.teacher}</div>` : ''}
+                    ${!isBreak && period.room ? `<div class="room-name">🏢 ${period.room}</div>` : ''}
+                </div>
+                <div class="break-toggle-btn" onclick="toggleBreakPeriod(event, ${dayIdx}, ${periodIdx})" title="${isBreak ? 'Mark as Regular Period' : 'Mark as Break'}">
+                    ${isBreak ? '📚' : '🔔'}
+                </div>
             </div>`;
         }
     });
@@ -2108,6 +2094,87 @@ async function checkTeacherConflict(teacherName, day, periodNumber, room, curren
 // Keep old function for compatibility
 function editTimetableCell(dayIdx, periodIdx) {
     editAdvancedCell(dayIdx, periodIdx);
+}
+
+// Toggle Break Period Function
+function toggleBreakPeriod(event, dayIdx, periodIdx) {
+    event.stopPropagation(); // Prevent cell click
+    
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKey = dayKeys[dayIdx];
+    
+    if (!currentTimetable || !currentTimetable.timetable[dayKey]) {
+        console.error('No timetable data available');
+        return;
+    }
+    
+    // Ensure the period exists
+    if (!currentTimetable.timetable[dayKey][periodIdx]) {
+        currentTimetable.timetable[dayKey][periodIdx] = {
+            period: periodIdx + 1,
+            subject: '',
+            teacher: '',
+            teacherName: '',
+            room: '',
+            isBreak: false
+        };
+    }
+    
+    const period = currentTimetable.timetable[dayKey][periodIdx];
+    const wasBreak = period.isBreak || false;
+    
+    // Toggle break status
+    period.isBreak = !wasBreak;
+    
+    if (period.isBreak) {
+        // Mark as break - clear other fields and set break subject
+        period.subject = 'Break';
+        period.teacher = '';
+        period.teacherName = '';
+        period.room = '';
+    } else {
+        // Revert to normal period - clear break subject
+        if (period.subject === 'Break' || period.subject === 'Lunch Break') {
+            period.subject = '';
+        }
+    }
+    
+    // Update the cell visually
+    const cellId = `cell-${dayIdx}-${periodIdx}`;
+    const cell = document.getElementById(cellId);
+    
+    if (cell) {
+        if (period.isBreak) {
+            cell.classList.add('tt-break-marked');
+            cell.setAttribute('data-is-break', 'true');
+        } else {
+            cell.classList.remove('tt-break-marked');
+            cell.setAttribute('data-is-break', 'false');
+        }
+        
+        // Update cell content
+        const cellContent = cell.querySelector('.cell-content');
+        if (cellContent) {
+            cellContent.innerHTML = `
+                ${period.isBreak ? `<div class="break-indicator">🔔 BREAK</div>` : ''}
+                <div class="subject-name">${period.isBreak ? (period.subject || 'Break') : (period.subject || '-')}</div>
+                ${!period.isBreak && period.teacher ? `<div class="teacher-name">👨‍🏫 ${period.teacher}</div>` : ''}
+                ${!period.isBreak && period.room ? `<div class="room-name">🏢 ${period.room}</div>` : ''}
+            `;
+        }
+        
+        // Update toggle button
+        const toggleBtn = cell.querySelector('.break-toggle-btn');
+        if (toggleBtn) {
+            toggleBtn.innerHTML = period.isBreak ? '📚' : '🔔';
+            toggleBtn.title = period.isBreak ? 'Mark as Regular Period' : 'Mark as Break';
+        }
+    }
+    
+    // Auto-save the changes
+    triggerAutoSave();
+    
+    console.log(`Period ${periodIdx + 1} on ${dayKey} ${period.isBreak ? 'marked as break' : 'reverted to normal'}`);
 }
 
 // Auto-save function (silent, debounced)
@@ -4469,12 +4536,20 @@ function showCellContextMenu(event, dayIdx, periodIdx) {
     const existing = document.querySelector('.context-menu');
     if (existing) existing.remove();
 
+    // Check if current period is a break
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKey = dayKeys[dayIdx];
+    const period = currentTimetable?.timetable?.[dayKey]?.[periodIdx];
+    const isBreak = period?.isBreak || false;
+
     const menu = document.createElement('div');
     menu.className = 'context-menu';
     menu.style.left = event.pageX + 'px';
     menu.style.top = event.pageY + 'px';
     menu.innerHTML = `
         <div class="context-menu-item" onclick="editAdvancedCell(${dayIdx}, ${periodIdx}); closeContextMenu()">✏️ Edit</div>
+        <div class="context-menu-item" onclick="toggleBreakPeriod(event, ${dayIdx}, ${periodIdx}); closeContextMenu()">${isBreak ? '📚 Mark as Regular' : '🔔 Mark as Break'}</div>
+        <div class="context-menu-separator"></div>
         <div class="context-menu-item" onclick="copySingleCell(${dayIdx}, ${periodIdx}); closeContextMenu()">📄 Copy</div>
         <div class="context-menu-item" onclick="pasteSingleCell(${dayIdx}, ${periodIdx}); closeContextMenu()">📋 Paste</div>
         <div class="context-menu-item" onclick="clearSingleCell(${dayIdx}, ${periodIdx}); closeContextMenu()">🗑️ Clear</div>
