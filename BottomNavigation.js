@@ -8,12 +8,20 @@ export default function BottomNavigation({ theme, activeTab, onTabChange, userRo
     { id: 'home', Icon: HomeIcon, label: 'Home' },
     { id: 'calendar', Icon: CalendarIcon, label: 'Calendar' },
     { id: 'timetable', Icon: BookIcon, label: 'Timetable' },
+<<<<<<< HEAD
+=======
+    { id: 'wifi', Icon: () => <Text style={{ fontSize: 24 }}>📶</Text>, label: 'WiFi' },
+>>>>>>> origin/main
   ];
 
   const teacherTabs = [
     { id: 'home', Icon: HomeIcon, label: 'Home' },
     { id: 'calendar', Icon: CalendarIcon, label: 'Calendar' },
     { id: 'timetable', Icon: BookIcon, label: 'Timetable' },
+<<<<<<< HEAD
+=======
+    { id: 'wifi', Icon: () => <Text style={{ fontSize: 24 }}>📶</Text>, label: 'WiFi' },
+>>>>>>> origin/main
   ];
 
   const tabs = userRole === 'teacher' ? teacherTabs : studentTabs;

@@ -45,8 +45,13 @@ class WiFiBSSIDService {
   }
 
   /**
+<<<<<<< HEAD
    * Get current WiFi BSSID
    * Exact logic from LetsBunk MainActivity.kt updateWifiInfo()
+=======
+   * Get current WiFi BSSID with enhanced Android 13+ support
+   * Enhanced logic for MIUI and modern Android versions
+>>>>>>> origin/main
    */
   async getBSSID() {
     try {
@@ -54,6 +59,7 @@ class WiFiBSSIDService {
         throw new Error('WifiModule not available');
       }
 
+<<<<<<< HEAD
       // Check permissions first
       const permissionCheck = await this.checkPermissions();
       if (!permissionCheck.hasLocationPermission) {
@@ -67,6 +73,52 @@ class WiFiBSSIDService {
           wifiInfo.bssid === '02:00:00:00:00:00' || 
           wifiInfo.bssid === '<unknown ssid>') {
         throw new Error('BSSID not available - check WiFi connection and location services');
+=======
+      // Enhanced permission check for Android 13+
+      const permissionCheck = await this.checkPermissions();
+      if (!permissionCheck.hasLocationPermission) {
+        // Try to provide more specific guidance
+        const wifiState = await WifiModule.getWifiState();
+        const deviceInfo = `${wifiState.manufacturer || 'Unknown'} ${wifiState.model || 'Device'} (Android ${wifiState.sdkVersion || 'Unknown'})`;
+        
+        throw new Error(`Enhanced location permission required for BSSID access on ${deviceInfo}. Please grant location permission and for Android 13+, also grant "Nearby WiFi devices" permission.`);
+      }
+
+      console.log('📶 Attempting enhanced BSSID fetch...');
+      const wifiInfo = await WifiModule.getBSSID();
+      
+      // Enhanced BSSID validation
+      if (!wifiInfo.bssid || 
+          wifiInfo.bssid === '02:00:00:00:00:00' || 
+          wifiInfo.bssid === '<unknown ssid>' ||
+          wifiInfo.bssid.trim() === '') {
+        
+        // If standard method failed, try testing all methods
+        console.log('⚠️ Standard BSSID fetch failed, testing all methods...');
+        const allMethodsResult = await this.testAllBSSIDMethods();
+        
+        if (allMethodsResult.success) {
+          const workingMethods = allMethodsResult.methodResults.filter(m => m.success);
+          if (workingMethods.length > 0) {
+            const bestMethod = workingMethods[0]; // Use first working method
+            return {
+              success: true,
+              bssid: bestMethod.data.bssid.toLowerCase(),
+              ssid: bestMethod.data.ssid,
+              rssi: bestMethod.data.rssi,
+              linkSpeed: bestMethod.data.linkSpeed,
+              frequency: bestMethod.data.frequency,
+              macAddress: bestMethod.data.macAddress,
+              networkId: bestMethod.data.networkId,
+              method: bestMethod.data.method,
+              timestamp: new Date().toISOString(),
+              fallbackUsed: true
+            };
+          }
+        }
+        
+        throw new Error('BSSID not available with any method - check WiFi connection, location services, and permissions');
+>>>>>>> origin/main
       }
 
       return {
@@ -78,11 +130,21 @@ class WiFiBSSIDService {
         frequency: wifiInfo.frequency,
         macAddress: wifiInfo.macAddress,
         networkId: wifiInfo.networkId,
+<<<<<<< HEAD
         timestamp: new Date().toISOString()
       };
 
     } catch (error) {
       console.error('BSSID fetch error:', error);
+=======
+        method: wifiInfo.method || 'standard',
+        timestamp: new Date().toISOString(),
+        fallbackUsed: false
+      };
+
+    } catch (error) {
+      console.error('Enhanced BSSID fetch error:', error);
+>>>>>>> origin/main
       return {
         success: false,
         error: error.message,
@@ -93,6 +155,35 @@ class WiFiBSSIDService {
   }
 
   /**
+<<<<<<< HEAD
+=======
+   * Test all BSSID detection methods for debugging
+   */
+  async testAllBSSIDMethods() {
+    try {
+      if (!WifiModule) {
+        throw new Error('WifiModule not available');
+      }
+
+      console.log('🧪 Testing all BSSID detection methods...');
+      const result = await WifiModule.testAllBSSIDMethods();
+      
+      return {
+        success: true,
+        ...result
+      };
+      
+    } catch (error) {
+      console.error('❌ All methods test error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+>>>>>>> origin/main
    * Check WiFi and permission status
    * Logic from LetsBunk MainActivity.kt checkPermissions()
    */

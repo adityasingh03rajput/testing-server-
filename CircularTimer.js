@@ -607,6 +607,7 @@ export default function CircularTimer({
           delayLongPress={800}
           activeOpacity={1}
         >
+<<<<<<< HEAD
           {/* Attendance Percentage (smaller) */}
           <Text style={[styles.time, { color: safeTheme.text, fontSize: 32 }]}>
             {totalLectureTime > 0 ? Math.round((initialTime / totalLectureTime) * 100) : 0}%
@@ -623,10 +624,27 @@ export default function CircularTimer({
           </Text>
           <Text style={[styles.timeLabel, { color: safeTheme.textSecondary, fontSize: 10, marginTop: 3 }]}>
             TIME ATTENDED
+=======
+          {/* Current Lecture Time Remaining - Clean Display */}
+          <Text style={[styles.time, { color: safeTheme.text, fontSize: 32 }]}>
+            {(() => {
+              // Show remaining time for current lecture only
+              if (remainingTime > 0) {
+                const minutes = Math.floor(remainingTime / 60);
+                const seconds = remainingTime % 60;
+                return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+              }
+              return '00:00';
+            })()}
+          </Text>
+          <Text style={[styles.timeLabel, { color: safeTheme.textSecondary, fontSize: 10, marginTop: 2 }]}>
+            TIME LEFT
+>>>>>>> origin/main
           </Text>
 
           {/* Show start button when not running */}
           {!isRunning && (
+<<<<<<< HEAD
             <View style={{ alignItems: 'center', marginTop: 15 }}>
               <TouchableOpacity
                 style={[
@@ -651,6 +669,42 @@ export default function CircularTimer({
           )}
 
 
+=======
+            <TouchableOpacity
+              style={[
+                styles.playBtn, 
+                { 
+                  backgroundColor: safeTheme.primary,
+                  marginTop: 15,
+                }
+              ]}
+              onPress={onToggleTimer}
+              activeOpacity={0.8}
+            >
+              <PlayIcon size={20} color={safeTheme.background} />
+            </TouchableOpacity>
+          )}
+
+          {/* Show clean running indicator when active */}
+          {isRunning && (
+            <View style={[styles.runningBadge, { backgroundColor: '#22c55e', marginTop: 12 }]}>
+              <Text style={styles.runningText}>✅ Attendance tracking active</Text>
+            </View>
+          )}
+
+          {/* Reset button - only visible when not running */}
+          {!isRunning && (
+            <TouchableOpacity
+              style={[styles.resetBtn, { borderColor: safeTheme.border }]}
+              onPress={onReset}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.resetText, { color: safeTheme.textSecondary }]}>
+                Reset
+              </Text>
+            </TouchableOpacity>
+          )}
+>>>>>>> origin/main
 
           {/* Simplified Long Press Indicator */}
           {isLongPressing && (
@@ -693,12 +747,32 @@ export default function CircularTimer({
         </TouchableOpacity>
       </Animated.View>
 
+<<<<<<< HEAD
 
+=======
+      {/* WiFi Status Indicator */}
+      {lectureInfo && (
+        <WiFiStatusIndicator
+          wifiStatus={wifiStatus}
+          timerState={timerState}
+          currentLecture={lectureInfo}
+          onRefresh={refreshWiFiStatus}
+          theme={safeTheme}
+          style={{ marginTop: 20, maxWidth: TIMER_SIZE }}
+        />
+      )}
+>>>>>>> origin/main
 
       {/* Hint */}
       <View style={styles.hint}>
         <Text style={[styles.hintText, { color: safeTheme.textSecondary }]}>
+<<<<<<< HEAD
           {isDragging ? '🎯 Drag around the circle' : '🎯 Tap or drag segments'}
+=======
+          {isDragging ? 'Γ£¿ Drag around the circle' : 
+           !isInValidLocation && lectureInfo ? 'Connect to classroom WiFi to start' :
+           '≡ƒæå Tap or drag segments'}
+>>>>>>> origin/main
         </Text>
       </View>
     </View>

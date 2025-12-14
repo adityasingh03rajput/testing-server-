@@ -4605,6 +4605,7 @@ ture Details Styles */
 .wifi-event-details {
     color: var(--text-secondary);
     margin-top: 2px;
+<<<<<<< HEAD
 }
 /* Enhanced Form Validation Styles */
 .form-group label {
@@ -5039,4 +5040,6 @@ ture Details Styles */
     .analytics-grid {
         grid-template-columns: 1fr;
     }
+=======
+>>>>>>> origin/main
 }

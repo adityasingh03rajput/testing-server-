@@ -757,11 +757,16 @@ export default function TimetableScreen({
                       }
 
                       return (
+<<<<<<< HEAD
                         <TouchableOpacity
                           key={day}
                           onPress={() => editModeEnabled && handleCellPress(dayIndex, period.number)}
                           disabled={!editModeEnabled}
                           activeOpacity={editModeEnabled ? 0.7 : 1}
+=======
+                        <View
+                          key={day}
+>>>>>>> origin/main
                           style={[
                             styles.weekCell,
                             { backgroundColor: theme.background },
@@ -790,7 +795,11 @@ export default function TimetableScreen({
                               </Text>
                             )}
                           </View>
+<<<<<<< HEAD
                         </TouchableOpacity>
+=======
+                        </View>
+>>>>>>> origin/main
                       );
                     })}
                   </View>

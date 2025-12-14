@@ -5,7 +5,11 @@ const TeacherStats = ({ students, isDark, theme }) => {
   const totalStudents = students.length;
   const presentStudents = students.filter(s => s && s.status === 'present').length;
   const absentStudents = students.filter(s => s && s.status === 'absent').length;
+<<<<<<< HEAD
   const attendingStudents = students.filter(s => s && s.status === 'attending').length;
+=======
+  const attendingStudents = students.filter(s => s && (s.status === 'attending' || s.isRunning)).length;
+>>>>>>> origin/main
   const attendancePercentage = totalStudents > 0 
     ? Math.round((presentStudents / totalStudents) * 100) 
     : 0;

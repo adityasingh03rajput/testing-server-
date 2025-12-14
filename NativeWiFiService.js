@@ -21,7 +21,11 @@ class NativeWiFiService {
   }
 
   /**
+<<<<<<< HEAD
    * Get current WiFi BSSID using native module
+=======
+   * Get current WiFi BSSID using enhanced native module
+>>>>>>> origin/main
    */
   async getCurrentBSSID() {
     try {
@@ -29,10 +33,17 @@ class NativeWiFiService {
         throw new Error('Native WiFi module not available');
       }
 
+<<<<<<< HEAD
       console.log('📶 Getting BSSID from native module...');
       const result = await WifiModule.getBSSID();
       
       console.log('📶 Native WiFi result:', result);
+=======
+      console.log('📶 Getting BSSID from enhanced native module...');
+      const result = await WifiModule.getBSSID();
+      
+      console.log('📶 Enhanced WiFi result:', result);
+>>>>>>> origin/main
       
       return {
         success: true,
@@ -42,11 +53,31 @@ class NativeWiFiService {
         linkSpeed: result.linkSpeed,
         frequency: result.frequency,
         macAddress: result.macAddress,
+<<<<<<< HEAD
         networkId: result.networkId
       };
       
     } catch (error) {
       console.error('❌ Native WiFi error:', error);
+=======
+        networkId: result.networkId,
+        method: result.method || 'unknown'
+      };
+      
+    } catch (error) {
+      console.error('❌ Enhanced WiFi error:', error);
+      
+      // For debugging, try to get more detailed error information
+      if (error.code === 'PERMISSION_DENIED') {
+        console.log('🔐 Permission issue detected - checking detailed permissions...');
+        try {
+          const permissionDetails = await this.checkPermissions();
+          console.log('📋 Detailed permissions:', permissionDetails);
+        } catch (permError) {
+          console.log('❌ Could not check detailed permissions:', permError);
+        }
+      }
+>>>>>>> origin/main
       
       return {
         success: false,
@@ -57,6 +88,38 @@ class NativeWiFiService {
   }
 
   /**
+<<<<<<< HEAD
+=======
+   * Test all BSSID detection methods
+   */
+  async testAllMethods() {
+    try {
+      if (!this.isAvailable) {
+        throw new Error('Native WiFi module not available');
+      }
+
+      console.log('🧪 Testing all BSSID detection methods...');
+      const result = await WifiModule.testAllBSSIDMethods();
+      
+      console.log('🧪 All methods test result:', result);
+      
+      return {
+        success: true,
+        ...result
+      };
+      
+    } catch (error) {
+      console.error('❌ All methods test error:', error);
+      
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+>>>>>>> origin/main
    * Get WiFi state information
    */
   async getWiFiState() {

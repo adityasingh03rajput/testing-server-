@@ -83,4 +83,11 @@ server/models/*
 .git-credentials
 *.pem
 *.key
+<<<<<<< HEAD
 *.cert
+=======
+*.cert
+
+# Embedded repositories
+khatam-aaj/
+>>>>>>> origin/main

@@ -12,6 +12,7 @@ import {
 const StudentProfileDialog = ({ visible, onClose, theme, student }) => {
   if (!student) return null;
 
+<<<<<<< HEAD
   // Debug: Log student data to check photoUrl
   console.log('🔍 StudentProfileDialog - Student data:', {
     name: student.name,
@@ -20,6 +21,8 @@ const StudentProfileDialog = ({ visible, onClose, theme, student }) => {
     allKeys: Object.keys(student)
   });
 
+=======
+>>>>>>> origin/main
   return (
     <Modal
       visible={visible}
@@ -55,6 +58,7 @@ const StudentProfileDialog = ({ visible, onClose, theme, student }) => {
 
             {/* Profile Photo */}
             <View style={styles.profileSection}>
+<<<<<<< HEAD
               <View style={[styles.profileImageContainer, { borderColor: theme.primary }]}>
                 {student.photoUrl ? (
                   <Image
@@ -73,6 +77,13 @@ const StudentProfileDialog = ({ visible, onClose, theme, student }) => {
                     </Text>
                   </View>
                 )}
+=======
+              <View style={[styles.profileImageContainer, { borderColor: theme.border }]}>
+                <Image
+                  source={{ uri: student.profileImage || student.profilePhoto || 'https://via.placeholder.com/128' }}
+                  style={styles.profileImage}
+                />
+>>>>>>> origin/main
               </View>
             </View>
 
@@ -179,6 +190,7 @@ const styles = StyleSheet.create({
     height: 128,
     borderRadius: 64,
   },
+<<<<<<< HEAD
   placeholderImage: {
     justifyContent: 'center',
     alignItems: 'center',
@@ -187,6 +199,8 @@ const styles = StyleSheet.create({
     fontSize: 48,
     fontWeight: 'bold',
   },
+=======
+>>>>>>> origin/main
   infoSection: {
     gap: 16,
   },
