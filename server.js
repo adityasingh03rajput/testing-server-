@@ -5620,7 +5620,7 @@ if (!validateEnvironment()) {
 
 server.listen(PORT, '0.0.0.0', async () => {
     console.log('========================================');
-    console.log('🚀 Attendance SDUI Server Running v2.5 - Bulk Import Fixed');
+    console.log('🚀 Attendance SDUI Server Running v2.6 - Teachers & Subjects Updated');
     console.log('========================================');
     console.log(`📡 HTTP Server: http://localhost:${PORT}`);
     console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
@@ -5963,7 +5963,7 @@ app.post('/api/attendance/manage/bulk-operation', async (req, res) => {
     }
 });
 
-// Get all departments for teacher filter
+// Get all departments for teacher filter - Updated Dec 14, 2025
 app.get('/api/departments', async (req, res) => {
     try {
         // Get unique departments from teachers collection
