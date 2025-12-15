@@ -1,0 +1,45 @@
+{
+  "appId": "com.college.attendance.admin",
+  "productName": "College Attendance Admin",
+  "copyright": "Copyright © 2025 College Attendance System",
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "publisherName": "College Attendance System",
+    "verifyUpdateCodeSignature": false
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowElevation": true,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "College Attendance Admin",
+    "include": "installer.nsh",
+    "license": "LICENSE.txt",
+    "artifactName": "${productName} Setup ${version}.${ext}",
+    "deleteAppDataOnUninstall": false
+  },
+  "directories": {
+    "output": "dist",
+    "buildResources": "build"
+  },
+  "files": [
+    "**/*",
+    "!**/*.ts",
+    "!*.map",
+    "!node_modules",
+    "node_modules/electron-squirrel-startup/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": ".",
+      "to": "app",
+      "filter": ["**/*"]
+    }
+  ]
+}
