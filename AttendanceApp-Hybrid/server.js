@@ -1120,13 +1120,56 @@ app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
             });
         }
 
-        // Get students for this class (semester + branch)
+        // Get students for this class (semester + branch) with current attendance status
         const students = await StudentManagement.find({
             semester: currentClass.semester.toString(),
             course: currentClass.branch
         }).select('-password');
 
         console.log(`👥 Found ${students.length} students for ${currentClass.branch} Semester ${currentClass.semester}`);
+
+        // Enhance students with current attendance session data
+        const today = new Date().toISOString().split('T')[0];
+        const studentsWithStatus = await Promise.all(students.map(async (student) => {
+            try {
+                // Get current attendance session
+                const session = await AttendanceSession.findOne({
+                    studentId: student._id,
+                    date: today
+                });
+
+                // Get current attendance record
+                const record = await AttendanceRecord.findOne({
+                    studentId: student._id,
+                    date: today
+                });
+
+                return {
+                    ...student.toObject(),
+                    // Real-time status from session
+                    isRunning: session?.isActive || false,
+                    timerValue: session?.timerValue || 0,
+                    status: session?.isActive ? 'attending' : (record?.status || 'absent'),
+                    joinTime: session?.sessionStartTime || null,
+                    wifiConnected: session?.wifiConnected || false,
+                    // Session info
+                    sessionId: session?._id || null,
+                    totalAttendedSeconds: session?.totalAttendedSeconds || 0
+                };
+            } catch (error) {
+                console.error(`❌ Error getting status for student ${student.name}:`, error);
+                return {
+                    ...student.toObject(),
+                    isRunning: false,
+                    timerValue: 0,
+                    status: 'absent',
+                    joinTime: null,
+                    wifiConnected: false
+                };
+            }
+        }));
+
+        console.log(`✅ Enhanced ${studentsWithStatus.length} students with real-time status`);
 
         // Get classroom info
         const classroom = await Classroom.findOne({ roomNumber: currentClass.room });
@@ -1139,9 +1182,13 @@ app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
                 capacity: classroom?.capacity || 60,
                 bssid: classroom?.bssid || null
             },
-            students: students,
-            totalStudents: students.length,
-            teacherName: teacherName
+            students: studentsWithStatus,
+            totalStudents: studentsWithStatus.length,
+            teacherName: teacherName,
+            // Additional stats for teacher dashboard
+            activeStudents: studentsWithStatus.filter(s => s.isRunning).length,
+            presentStudents: studentsWithStatus.filter(s => s.status === 'present' || s.isRunning).length,
+            absentStudents: studentsWithStatus.filter(s => s.status === 'absent' && !s.isRunning).length
         });
 
     } catch (error) {
@@ -3298,23 +3345,60 @@ app.get('/api/view-records/students', async (req, res) => {
                 course: branch
             }).select('-password');
 
-            // Get attendance stats for each student
+            // Get current attendance session and stats for each student
+            const today = new Date().toISOString().split('T')[0];
             const studentsWithStats = await Promise.all(
                 students.map(async (student) => {
-                    const records = await AttendanceRecord.find({
-                        studentId: student._id
-                    });
+                    try {
+                        // Get attendance records for stats
+                        const records = await AttendanceRecord.find({
+                            studentId: student._id
+                        });
 
-                    const total = records.length;
-                    const present = records.filter(r => r.status === 'present').length;
-                    const attendancePercentage = total > 0 ? Math.round((present / total) * 100) : 0;
+                        const total = records.length;
+                        const present = records.filter(r => r.status === 'present').length;
+                        const attendancePercentage = total > 0 ? Math.round((present / total) * 100) : 0;
 
-                    return {
-                        ...student.toObject(),
-                        attendancePercentage,
-                        totalDays: total,
-                        presentDays: present
-                    };
+                        // Get current session for real-time status
+                        const session = await AttendanceSession.findOne({
+                            studentId: student._id,
+                            date: today
+                        });
+
+                        // Get today's record
+                        const todayRecord = await AttendanceRecord.findOne({
+                            studentId: student._id,
+                            date: today
+                        });
+
+                        return {
+                            ...student.toObject(),
+                            // Historical stats
+                            attendancePercentage,
+                            totalDays: total,
+                            presentDays: present,
+                            // Real-time status
+                            isRunning: session?.isActive || false,
+                            timerValue: session?.timerValue || 0,
+                            status: session?.isActive ? 'attending' : (todayRecord?.status || 'absent'),
+                            joinTime: session?.sessionStartTime || null,
+                            wifiConnected: session?.wifiConnected || false,
+                            sessionId: session?._id || null
+                        };
+                    } catch (error) {
+                        console.error(`❌ Error getting data for student ${student.name}:`, error);
+                        return {
+                            ...student.toObject(),
+                            attendancePercentage: 0,
+                            totalDays: 0,
+                            presentDays: 0,
+                            isRunning: false,
+                            timerValue: 0,
+                            status: 'absent',
+                            joinTime: null,
+                            wifiConnected: false
+                        };
+                    }
                 })
             );
 
@@ -5435,6 +5519,127 @@ app.post('/api/random-ring/verify', async (req, res) => {
 
     } catch (error) {
         console.error('❌ Error in random ring verification:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Student verifies face after teacher rejection
+app.post('/api/random-ring/verify-after-rejection', async (req, res) => {
+    try {
+        const { randomRingId, studentId, verificationPhoto, bssid } = req.body;
+
+        console.log('🔔 Random Ring face verification after rejection:', { randomRingId, studentId });
+
+        if (!randomRingId || !studentId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Random Ring ID and Student ID required'
+            });
+        }
+
+        // Find the random ring record
+        let randomRing = null;
+        if (mongoose.connection.readyState === 1) {
+            randomRing = await RandomRing.findById(randomRingId);
+            
+            if (!randomRing) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Random ring not found'
+                });
+            }
+
+            // Find student in selected students
+            const studentIndex = randomRing.selectedStudents.findIndex(s => {
+                if (s.studentId === studentId) return true;
+                if (s.enrollmentNo === studentId) return true;
+                if (s.studentId?.toString() === studentId?.toString()) return true;
+                if (s.enrollmentNo?.toString() === studentId?.toString()) return true;
+                return false;
+            });
+
+            if (studentIndex === -1) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Student not found in this random ring'
+                });
+            }
+
+            // Check if teacher already rejected this student
+            if (randomRing.selectedStudents[studentIndex].teacherAction !== 'rejected') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Face verification only allowed after teacher rejection'
+                });
+            }
+
+            const now = new Date();
+
+            // Mark as face verified after rejection
+            randomRing.selectedStudents[studentIndex].faceVerifiedAfterRejection = true;
+            randomRing.selectedStudents[studentIndex].faceVerificationTime = now;
+            randomRing.selectedStudents[studentIndex].verificationPhoto = verificationPhoto;
+
+            await randomRing.save();
+            console.log(`✅ Student ${studentId} face verified after rejection for random ring ${randomRingId}`);
+
+            // Resume student timer
+            const student = await StudentManagement.findOne({
+                $or: [{ _id: studentId }, { enrollmentNo: studentId }]
+            });
+            
+            if (student && student.attendanceSession?.isPaused) {
+                const pausedDuration = student.attendanceSession.pausedDuration || 0;
+                const lastPauseTime = student.attendanceSession.lastPauseTime;
+                const additionalPausedTime = lastPauseTime 
+                    ? Math.floor((Date.now() - lastPauseTime.getTime()) / 1000)
+                    : 0;
+
+                await StudentManagement.findByIdAndUpdate(student._id, {
+                    'attendanceSession.isPaused': false,
+                    'attendanceSession.pauseReason': null,
+                    'attendanceSession.pausedDuration': pausedDuration + additionalPausedTime,
+                    'attendanceSession.lastPauseTime': null,
+                    isRunning: true,
+                    status: 'attending',
+                    lastUpdated: new Date()
+                });
+                
+                console.log(`▶️ Timer resumed for ${student.name} - Face verified after rejection`);
+                
+                // Notify teacher about face verification
+                io.emit('random_ring_face_verified_after_rejection', {
+                    randomRingId: randomRingId,
+                    studentId: student._id.toString(),
+                    enrollmentNo: student.enrollmentNo,
+                    studentName: student.name,
+                    teacherId: randomRing.teacherId,
+                    message: `${student.name} verified face after rejection`
+                });
+
+                // Notify student
+                io.emit('random_ring_face_verification_success', {
+                    studentId: student._id.toString(),
+                    enrollmentNo: student.enrollmentNo,
+                    message: 'Face verification successful. Timer resumed.',
+                    randomRingId: randomRingId
+                });
+            }
+        }
+
+        const responseTime = (Date.now() - new Date(req.body.timestamp || Date.now())) / 1000;
+
+        res.json({
+            success: true,
+            message: 'Face verification after rejection successful',
+            responseTime: responseTime
+        });
+
+    } catch (error) {
+        console.error('❌ Error in random ring face verification after rejection:', error);
         res.status(500).json({
             success: false,
             error: error.message

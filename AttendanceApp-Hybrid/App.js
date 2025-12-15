@@ -1041,6 +1041,16 @@ export default function App() {
       }
     });
     
+    // Listen for face verification success (students)
+    socketRef.current.on('random_ring_face_verification_success', (data) => {
+      console.log('✅ Face verification successful:', data);
+      if (selectedRole === 'student' && (studentId === data.studentId || studentId === data.enrollmentNo)) {
+        alert('✅ Face Verification Successful!\n\nYour timer has been resumed.');
+        setRandomRingData(null); // Clear random ring data
+        setIsRunning(true); // Resume timer
+      }
+    });
+
     // Listen for face verification after rejection (for teacher dashboard)
     socketRef.current.on('random_ring_face_verified_after_rejection', (data) => {
       console.log('✅ Student verified face after rejection:', data);
