@@ -141,8 +141,8 @@ export default function App() {
   // UI clock state - updates every second for smooth display
   const [uiClock, setUiClock] = useState(0);
   
-  const [semester, setSemester] = useState('1');
-  const [branch, setBranch] = useState('');
+  const [semester, setSemester] = useState(null);
+  const [branch, setBranch] = useState(null);
 
   // Teacher-specific timetable states
   const [showTimetable, setShowTimetable] = useState(false);
@@ -1323,8 +1323,9 @@ export default function App() {
               }
             }
           } else if (userData.role === 'teacher') {
-            setSemester(userData.semester || '1');
-            setBranch(userData.department);
+            // Don't set default semester/branch for teachers - let current class detection handle it
+            // setSemester(userData.semester || '1');
+            // setBranch(userData.department);
             fetchStudents();
           }
         } catch (parseError) {
@@ -1399,26 +1400,55 @@ export default function App() {
 
   const fetchStudents = async () => {
     try {
-      // For teachers, fetch ONLY ACTIVE students (timer running) from their current class
+      // For teachers, prioritize current class from timetable
       if (selectedRole === 'teacher' && loginId) {
-        console.log(`� Fetching AtCTIVE students for ${branch} Semester ${semester}`);
+        console.log(`🔍 Fetching students for teacher: ${loginId}`);
         const response = await fetch(`${SOCKET_URL}/api/teacher/current-class-students/${loginId}`);
         const data = await response.json();
+        
         if (data.success) {
           if (data.hasActiveClass) {
             console.log(`✅ Found ${data.students?.length || 0} students in current class`);
             console.log(`📚 Current class: ${data.currentClass?.subject} - ${data.currentClass?.branch} Sem ${data.currentClass?.semester}`);
             setStudents(data.students || []);
             setCurrentClassInfo(data.currentClass);
+            
+            // Update semester and branch to match current class (for other components)
+            setSemester(data.currentClass.semester.toString());
+            setBranch(data.currentClass.branch);
+            return; // Exit early - we have the current class data
           } else {
             console.log('ℹ️  No active class right now');
+            
+            // Check if manual selection is active
+            if (manualSelection.semester !== 'auto' && manualSelection.branch) {
+              console.log(`📊 Using manual selection: ${manualSelection.branch} Semester ${manualSelection.semester}`);
+              const manualResponse = await fetch(`${SOCKET_URL}/api/view-records/students?semester=${manualSelection.semester}&branch=${manualSelection.branch}`);
+              const manualData = await manualResponse.json();
+              if (manualData.success) {
+                console.log(`✅ Found ${manualData.students?.length || 0} students for manual selection`);
+                setStudents(manualData.students || []);
+                // Don't override currentClassInfo if it's already set by manual selection
+                if (!currentClassInfo || !currentClassInfo.isManual) {
+                  setCurrentClassInfo({
+                    subject: 'Manual Selection',
+                    branch: manualSelection.branch,
+                    semester: manualSelection.semester,
+                    isManual: true
+                  });
+                }
+                return;
+              }
+            }
+            
+            // No active class and no manual selection
             setStudents([]);
             setCurrentClassInfo(null);
           }
         }
-      } else if (selectedRole === 'teacher' && semester && branch) {
-        // Fallback: if loginId not available, use semester/branch
-        console.log(`📊 Fetching students for ${branch} Semester ${semester} (fallback)`);
+      } else if (selectedRole === 'teacher' && !loginId && semester && branch) {
+        // Fallback: only if loginId not available AND semester/branch are explicitly set
+        console.log(`📊 Fetching students for ${branch} Semester ${semester} (fallback - no loginId)`);
         const response = await fetch(`${SOCKET_URL}/api/view-records/students?semester=${semester}&branch=${branch}`);
         const data = await response.json();
         if (data.success) {
@@ -1776,6 +1806,19 @@ export default function App() {
         return true;
       }
       
+      // DEVELOPMENT MODE: Always allow bypass for testing
+      if (__DEV__) {
+        console.warn('⚠️ Development mode: Bypassing WiFi validation for testing');
+        setWifiDebugInfo({
+          status: 'AUTHORIZED (DEV MODE)',
+          currentBSSID: 'Development bypass',
+          expectedBSSID: 'Not required in dev',
+          room: currentClassInfo?.room || 'Dev room',
+          lastChecked: new Date().toLocaleTimeString()
+        });
+        return true;
+      }
+      
       // Check if we have current class info
       if (!currentClassInfo || !currentClassInfo.room) {
         console.log('❌ No classroom info available for WiFi check');
@@ -1786,6 +1829,9 @@ export default function App() {
           room: 'N/A',
           lastChecked: new Date().toLocaleTimeString()
         });
+        
+        // In production, show user-friendly message
+        alert('⚠️ No Active Class\n\nNo classroom information available for WiFi validation.\n\nPlease ensure you have an active class scheduled.');
         return false;
       }
 
@@ -1800,15 +1846,8 @@ export default function App() {
           room: currentClassInfo.room
         });
         
-        // In development mode, allow bypass for testing
-        if (__DEV__) {
-          console.warn('⚠️ Development mode: Bypassing WiFi validation');
-          return true;
-        }
-        
-        // CRITICAL: In production, WiFi validation is MANDATORY
-        // Return false to prevent attendance fraud
-        console.log('❌ WiFi validation FAILED - WiFi manager not available');
+        // Show user-friendly error
+        alert('⚠️ WiFi System Error\n\nWiFi validation system is not available.\n\nPlease restart the app and try again.');
         return false;
       }
       
@@ -1833,12 +1872,25 @@ export default function App() {
 
       // Load authorized BSSIDs for current student
       try {
+        console.log('📥 Loading authorized BSSIDs with params:', {
+          serverUrl: SOCKET_URL,
+          semester,
+          course: branch,
+          enrollmentNo: studentId,
+          room: currentClassInfo.room
+        });
+        
         await WiFiManager.loadAuthorizedBSSIDs(SOCKET_URL, {
           semester,
           course: branch,
           enrollmentNo: studentId
         });
         console.log('✅ Authorized BSSIDs loaded');
+        
+        // Debug: Show what BSSIDs were loaded
+        const wifiStatus = WiFiManager.getStatus();
+        console.log(`📋 Loaded ${wifiStatus.authorizedBSSIDsCount} authorized BSSIDs`);
+        
       } catch (loadError) {
         console.error('❌ Failed to load authorized BSSIDs:', loadError);
         setWifiDebugInfo({
@@ -1855,8 +1907,16 @@ export default function App() {
       // Check if current BSSID is authorized for this room
       let authResult;
       try {
+        console.log(`🔍 Checking authorization for room: ${currentClassInfo.room}`);
         authResult = await WiFiManager.isAuthorizedForRoom(currentClassInfo.room);
-        console.log('📶 WiFi Authorization Result:', authResult);
+        
+        console.log('📶 === WiFi Authorization Result ===');
+        console.log('   Authorized:', authResult.authorized);
+        console.log('   Current BSSID:', authResult.currentBSSID);
+        console.log('   Expected BSSID:', authResult.expectedBSSID);
+        console.log('   Reason:', authResult.reason);
+        console.log('   Room Info:', authResult.roomInfo);
+        console.log('================================');
         
         // Update debug info with actual values
         setWifiDebugInfo({
@@ -1883,6 +1943,25 @@ export default function App() {
       
       if (!authResult || !authResult.authorized) {
         console.log(`❌ WiFi validation FAILED: ${authResult?.reason || 'unknown'}`);
+        
+        // Provide user-friendly error messages based on the reason
+        let userMessage = '';
+        switch (authResult?.reason) {
+          case 'no_wifi':
+            userMessage = '📶 WiFi Not Connected\n\nYou are not connected to any WiFi network.\n\nPlease:\n1. Enable WiFi on your device\n2. Connect to the classroom WiFi\n3. Try again';
+            break;
+          case 'wrong_bssid':
+            userMessage = `📶 Wrong WiFi Network\n\nYou are connected to the wrong WiFi network.\n\nExpected: Classroom ${currentClassInfo.room}\nCurrent: ${authResult.currentBSSID || 'Unknown'}\n\nPlease connect to the correct classroom WiFi.`;
+            break;
+          case 'room_not_configured':
+            userMessage = `⚙️ Room Not Configured\n\nRoom ${currentClassInfo.room} is not configured for WiFi validation.\n\nPlease contact your administrator.`;
+            break;
+          default:
+            userMessage = `❌ WiFi Validation Failed\n\nReason: ${authResult?.reason || 'Unknown error'}\n\nPlease ensure you are connected to the classroom WiFi network.`;
+        }
+        
+        // Don't show alert here - let the calling function handle it
+        console.log('📱 User message prepared:', userMessage);
         return false;
       }
 
@@ -1974,8 +2053,13 @@ export default function App() {
     console.log('📶 Step 1: Validating WiFi connection...');
     const wifiValid = await isConnectedToClassroomWiFi();
     if (!wifiValid) {
-      alert('❌ WiFi Validation Failed\n\nYou must be connected to the classroom WiFi to start attendance tracking.\n\nPlease connect to the authorized classroom network and try again.');
-      return;
+      // Check if it's a simulated bypass
+      if (wifiDebugInfo.status === 'AUTHORIZED (SIMULATED)') {
+        console.log('🧪 WiFi bypass is active, proceeding...');
+      } else {
+        alert('❌ WiFi Validation Failed\n\nYou must be connected to the classroom WiFi to start attendance tracking.\n\nPlease connect to the authorized classroom network and try again.\n\n💡 Tip: If you\'re having WiFi issues, use the "Bypass WiFi Check" button for testing.');
+        return;
+      }
     }
 
     // 2. Check face verification
@@ -2018,20 +2102,26 @@ export default function App() {
   };
 
   const handleVerificationSuccess = async (result) => {
-    console.log('✅ Face verification successful:', result);
-    
-    // Check WiFi connection before proceeding (ASYNC)
-    console.log('📶 Re-validating WiFi after face verification...');
-    const wifiValid = await isConnectedToClassroomWiFi();
-    if (!wifiValid) {
-      alert('❌ WiFi Required\n\nFace verification successful, but you must be connected to classroom WiFi to start attendance.\n\nPlease connect to the authorized classroom network.');
+    try {
+      console.log('✅ Face verification successful:', result);
+      
+      // Check WiFi connection before proceeding (ASYNC)
+      console.log('📶 Re-validating WiFi after face verification...');
+      const wifiValid = await isConnectedToClassroomWiFi();
+      if (!wifiValid) {
+        // Check if it's a simulated bypass
+        if (wifiDebugInfo.status === 'AUTHORIZED (SIMULATED)') {
+          console.log('🧪 WiFi bypass is active after face verification, proceeding...');
+        } else {
+          alert('❌ WiFi Required\n\nFace verification successful, but you must be connected to classroom WiFi to start attendance.\n\nPlease connect to the authorized classroom network.\n\n💡 Tip: Use the "Bypass WiFi Check" button if needed.');
+          setShowFaceVerification(false);
+          return;
+        }
+      }
+      
+      setIsFaceVerified(true);
+      setVerifiedToday(true); // Mark as verified for the entire day
       setShowFaceVerification(false);
-      return;
-    }
-    
-    setIsFaceVerified(true);
-    setVerifiedToday(true); // Mark as verified for the entire day
-    setShowFaceVerification(false);
 
     // Check if this is a Random Ring verification
     if (randomRingData) {
@@ -2051,7 +2141,7 @@ export default function App() {
           body: JSON.stringify({
             randomRingId: randomRingData.randomRingId,
             studentId: studentId,
-            verificationPhoto: result.photo || null,
+            verificationPhoto: null, // Photo is handled server-side
             bssid: randomRingData.bssid || null
           })
         });
@@ -2104,7 +2194,7 @@ export default function App() {
             enrollmentNo: userData?.enrollmentNo,  // Changed from enrollmentNumber
             semester: semester,
             branch: branch,
-            faceData: result.photo || null
+            faceData: null // Photo is handled server-side during verification
           })
         });
 
@@ -2154,27 +2244,41 @@ export default function App() {
       console.log('Error activating keep awake:', error);
     }
 
-    // Auto-start timer after verification using server-side system
-    setTimeout(() => {
-      if (socketRef.current && socketRef.current.connected) {
-        console.log('▶️  Starting server-side timer...');
-        socketRef.current.emit('start_timer', {
-          studentId: studentId,
-          enrollmentNo: userData?.enrollmentNo,
-          name: studentName || userData?.name,
-          semester: semester,
-          branch: branch
-        });
-        setIsRunning(true);
-      } else {
-        console.error('❌ Socket not connected, cannot start timer');
-      }
-    }, 500);
+      // Auto-start timer after verification using server-side system
+      setTimeout(() => {
+        if (socketRef.current && socketRef.current.connected) {
+          console.log('▶️  Starting server-side timer...');
+          socketRef.current.emit('start_timer', {
+            studentId: studentId,
+            enrollmentNo: userData?.enrollmentNo,
+            name: studentName || userData?.name,
+            semester: semester,
+            branch: branch
+          });
+          setIsRunning(true);
+        } else {
+          console.error('❌ Socket not connected, cannot start timer');
+        }
+      }, 500);
+      
+    } catch (error) {
+      console.error('❌ Critical error in handleVerificationSuccess:', error);
+      alert('❌ Unexpected error occurred. Please restart the app and try again.');
+      setShowFaceVerification(false);
+      setIsFaceVerified(false);
+      setIsRunning(false);
+    }
   };
 
   const handleVerificationFailed = (result) => {
-    console.log('❌ Face verification failed:', result);
-    alert('Face verification failed. Please try again.');
+    try {
+      console.log('❌ Face verification failed:', result);
+      const message = result?.message || 'Face verification failed. Please try again.';
+      alert(`❌ Verification Failed\n\n${message}`);
+    } catch (error) {
+      console.error('❌ Error in handleVerificationFailed:', error);
+      alert('❌ Face verification failed. Please try again.');
+    }
   };
 
   const handleReset = () => {
@@ -2319,8 +2423,9 @@ export default function App() {
             [STUDENT_ID_KEY, studentIdValue]
           );
         } else if (data.user.role === 'teacher') {
-          setSemester(data.user.semester || '1');
-          setBranch(data.user.department);
+          // Don't set default semester/branch for teachers - let current class detection handle it
+          // setSemester(data.user.semester || '1');
+          // setBranch(data.user.department);
           fetchStudents();
         }
 
@@ -2996,6 +3101,35 @@ export default function App() {
           </View>
         )}
         
+        {/* WiFi Status Display (Development/Testing) */}
+        {(__DEV__ || selectedRole === 'teacher') && currentClassInfo && (
+          <View style={{
+            backgroundColor: wifiDebugInfo.status.includes('AUTHORIZED') ? '#10b981' + '20' : '#ef4444' + '20',
+            padding: 8,
+            borderBottomWidth: 1,
+            borderBottomColor: theme.border
+          }}>
+            <Text style={{ 
+              color: wifiDebugInfo.status.includes('AUTHORIZED') ? '#10b981' : '#ef4444', 
+              fontSize: 11, 
+              fontWeight: '600',
+              textAlign: 'center'
+            }}>
+              📶 WiFi: {wifiDebugInfo.status} • BSSID: {wifiDebugInfo.currentBSSID}
+            </Text>
+            {wifiDebugInfo.reason && (
+              <Text style={{ 
+                color: theme.textSecondary, 
+                fontSize: 10, 
+                textAlign: 'center',
+                marginTop: 2
+              }}>
+                {wifiDebugInfo.reason} • {wifiDebugInfo.lastChecked}
+              </Text>
+            )}
+          </View>
+        )}
+        
         {/* Semester Selector Button (when no lecture) */}
         {!currentClassInfo && (
           <View style={{
@@ -3146,8 +3280,10 @@ export default function App() {
           onSelect={(selection) => {
             setManualSelection(selection);
             
-            // Update semester and branch states for fetchStudents to use
+            // Update global semester/branch for manual selection
             if (selection.semester !== 'auto') {
+              console.log(`📝 Manual selection: ${selection.branch} Semester ${selection.semester}`);
+              // Update global semester/branch so TimetableScreen can use them
               setSemester(selection.semester);
               setBranch(selection.branch);
               
@@ -3159,7 +3295,10 @@ export default function App() {
                 isManual: true
               });
             } else {
-              // Auto mode - clear manual info (will be set by timetable logic)
+              console.log(`🔄 Switched to auto mode - will use current class from timetable`);
+              // Clear manual selection and let auto detection handle it
+              setSemester(null);
+              setBranch(null);
               setCurrentClassInfo(null);
             }
             
@@ -4098,14 +4237,15 @@ export default function App() {
         
         {/* Show timer only during lecture hours */}
         {currentClassInfo ? (
-          <CircularTimer
-            theme={theme}
-            initialTime={displayTime}
-            totalLectureTime={serverTimerData.totalLectureSeconds}
-            remainingTime={serverTimerData.remainingLectureSeconds}
-            isRunning={isRunning}
-            onToggleTimer={handleStartPause}
-            onReset={handleReset}
+          <>
+            <CircularTimer
+              theme={theme}
+              initialTime={displayTime}
+              totalLectureTime={serverTimerData.totalLectureSeconds}
+              remainingTime={serverTimerData.remainingLectureSeconds}
+              isRunning={isRunning}
+              onToggleTimer={handleStartPause}
+              onReset={handleReset}
             onLongPressCenter={async () => {
               console.log('🎯 Play button tapped - starting BSSID validation and permission check');
               
@@ -4204,6 +4344,103 @@ export default function App() {
               }
             }}
           />
+          
+          {/* WiFi Bypass Button (Development/Testing) */}
+          {(__DEV__ || selectedRole === 'teacher') && (
+            <View style={{ alignItems: 'center', marginTop: 15, gap: 10 }}>
+              <TouchableOpacity
+                style={{
+                  paddingHorizontal: 20,
+                  paddingVertical: 10,
+                  backgroundColor: theme.primary + '20',
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: theme.primary,
+                }}
+                onPress={() => {
+                  console.log('🧪 WiFi bypass button pressed');
+                  setWifiDebugInfo({
+                    status: 'AUTHORIZED (SIMULATED)',
+                    currentBSSID: 'Simulated for testing',
+                    expectedBSSID: 'Not required',
+                    room: currentClassInfo?.room || 'Test room',
+                    lastChecked: new Date().toLocaleTimeString()
+                  });
+                  alert('✅ WiFi Bypass Activated\n\nWiFi validation has been bypassed for testing purposes.\n\nYou can now start attendance tracking.');
+                }}
+              >
+                <Text style={{
+                  color: theme.primary,
+                  fontSize: 12,
+                  fontWeight: '600',
+                  textAlign: 'center'
+                }}>
+                  📶 Bypass WiFi Check
+                </Text>
+              </TouchableOpacity>
+              
+              {/* BSSID Diagnostic Button */}
+              <TouchableOpacity
+                style={{
+                  paddingHorizontal: 20,
+                  paddingVertical: 10,
+                  backgroundColor: '#10b981' + '20',
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: '#10b981',
+                }}
+                onPress={async () => {
+                  console.log('🔍 BSSID diagnostic button pressed');
+                  
+                  try {
+                    // Import NativeWiFiService
+                    const NativeWiFiService = require('./NativeWiFiService').default;
+                    
+                    // Run comprehensive WiFi validation
+                    const result = await NativeWiFiService.validateWiFiWithPermissions();
+                    
+                    let message = '📶 BSSID Detection Results:\n\n';
+                    message += `✅ Success: ${result.success ? 'YES' : 'NO'}\n`;
+                    message += `📡 Current BSSID: ${result.currentBSSID}\n`;
+                    message += `📶 SSID: ${result.ssid || 'Unknown'}\n`;
+                    message += `📊 Signal: ${result.rssi || 0} dBm\n`;
+                    message += `🔐 Permissions: ${result.hasPermissions ? 'Granted' : 'Denied'}\n`;
+                    message += `📱 WiFi Enabled: ${result.wifiEnabled ? 'YES' : 'NO'}\n`;
+                    
+                    if (!result.success && result.error) {
+                      message += `\n❌ Error: ${result.error}`;
+                    }
+                    
+                    // Also update debug info
+                    setWifiDebugInfo({
+                      status: result.success ? 'DETECTED' : 'FAILED',
+                      currentBSSID: result.currentBSSID,
+                      expectedBSSID: 'Diagnostic mode',
+                      room: currentClassInfo?.room || 'Test',
+                      lastChecked: new Date().toLocaleTimeString(),
+                      reason: result.error || 'Diagnostic check'
+                    });
+                    
+                    alert(message);
+                    
+                  } catch (error) {
+                    console.error('❌ BSSID diagnostic error:', error);
+                    alert(`❌ Diagnostic Error:\n\n${error.message}`);
+                  }
+                }}
+              >
+                <Text style={{
+                  color: '#10b981',
+                  fontSize: 12,
+                  fontWeight: '600',
+                  textAlign: 'center'
+                }}>
+                  🔍 Check BSSID
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          </>
         ) : (
           <View style={{
             width: '100%',

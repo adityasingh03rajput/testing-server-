@@ -199,8 +199,9 @@ export default function TimetableScreen({
 
 
   useEffect(() => {
+    console.log('🔄 TimetableScreen useEffect triggered:', { semester, branch, loginId, isTeacher });
     fetchTimetable();
-  }, [semester, branch]);
+  }, [semester, branch, loginId, isTeacher]);
 
   // Update current day when timetable loads
   useEffect(() => {
@@ -221,14 +222,83 @@ export default function TimetableScreen({
   }, [semester, branch, socketUrl]);
 
   const fetchTimetable = async () => {
-    if (!semester || !branch) {
-      console.log('No semester or branch provided');
+    if (!socketUrl) {
+      console.log('No socket URL provided');
       setLoading(false);
       return;
     }
 
-    if (!socketUrl) {
-      console.log('No socket URL provided');
+    // For teachers, try to get current class first, then fall back to manual selection
+    if (isTeacher && loginId) {
+      console.log('🔍 Teacher detected - checking for current class first');
+      setLoading(true);
+      
+      try {
+        // First, try to get teacher's current class
+        const currentClassResponse = await fetch(`${socketUrl}/api/teacher/current-class-students/${loginId}`);
+        const currentClassData = await currentClassResponse.json();
+        
+        if (currentClassData.success && currentClassData.hasActiveClass) {
+          const currentClass = currentClassData.currentClass;
+          console.log(`📚 Found current class: ${currentClass.subject} - ${currentClass.branch} Sem ${currentClass.semester}`);
+          
+          // Fetch timetable for current class
+          const url = `${socketUrl}/api/timetable/${currentClass.semester}/${currentClass.branch}?t=${Date.now()}`;
+          console.log('Fetching current class timetable from:', url);
+          
+          const response = await fetch(url, {
+            cache: 'no-cache',
+            headers: { 'Cache-Control': 'no-cache' }
+          });
+          const data = await response.json();
+          
+          if (data.success && data.timetable) {
+            setTimetable(data.timetable);
+            console.log('✅ Current class timetable loaded successfully');
+            setLoading(false);
+            return;
+          }
+        }
+        
+        console.log('ℹ️ No current class found, checking for manual semester/branch');
+        
+        // If no current class, check if semester/branch are provided (manual selection)
+        if (semester && branch) {
+          console.log('📋 Using manual selection:', semester, branch);
+          const url = `${socketUrl}/api/timetable/${semester}/${branch}?t=${Date.now()}`;
+          console.log('Fetching manual timetable from:', url);
+          
+          const response = await fetch(url, {
+            cache: 'no-cache',
+            headers: { 'Cache-Control': 'no-cache' }
+          });
+          const data = await response.json();
+          
+          if (data.success && data.timetable) {
+            setTimetable(data.timetable);
+            console.log('✅ Manual timetable loaded successfully');
+            setLoading(false);
+            return;
+          }
+        }
+        
+        // No current class and no manual selection
+        console.log('⚠️ No timetable available - no current class and no manual selection');
+        setTimetable(null);
+        setLoading(false);
+        return;
+        
+      } catch (error) {
+        console.log('Error fetching teacher timetable:', error);
+        setTimetable(null);
+        setLoading(false);
+        return;
+      }
+    }
+
+    // For students or when semester/branch are explicitly provided
+    if (!semester || !branch) {
+      console.log('No semester or branch provided for student');
       setLoading(false);
       return;
     }
@@ -559,7 +629,9 @@ export default function TimetableScreen({
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            {semester && branch ? `Semester ${semester} • ${branch}` : 'Your class schedule'}
+            {timetable ? `Semester ${timetable.semester} • ${timetable.branch}` : 
+             semester && branch ? `Semester ${semester} • ${branch}` : 
+             isTeacher ? 'Select a timetable to view' : 'Your class schedule'}
           </Text>
           {editModeEnabled && (
             <View style={{
@@ -592,8 +664,35 @@ export default function TimetableScreen({
             No timetable available
           </Text>
           <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
-            Contact your administrator
+            {isTeacher 
+              ? "No current class found. Use 'Select Semester & Branch' to view a specific timetable."
+              : "Contact your administrator"
+            }
           </Text>
+          {isTeacher && (
+            <TouchableOpacity
+              onPress={() => {
+                // This will trigger the semester selector in the parent component
+                // For now, just show a message
+                Alert.alert(
+                  'View Timetable',
+                  'Go to the Home tab and tap "📚 Select Semester & Branch" to choose which timetable to view.',
+                  [{ text: 'OK' }]
+                );
+              }}
+              style={{
+                marginTop: 16,
+                backgroundColor: theme.primary,
+                paddingHorizontal: 20,
+                paddingVertical: 12,
+                borderRadius: 8,
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600' }}>
+                📚 How to View Timetables
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
         <>

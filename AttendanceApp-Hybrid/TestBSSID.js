@@ -9,6 +9,9 @@ const { WifiModule } = NativeModules;
 export default function TestBSSID({ theme }) {
   const [testResults, setTestResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentBSSID, setCurrentBSSID] = useState(null);
+  const [wifiInfo, setWifiInfo] = useState(null);
+  const [isMonitoring, setIsMonitoring] = useState(false);
 
   const addResult = (test, result, success = true) => {
     const timestamp = new Date().toLocaleTimeString();
