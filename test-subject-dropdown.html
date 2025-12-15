@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subject Dropdown Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #333;
+        }
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            background: white;
+        }
+        small {
+            display: block;
+            margin-top: 5px;
+            color: #666;
+            font-size: 12px;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📚 Timetable Subject Dropdown Test</h1>
+        <p class="subtitle">Testing real subjects from database</p>
+
+        <div class="form-group">
+            <label>Select Branch & Semester:</label>
+            <select id="branchSelect" onchange="loadSubjects()">
+                <option value="">-- Select Branch & Semester --</option>
+                <option value="B.Tech Computer Science|3">B.Tech Computer Science - Semester 3</option>
+                <option value="B.Tech Data Science|3">B.Tech Data Science - Semester 3</option>
+                <option value="B.Tech Artificial Intelligence|3">B.Tech Artificial Intelligence - Semester 3</option>
+                <option value="B.Tech Information Technology|3">B.Tech Information Technology - Semester 3</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>📚 Subject</label>
+            <select id="subjectSelect" disabled>
+                <option value="">-- First select branch & semester --</option>
+            </select>
+            <small id="subjectInfo">Select a branch and semester to load subjects</small>
+        </div>
+
+        <button onclick="testSelection()">Test Selection</button>
+
+        <div id="result" class="result" style="display: none;">
+            <strong>Selected Subject:</strong>
+            <div id="selectedSubject"></div>
+        </div>
+
+        <div class="status info">
+            <strong>ℹ️ How it works:</strong>
+            <ul style="margin: 10px 0 0 20px;">
+                <li>Select a branch and semester</li>
+                <li>Subjects are fetched from the database via API</li>
+                <li>Only subjects for that specific branch/semester are shown</li>
+                <li>This is exactly how the timetable editor works</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
+
+        async function loadSubjects() {
+            const branchSelect = document.getElementById('branchSelect');
+            const subjectSelect = document.getElementById('subjectSelect');
+            const subjectInfo = document.getElementById('subjectInfo');
+            
+            const value = branchSelect.value;
+            if (!value) {
+                subjectSelect.disabled = true;
+                subjectSelect.innerHTML = '<option value="">-- First select branch & semester --</option>';
+                subjectInfo.textContent = 'Select a branch and semester to load subjects';
+                return;
+            }
+
+            const [branch, semester] = value.split('|');
+            
+            subjectSelect.disabled = true;
+            subjectSelect.innerHTML = '<option value="">Loading subjects...</option>';
+            subjectInfo.textContent = 'Fetching subjects from database...';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/subjects?semester=${semester}&branch=${encodeURIComponent(branch)}`);
+                const data = await response.json();
+                const subjects = data.subjects || [];
+
+                if (subjects.length > 0) {
+                    subjectSelect.innerHTML = '<option value="">-- Select Subject --</option>' +
+                        subjects.map(s => 
+                            `<option value="${s.subjectName}">${s.subjectName} (${s.subjectCode})</option>`
+                        ).join('');
+                    subjectSelect.disabled = false;
+                    subjectInfo.textContent = `Subjects from database for ${branch} - Semester ${semester} (${subjects.length} subjects found)`;
+                } else {
+                    subjectSelect.innerHTML = '<option value="">No subjects found</option>';
+                    subjectInfo.textContent = 'No subjects found for this branch and semester';
+                }
+            } catch (error) {
+                console.error('Error loading subjects:', error);
+                subjectSelect.innerHTML = '<option value="">Error loading subjects</option>';
+                subjectInfo.textContent = 'Error: ' + error.message;
+            }
+        }
+
+        function testSelection() {
+            const subjectSelect = document.getElementById('subjectSelect');
+            const result = document.getElementById('result');
+            const selectedSubject = document.getElementById('selectedSubject');
+            
+            if (subjectSelect.value) {
+                selectedSubject.textContent = subjectSelect.options[subjectSelect.selectedIndex].text;
+                result.style.display = 'block';
+            } else {
+                alert('Please select a subject first');
+            }
+        }
+    </script>
+</body>
+</html>

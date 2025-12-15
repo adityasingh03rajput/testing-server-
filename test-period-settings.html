@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Period Settings</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .period-item { border: 1px solid #ccc; margin: 10px 0; padding: 10px; }
+        .no-periods { color: #666; font-style: italic; }
+        button { margin: 5px; padding: 8px 16px; }
+    </style>
+</head>
+<body>
+    <h1>Period Settings Test</h1>
+    <div id="periodsList"></div>
+    <button onclick="loadTestPeriods()">Load Test Periods</button>
+    <button onclick="saveCurrentPeriodsAsDefault()">Save as Default</button>
+    <button onclick="resetToDefaultPeriods()">Reset to Default</button>
+
+    <script>
+        const SERVER_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
+        let currentPeriods = [];
+
+        function getDefaultPeriods() {
+            // Check if there are saved custom periods in localStorage
+            const savedPeriods = localStorage.getItem('defaultPeriods');
+            if (savedPeriods) {
+                try {
+                    return JSON.parse(savedPeriods);
+                } catch (e) {
+                    console.warn('Invalid saved periods, using system defaults');
+                }
+            }
+            
+            // System default periods (can be customized by admin)
+            return [
+                { number: 1, startTime: '09:00', endTime: '10:00' },
+                { number: 2, startTime: '10:00', endTime: '11:00' },
+                { number: 3, startTime: '11:00', endTime: '11:15' }, // Break
+                { number: 4, startTime: '11:15', endTime: '12:15' },
+                { number: 5, startTime: '12:15', endTime: '13:15' },
+                { number: 6, startTime: '13:15', endTime: '14:00' }, // Lunch
+                { number: 7, startTime: '14:00', endTime: '15:00' },
+                { number: 8, startTime: '15:00', endTime: '16:00' }
+            ];
+        }
+
+        function saveDefaultPeriods(periods) {
+            try {
+                localStorage.setItem('defaultPeriods', JSON.stringify(periods));
+                console.log('✅ Default periods saved to localStorage');
+                return true;
+            } catch (error) {
+                console.error('❌ Failed to save default periods:', error);
+                return false;
+            }
+        }
+
+        function renderPeriods() {
+            const periodsList = document.getElementById('periodsList');
+            
+            // Safety check - ensure currentPeriods exists and has valid data
+            if (!currentPeriods || currentPeriods.length === 0) {
+                periodsList.innerHTML = '<div class="no-periods">No periods configured. Click "Load Test Periods" to get started.</div>';
+                return;
+            }
+
+            periodsList.innerHTML = currentPeriods.map((period, index) => {
+                // Ensure period has required properties with defaults
+                const periodNumber = period.number || (index + 1);
+                const startTime = period.startTime || '09:00';
+                const endTime = period.endTime || '10:00';
+                const duration = calculateDuration(startTime, endTime);
+
+                return `
+                    <div class="period-item" data-index="${index}">
+                        <strong>Period ${periodNumber}</strong><br>
+                        Start: ${startTime}<br>
+                        End: ${endTime}<br>
+                        Duration: ${duration} min
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function calculateDuration(startTime, endTime) {
+            // Safety check for undefined times
+            if (!startTime || !endTime) {
+                return 0;
+            }
+            
+            try {
+                const [startHour, startMin] = startTime.split(':').map(Number);
+                const [endHour, endMin] = endTime.split(':').map(Number);
+
+                const startMinutes = startHour * 60 + startMin;
+                const endMinutes = endHour * 60 + endMin;
+
+                return Math.max(0, endMinutes - startMinutes);
+            } catch (error) {
+                console.warn('Error calculating duration:', error);
+                return 0;
+            }
+        }
+
+        function loadTestPeriods() {
+            currentPeriods = getDefaultPeriods();
+            renderPeriods();
+            console.log('✅ Test periods loaded:', currentPeriods);
+        }
+
+        function saveCurrentPeriodsAsDefault() {
+            if (!currentPeriods || currentPeriods.length === 0) {
+                alert('No periods to save as default');
+                return;
+            }
+            
+            if (!confirm('Save current period configuration as default? This will be used for all new timetables.')) {
+                return;
+            }
+            
+            try {
+                // Save to localStorage
+                saveDefaultPeriods(currentPeriods);
+                alert(`Saved ${currentPeriods.length} periods as default configuration`);
+                
+                // Update the UI to reflect the change
+                renderPeriods();
+            } catch (error) {
+                console.error('Error saving default periods:', error);
+                alert('Failed to save default periods');
+            }
+        }
+
+        function resetToDefaultPeriods() {
+            if (!confirm('Reset to default period configuration? This will replace all current periods.')) {
+                return;
+            }
+            
+            try {
+                // Get fresh default periods (ignoring any saved custom defaults)
+                const defaultPeriods = [
+                    { number: 1, startTime: '09:00', endTime: '09:45', duration: 45, isBreak: false },
+                    { number: 2, startTime: '09:45', endTime: '10:30', duration: 45, isBreak: false },
+                    { number: 3, startTime: '10:30', endTime: '10:45', duration: 15, isBreak: true },
+                    { number: 4, startTime: '10:45', endTime: '11:30', duration: 45, isBreak: false },
+                    { number: 5, startTime: '11:30', endTime: '12:15', duration: 45, isBreak: false },
+                    { number: 6, startTime: '12:15', endTime: '13:00', duration: 45, isBreak: false },
+                    { number: 7, startTime: '13:00', endTime: '14:00', duration: 60, isBreak: true },
+                    { number: 8, startTime: '14:00', endTime: '14:45', duration: 45, isBreak: false },
+                    { number: 9, startTime: '14:45', endTime: '15:30', duration: 45, isBreak: false },
+                    { number: 10, startTime: '15:30', endTime: '15:45', duration: 15, isBreak: true },
+                    { number: 11, startTime: '15:45', endTime: '16:30', duration: 45, isBreak: false },
+                    { number: 12, startTime: '16:30', endTime: '17:15', duration: 45, isBreak: false }
+                ];
+                
+                // Update current periods
+                currentPeriods = [...defaultPeriods];
+                
+                // Re-render the periods UI
+                renderPeriods();
+                
+                alert(`Reset to default configuration with ${defaultPeriods.length} periods`);
+                
+                // Clear any saved custom defaults if user wants fresh start
+                if (confirm('Also clear saved custom default periods? (This will affect future new timetables)')) {
+                    localStorage.removeItem('defaultPeriods');
+                    alert('Cleared saved custom default periods');
+                }
+                
+            } catch (error) {
+                console.error('Error resetting to default periods:', error);
+                alert('Failed to reset to default periods');
+            }
+        }
+
+        // Initialize on page load
+        window.onload = function() {
+            loadTestPeriods();
+        };
+    </script>
+</body>
+</html>

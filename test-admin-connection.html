@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Admin Panel Connection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #0a0e27;
+            color: #fff;
+        }
+        .status {
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+            background: #1a1e37;
+        }
+        .success { border-left: 4px solid #00ff00; }
+        .error { border-left: 4px solid #ff0000; }
+        .info { border-left: 4px solid #00d9ff; }
+        button {
+            padding: 10px 20px;
+            background: #00d9ff;
+            color: #000;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #00b8d9;
+        }
+        pre {
+            background: #000;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Admin Panel Connection Test</h1>
+    
+    <div class="status info">
+        <h3>Server URL:</h3>
+        <p id="serverUrl">https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net</p>
+    </div>
+
+    <button onclick="testHealth()">Test Health Endpoint</button>
+    <button onclick="testStudents()">Test Students API</button>
+    <button onclick="testTeachers()">Test Teachers API</button>
+    <button onclick="testAttendance()">Test Attendance API</button>
+
+    <div id="results"></div>
+
+    <script>
+        const SERVER_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
+
+        function showResult(title, success, data) {
+            const results = document.getElementById('results');
+            const statusClass = success ? 'success' : 'error';
+            const icon = success ? '✅' : '❌';
+            
+            results.innerHTML += `
+                <div class="status ${statusClass}">
+                    <h3>${icon} ${title}</h3>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                </div>
+            `;
+        }
+
+        async function testHealth() {
+            document.getElementById('results').innerHTML = '';
+            try {
+                const response = await fetch(`${SERVER_URL}/api/health`);
+                const data = await response.json();
+                showResult('Health Check', response.ok, {
+                    status: response.status,
+                    data: data
+                });
+            } catch (error) {
+                showResult('Health Check', false, {
+                    error: error.message
+                });
+            }
+        }
+
+        async function testStudents() {
+            document.getElementById('results').innerHTML = '';
+            try {
+                const response = await fetch(`${SERVER_URL}/api/students`);
+                const data = await response.json();
+                showResult('Students API', response.ok, {
+                    status: response.status,
+                    count: data.students?.length || 0,
+                    sample: data.students?.[0] || 'No students'
+                });
+            } catch (error) {
+                showResult('Students API', false, {
+                    error: error.message
+                });
+            }
+        }
+
+        async function testTeachers() {
+            document.getElementById('results').innerHTML = '';
+            try {
+                const response = await fetch(`${SERVER_URL}/api/teachers`);
+                const data = await response.json();
+                showResult('Teachers API', response.ok, {
+                    status: response.status,
+                    count: data.teachers?.length || 0,
+                    sample: data.teachers?.[0] || 'No teachers'
+                });
+            } catch (error) {
+                showResult('Teachers API', false, {
+                    error: error.message
+                });
+            }
+        }
+
+        async function testAttendance() {
+            document.getElementById('results').innerHTML = '';
+            try {
+                const response = await fetch(`${SERVER_URL}/api/attendance/records`);
+                const data = await response.json();
+                showResult('Attendance API', response.ok, {
+                    status: response.status,
+                    count: data.records?.length || 0,
+                    sample: data.records?.[0] || 'No records'
+                });
+            } catch (error) {
+                showResult('Attendance API', false, {
+                    error: error.message
+                });
+            }
+        }
+
+        // Auto-test on load
+        window.onload = () => {
+            testHealth();
+        };
+    </script>
+</body>
+</html>
