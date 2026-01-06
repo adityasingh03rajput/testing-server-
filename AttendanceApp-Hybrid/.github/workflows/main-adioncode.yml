@@ -55,6 +55,5 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'adioncode'
-          slot-name: 'Production'
           package: .
           publish-profile: ${{ secrets.AzureAppService_PublishProfile_1234 }}
