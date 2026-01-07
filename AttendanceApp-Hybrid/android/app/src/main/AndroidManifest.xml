@@ -30,7 +30,6 @@
   <!-- Runtime permission declarations for Android 13+ -->
   <uses-permission-sdk-23 android:name="android.permission.ACCESS_FINE_LOCATION"/>
   <uses-permission-sdk-23 android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-  <uses-permission-sdk-23 android:name="android.permission.NEARBY_WIFI_DEVICES" android:maxSdkVersion="32"/>
   
   <!-- Feature declarations for WiFi -->
   <uses-feature android:name="android.hardware.wifi" android:required="true"/>
