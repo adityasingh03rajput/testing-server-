@@ -217,11 +217,32 @@ const attendanceSessionSchema = new mongoose.Schema({
     enrollmentNo: { type: String, required: true },  // Changed from enrollmentNumber to match student schema
     date: { type: Date, required: true },
     
+    // Unified timer fields
     sessionStartTime: { type: Date, required: true },  // When timer started
     timerValue: { type: Number, default: 0 },          // Current timer in seconds
     isActive: { type: Boolean, default: true },
+    isPaused: { type: Boolean, default: false },
     lastUpdate: { type: Date, default: Date.now },
     
+    // Security and validation
+    pauseReason: { type: String },
+    pauseStartTime: { type: Date },
+    pausedDuration: { type: Number, default: 0 },      // Total paused time in seconds
+    resumeReason: { type: String },
+    stopReason: { type: String },
+    stopTime: { type: Date },
+    
+    // Grace period management (STUDENT-FRIENDLY: No limits)
+    gracePeriodsUsed: { type: Number, default: 0 },
+    maxGracePeriods: { type: Number, default: 999 }, // Unlimited grace periods
+    
+    // Device and security info
+    deviceInfo: {
+        platform: String,
+        timestamp: String
+    },
+    
+    // Legacy fields (for backward compatibility)
     wifiConnected: { type: Boolean, default: true },
     currentClass: {
         period: String,
@@ -235,7 +256,20 @@ const attendanceSessionSchema = new mongoose.Schema({
     },
     
     semester: String,
-    branch: String
+    branch: String,
+    
+    // Random Ring tracking (unified)
+    randomRingId: String,
+    randomRingTime: Date,
+    timeBeforeRandomRing: Number,
+    
+    // Security audit trail
+    securityEvents: [{
+        type: { type: String }, // 'start', 'stop', 'pause', 'resume', 'sync', 'drift_detected'
+        timestamp: { type: Date, default: Date.now },
+        reason: String,
+        data: mongoose.Schema.Types.Mixed
+    }]
 });
 
 const AttendanceSession = mongoose.model('AttendanceSession', attendanceSessionSchema);
@@ -1699,7 +1733,322 @@ setInterval(async () => {
 
 
 // ============================================
-// NEW ATTENDANCE TRACKING SYSTEM
+// UNIFIED TIMER SYSTEM - SINGLE SOURCE OF TRUTH
+// ============================================
+
+// Get current timer state (unified endpoint)
+app.post('/api/attendance/get-timer-state', async (req, res) => {
+    try {
+        const { studentId, clientTime, currentState } = req.body;
+        
+        if (!studentId) {
+            return res.status(400).json({ success: false, error: 'Student ID required' });
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Find active session
+        const session = await AttendanceSession.findOne({
+            studentId,
+            date: today,
+            isActive: true
+        });
+
+        if (!session) {
+            return res.json({
+                success: true,
+                timerState: {
+                    attendedSeconds: 0,
+                    totalLectureSeconds: 0,
+                    isRunning: false,
+                    isPaused: false,
+                    sessionId: null
+                }
+            });
+        }
+
+        // Calculate current attended time
+        const now = Date.now();
+        const sessionStart = new Date(session.sessionStartTime).getTime();
+        let attendedSeconds = Math.floor((now - sessionStart) / 1000);
+
+        // Subtract paused time
+        if (session.pausedDuration) {
+            attendedSeconds -= session.pausedDuration;
+        }
+
+        // Validate against client state for security
+        if (currentState && currentState.attendedSeconds) {
+            const drift = Math.abs(attendedSeconds - currentState.attendedSeconds);
+            if (drift > 30) { // 30 seconds max drift
+                console.warn(`⚠️ Timer drift detected for ${studentId}: ${drift}s`);
+            }
+        }
+
+        res.json({
+            success: true,
+            timerState: {
+                attendedSeconds: Math.max(0, attendedSeconds),
+                totalLectureSeconds: session.totalLectureSeconds || 0,
+                isRunning: session.isActive && !session.isPaused,
+                isPaused: session.isPaused || false,
+                sessionId: session._id.toString(),
+                gracePeriodsUsed: session.gracePeriodsUsed || 0
+            },
+            serverTime: now
+        });
+
+    } catch (error) {
+        console.error('❌ Error getting timer state:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Start unified timer (secure)
+app.post('/api/attendance/start-unified-timer', async (req, res) => {
+    try {
+        const { studentId, lectureInfo, clientTime, deviceInfo } = req.body;
+        
+        if (!studentId) {
+            return res.status(400).json({ success: false, error: 'Student ID required' });
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const now = new Date();
+
+        // Check for existing session
+        let session = await AttendanceSession.findOne({
+            studentId,
+            date: today
+        });
+
+        if (session && session.isActive) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Timer already running' 
+            });
+        }
+
+        // Create new session
+        if (!session) {
+            session = new AttendanceSession({
+                studentId,
+                date: today,
+                sessionStartTime: now,
+                timerValue: 0,
+                isActive: true,
+                isPaused: false,
+                gracePeriodsUsed: 0,
+                maxGracePeriods: 999, // Practically unlimited
+                deviceInfo: deviceInfo
+            });
+        } else {
+            // Resume existing session
+            session.sessionStartTime = now;
+            session.isActive = true;
+            session.isPaused = false;
+            session.timerValue = 0;
+        }
+
+        await session.save();
+
+        // Log security event
+        console.log(`✅ Unified timer started for ${studentId}`, {
+            sessionId: session._id,
+            clientTime,
+            serverTime: now.getTime(),
+            drift: Math.abs(clientTime - now.getTime())
+        });
+
+        res.json({
+            success: true,
+            sessionId: session._id.toString(),
+            timerState: {
+                attendedSeconds: 0,
+                totalLectureSeconds: lectureInfo?.duration || 0,
+                isRunning: true,
+                isPaused: false,
+                sessionId: session._id.toString(),
+                gracePeriodsUsed: 0
+            },
+            serverTime: now.getTime()
+        });
+
+    } catch (error) {
+        console.error('❌ Error starting unified timer:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Stop unified timer (secure)
+app.post('/api/attendance/stop-unified-timer', async (req, res) => {
+    try {
+        const { studentId, sessionId, reason, clientTime } = req.body;
+        
+        if (!studentId || !sessionId) {
+            return res.status(400).json({ success: false, error: 'Student ID and session ID required' });
+        }
+
+        const session = await AttendanceSession.findById(sessionId);
+        
+        if (!session || session.studentId !== studentId) {
+            return res.status(404).json({ success: false, error: 'Session not found' });
+        }
+
+        // Calculate final attended time
+        const now = Date.now();
+        const sessionStart = new Date(session.sessionStartTime).getTime();
+        let finalAttendedSeconds = Math.floor((now - sessionStart) / 1000);
+
+        // Subtract paused time
+        if (session.pausedDuration) {
+            finalAttendedSeconds -= session.pausedDuration;
+        }
+
+        // Update session
+        session.isActive = false;
+        session.isPaused = false;
+        session.timerValue = Math.max(0, finalAttendedSeconds);
+        session.stopReason = reason;
+        session.stopTime = new Date();
+
+        await session.save();
+
+        // Log security event
+        console.log(`⏹️ Unified timer stopped for ${studentId}`, {
+            sessionId,
+            reason,
+            finalTime: finalAttendedSeconds,
+            clientTime,
+            serverTime: now
+        });
+
+        res.json({
+            success: true,
+            finalAttendedSeconds: Math.max(0, finalAttendedSeconds),
+            reason: reason
+        });
+
+    } catch (error) {
+        console.error('❌ Error stopping unified timer:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Pause unified timer (with grace period management)
+app.post('/api/attendance/pause-unified-timer', async (req, res) => {
+    try {
+        const { studentId, sessionId, reason, gracePeriodsUsed, clientTime } = req.body;
+        
+        if (!studentId || !sessionId) {
+            return res.status(400).json({ success: false, error: 'Student ID and session ID required' });
+        }
+
+        const session = await AttendanceSession.findById(sessionId);
+        
+        if (!session || session.studentId !== studentId) {
+            return res.status(404).json({ success: false, error: 'Session not found' });
+        }
+
+        // Check grace period limits for WiFi-related pauses (STUDENT-FRIENDLY: No hard limits)
+        if (reason.includes('wifi') && gracePeriodsUsed >= 999) { // Practically unlimited
+            // Only stop after extreme abuse (999 disconnections)
+            session.isActive = false;
+            session.isPaused = false;
+            session.stopReason = 'max_grace_periods_exceeded';
+            session.stopTime = new Date();
+            
+            await session.save();
+            
+            return res.json({
+                success: true,
+                action: 'stopped',
+                reason: 'Extreme disconnection abuse detected (999+ times)'
+            });
+        }
+
+        // Pause timer
+        session.isPaused = true;
+        session.pauseReason = reason;
+        session.pauseStartTime = new Date();
+        
+        // Increment grace periods for WiFi issues
+        if (reason.includes('wifi')) {
+            session.gracePeriodsUsed = (session.gracePeriodsUsed || 0) + 1;
+        }
+
+        await session.save();
+
+        console.log(`⏸️ Unified timer paused for ${studentId}`, {
+            sessionId,
+            reason,
+            gracePeriodsUsed: session.gracePeriodsUsed
+        });
+
+        res.json({
+            success: true,
+            action: 'paused',
+            gracePeriodsUsed: session.gracePeriodsUsed,
+            maxGracePeriods: 999 // Practically unlimited
+        });
+
+    } catch (error) {
+        console.error('❌ Error pausing unified timer:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Resume unified timer
+app.post('/api/attendance/resume-unified-timer', async (req, res) => {
+    try {
+        const { studentId, sessionId, reason, clientTime } = req.body;
+        
+        if (!studentId || !sessionId) {
+            return res.status(400).json({ success: false, error: 'Student ID and session ID required' });
+        }
+
+        const session = await AttendanceSession.findById(sessionId);
+        
+        if (!session || session.studentId !== studentId) {
+            return res.status(404).json({ success: false, error: 'Session not found' });
+        }
+
+        // Calculate paused duration
+        if (session.pauseStartTime) {
+            const pauseDuration = Date.now() - new Date(session.pauseStartTime).getTime();
+            session.pausedDuration = (session.pausedDuration || 0) + Math.floor(pauseDuration / 1000);
+        }
+
+        // Resume timer
+        session.isPaused = false;
+        session.pauseReason = null;
+        session.pauseStartTime = null;
+        session.resumeReason = reason;
+
+        await session.save();
+
+        console.log(`▶️ Unified timer resumed for ${studentId}`, {
+            sessionId,
+            reason,
+            totalPausedTime: session.pausedDuration
+        });
+
+        res.json({
+            success: true,
+            action: 'resumed',
+            totalPausedTime: session.pausedDuration || 0
+        });
+
+    } catch (error) {
+        console.error('❌ Error resuming unified timer:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============================================
+// LEGACY ATTENDANCE TRACKING SYSTEM (DEPRECATED)
 // ============================================
 
 // 1. Face Verification & Timer Start

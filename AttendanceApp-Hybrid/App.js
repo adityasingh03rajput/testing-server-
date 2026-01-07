@@ -35,6 +35,9 @@ import Feedback from './Feedback';
 import SemesterSelector from './SemesterSelector';
 import WiFiManager from './WiFiManager';
 import TestBSSID from './TestBSSID';
+// SECURITY FIX: Import unified timer manager
+import { useUnifiedTimer } from './UnifiedTimerManager';
+import SecurityStatusIndicator from './SecurityStatusIndicator';
 // WiFi BSSID Integration from LetsBunk
 
 const API_URL = 'https://letsbunk-uw7g.onrender.com/api/config';
@@ -118,31 +121,44 @@ export default function App() {
   const [studentName, setStudentName] = useState('');
   const [studentId, setStudentId] = useState(null);
   const [showNameInput, setShowNameInput] = useState(false);
-  // Removed timeLeft state - attendance is tracked by server
-  const [isRunning, setIsRunning] = useState(false);
+  
+  // SECURITY FIX: Remove conflicting timer states - use unified timer only
+  // OLD VULNERABLE CODE REMOVED:
+  // const [isRunning, setIsRunning] = useState(false);
+  // const [serverTimerData, setServerTimerData] = useState({...});
+  // const [displayTime, setDisplayTime] = useState(0);
+  // const [uiClock, setUiClock] = useState(0);
+  
   const [students, setStudents] = useState([]);
-  
-  // Centralized timer data from server (single source of truth)
-  const [serverTimerData, setServerTimerData] = useState({
-    totalLectureSeconds: 0,
-    elapsedLectureSeconds: 0,
-    remainingLectureSeconds: 0,
-    attendedSeconds: 0,
-    lectureSubject: '',
-    lectureTeacher: '',
-    lectureRoom: '',
-    lectureStartTime: '',
-    lectureEndTime: ''
-  });
-  
-  // Local timer display - increments every second when running
-  const [displayTime, setDisplayTime] = useState(0);
-  
-  // UI clock state - updates every second for smooth display
-  const [uiClock, setUiClock] = useState(0);
-  
   const [semester, setSemester] = useState(null);
   const [branch, setBranch] = useState(null);
+
+  // SECURITY FIX: Use unified timer - single source of truth
+  const unifiedTimer = useUnifiedTimer(studentId, SOCKET_URL, {
+    semester: semester,
+    branch: branch,
+    subject: currentLecture?.subject,
+    room: currentLecture?.room
+  });
+
+  // Extract timer state for UI (read-only)
+  const {
+    timerState,
+    startTimer,
+    stopTimer,
+    pauseTimer,
+    resumeTimer,
+    formatTime,
+    isSecure,
+    canStart,
+    canStop,
+    securityStatus
+  } = unifiedTimer;
+
+  // Derived state for UI compatibility
+  const isRunning = timerState.isRunning;
+  const displayTime = timerState.displayTime;
+  const attendedSeconds = timerState.attendedSeconds;
 
   // Teacher-specific timetable states
   const [showTimetable, setShowTimetable] = useState(false);
@@ -568,70 +584,17 @@ export default function App() {
       setCurrentClassInfo(foundClass);
     };
 
-    updateClassProgress();
-    const progressInterval = setInterval(updateClassProgress, 1000); // Update every second for real-time display
-
-    return () => clearInterval(progressInterval);
-  }, [timetable, currentDay, selectedRole]);
-
-  // Removed 5-minute backup - server handles all attendance tracking via timer broadcasts
-
-  // Sync displayTime with serverTimerData when server broadcasts arrive
+  // SECURITY FIX: Remove old conflicting timer sync code
+  // All timer operations now go through unified timer manager
+  
+  // Sync displayTime with unified timer when it updates
   useEffect(() => {
-    setDisplayTime(serverTimerData.attendedSeconds);
-  }, [serverTimerData.attendedSeconds]);
+    // Display time is now managed by unified timer - no manual sync needed
+  }, [timerState.attendedSeconds]);
 
-  // UI Clock - Increment display time every second when running
-  useEffect(() => {
-    if (!isRunning || selectedRole !== 'student') return;
-    
-    // Update display time every second for smooth timer
-    const clockInterval = setInterval(() => {
-      setDisplayTime(prev => prev + 1);
-      setUiClock(prev => prev + 1); // Force re-render
-    }, 1000);
-    
-    return () => clearInterval(clockInterval);
-  }, [isRunning, selectedRole]);
-
-  // Timer Heartbeat - Send updates to server every 5 minutes
-  useEffect(() => {
-    if (!isRunning || selectedRole !== 'student' || !studentId) return;
-    
-    const sendHeartbeat = async () => {
-      try {
-        const timerSeconds = serverTimerData.attendedSeconds || 0;
-        const wifiConnected = true; // TODO: Check actual WiFi status
-        
-        console.log('💓 Sending timer heartbeat:', timerSeconds, 'seconds');
-        
-        await fetch(`${SOCKET_URL}/api/attendance/update-timer`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            studentId: studentId,
-            timerValue: timerSeconds,
-            wifiConnected: wifiConnected
-          })
-        });
-        
-        console.log('✅ Heartbeat sent successfully');
-      } catch (error) {
-        console.error('❌ Error sending heartbeat:', error);
-      }
-    };
-    
-    // Send heartbeat every 5 minutes
-    const heartbeatInterval = setInterval(sendHeartbeat, 5 * 60 * 1000);
-    
-    // Send initial heartbeat after 1 minute
-    const initialHeartbeat = setTimeout(sendHeartbeat, 60 * 1000);
-    
-    return () => {
-      clearInterval(heartbeatInterval);
-      clearTimeout(initialHeartbeat);
-    };
-  }, [isRunning, selectedRole, studentId, serverTimerData.attendedSeconds]);
+  // REMOVED: Old UI Clock increment (security vulnerability)
+  // REMOVED: Old Timer Heartbeat (replaced by unified timer sync)
+  // REMOVED: Old server timer sync (replaced by unified timer validation)
 
   useEffect(() => {
     // Initialize server time synchronization (CRITICAL for security)
@@ -677,7 +640,7 @@ export default function App() {
           } catch {
             // If server time fails, stop tracking - security measure
             console.error('⚠️ Cannot calculate background time without server time');
-            updateTimerOnServer(0, false, null);
+            // OLD CODE REMOVED: updateTimerOnServer(0, false, null);
           }
         }
         backgroundTimeRef.current = null;
@@ -804,7 +767,7 @@ export default function App() {
       // Re-send current status if student is active
       if (selectedRole === 'student' && studentId && isRunning) {
         console.log('📡 Re-sending student status after reconnect');
-        updateTimerOnServer(timerValue, isRunning);
+        // OLD CODE REMOVED: updateTimerOnServer(timerValue, isRunning);
       }
     });
 
@@ -819,8 +782,8 @@ export default function App() {
         
         const offlineData = {
           startTime: Date.now(),
-          lastKnownSeconds: serverTimerData.attendedSeconds,
-          sessionStartTime: serverTimerData.sessionStartTime,
+          lastKnownSeconds: attendedSeconds, // Use unified timer data
+          sessionStartTime: timerState.sessionStartTime,
           lectureSubject: currentClassInfo.subject,
           lectureStartTime: currentClassInfo.startTime,
           lectureEndTime: currentClassInfo.endTime
@@ -1093,11 +1056,8 @@ export default function App() {
         if (isForThisStudent) {
           console.log('✅✅✅ UPDATING STUDENT TIMER DATA ✅✅✅');
           console.log('   Attended Seconds:', data.attendedSeconds);
-          
-          // Force update by creating new object with timestamp
-          setServerTimerData(prev => ({
-            totalLectureSeconds: data.totalLectureSeconds || 0,
-            elapsedLectureSeconds: data.elapsedLectureSeconds || 0,
+          // OLD CODE REMOVED: Force update serverTimerData
+          // Now handled by unified timer automatically
             remainingLectureSeconds: data.remainingLectureSeconds || 0,
             attendedSeconds: data.attendedSeconds || 0,
             lectureSubject: data.lectureSubject || '',
@@ -1178,10 +1138,8 @@ export default function App() {
         if (attendedSeconds > 0) {
           console.log(`✅ Restoring timer: ${attendedSeconds} seconds (${Math.floor(attendedSeconds / 60)} minutes)`);
           
-          // Update serverTimerData to show attended time
-          setServerTimerData(prev => ({
-            ...prev,
-            attendedSeconds: attendedSeconds
+          // OLD CODE REMOVED: Update serverTimerData
+          // Now handled by unified timer automatically
           }));
           
           // If student was running timer, restore verification status
@@ -1741,9 +1699,13 @@ export default function App() {
     }
   }, [isRunning]);
 
-  const updateTimerOnServer = async (timer, running, status = null) => {
-    // Legacy function - kept for compatibility but server handles all tracking
-    if (!studentId) {
+  // OLD TIMER FUNCTION REMOVED - Now handled by unified timer
+  // const updateTimerOnServer = async (timer, running, status = null) => {
+  //   // Legacy function - kept for compatibility but server handles all tracking
+  //   if (!studentId) {
+  //     return;
+  //   }
+  // };
       console.log('⚠️ No studentId for timer update');
       return;
     }
@@ -1998,10 +1960,11 @@ export default function App() {
     }
   };
 
+  // SECURITY FIX: Replace old timer functions with unified timer
   const handleStartPause = async () => {
-    // Only allow starting, no pausing
+    // Only allow starting, no pausing - pausing is handled by WiFi/security systems
     if (isRunning) {
-      // Already running, do nothing
+      // Already running, do nothing (no manual pause allowed)
       return;
     }
 
@@ -2011,26 +1974,18 @@ export default function App() {
       return;
     }
 
-    console.log('🔒 Starting attendance validation process...');
+    console.log('🔒 Starting unified attendance validation process...');
 
     // Step 0: Check and request location permissions FIRST
     console.log('🔐 Step 0: Checking location permissions...');
     if (Platform.OS === 'android') {
-      // Use string constants directly to avoid null permission constants issue
       const FINE_LOCATION = 'android.permission.ACCESS_FINE_LOCATION';
       const COARSE_LOCATION = 'android.permission.ACCESS_COARSE_LOCATION';
       
       const fineLocationGranted = await PermissionsAndroid.check(FINE_LOCATION);
       const coarseLocationGranted = await PermissionsAndroid.check(COARSE_LOCATION);
       
-      console.log('🔐 Permission status:');
-      console.log('   Fine location:', fineLocationGranted);
-      console.log('   Coarse location:', coarseLocationGranted);
-      
       if (!fineLocationGranted && !coarseLocationGranted) {
-        console.log('🔐 Location permission not granted - requesting...');
-        
-        // Request fine location permission with explanation
         const granted = await PermissionsAndroid.request(
           FINE_LOCATION,
           {
@@ -2042,32 +1997,21 @@ export default function App() {
           }
         );
         
-        console.log('🔐 Permission request result:', granted);
-        
         if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-          console.log('❌ Location permission denied');
           alert('❌ Permission Required\n\nLocation permission is required for WiFi-based attendance verification.\n\nPlease grant permission in device settings to continue.');
           return;
         }
-        
-        console.log('✅ Location permission granted');
-      } else {
-        console.log('✅ Location permission already granted');
       }
     }
 
-    // CRITICAL: WiFi + Face verification required to start timer
-    // This prevents students from faking attendance from home
-    
-    // 1. Check WiFi connection first (ASYNC)
+    // 1. Check WiFi connection first
     console.log('📶 Step 1: Validating WiFi connection...');
     const wifiValid = await isConnectedToClassroomWiFi();
     if (!wifiValid) {
-      // Check if it's a simulated bypass
       if (wifiDebugInfo.status === 'AUTHORIZED (SIMULATED)') {
         console.log('🧪 WiFi bypass is active, proceeding...');
       } else {
-        alert('❌ WiFi Validation Failed\n\nYou must be connected to the classroom WiFi to start attendance tracking.\n\nPlease connect to the authorized classroom network and try again.\n\n💡 Tip: If you\'re having WiFi issues, use the "Bypass WiFi Check" button for testing.');
+        alert('❌ WiFi Validation Failed\n\nYou must be connected to the classroom WiFi to start attendance tracking.\n\nPlease connect to the authorized classroom network and try again.');
         return;
       }
     }
@@ -2081,33 +2025,12 @@ export default function App() {
       return;
     }
 
-    // 3. Both WiFi and face verification passed - start timer
-    console.log('✅ All validations passed - Starting timer');
-    console.log('   ✅ WiFi: Connected to classroom network');
-    console.log('   ✅ Face: Verified today');
-    console.log('   ✅ Class: Active lecture in progress');
+    // 3. All validations passed - start unified timer
+    console.log('✅ All validations passed - Starting unified timer');
     
-    setIsRunning(true);
-    
-    if (socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit('start_timer', {
-        studentId,
-        enrollmentNo: userData?.enrollmentNo,
-        name: studentName,
-        semester,
-        branch,
-        currentClass: currentClassInfo?.subject,
-        lectureDuration: currentClassInfo?.duration || 60,
-        wifiValidated: true,
-        faceVerified: true,
-        validationTimestamp: new Date().toISOString()
-      });
-      console.log('⏱️ Sent start_timer to server with full validations');
-    } else {
-      console.warn('⚠️ Socket not connected, cannot start centralized timer');
-      // Don't allow offline timer without server validation
-      alert('❌ Server Connection Required\n\nServer connection is required for attendance tracking.\n\nPlease check your internet connection.');
-      setIsRunning(false);
+    const success = await startTimer();
+    if (!success) {
+      alert('❌ Failed to start timer\n\nPlease check your connection and try again.');
     }
   };
 
@@ -2307,8 +2230,8 @@ export default function App() {
       });
       console.log('⏹️ Sent stop_timer to server');
     } else {
-      // Fallback to old method
-      updateTimerOnServer(0, false, 'absent');
+      // Use unified timer for logout
+      await stopTimer('logout');
     }
   };
 
@@ -4099,6 +4022,25 @@ export default function App() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <StatusBar style={theme.statusBar} />
+      
+      {/* SECURITY FIX: Add security status indicator for students */}
+      {selectedRole === 'student' && isRunning && (
+        <SecurityStatusIndicator
+          securityStatus={securityStatus}
+          theme={theme}
+          onPress={() => {
+            Alert.alert(
+              '🔒 Timer Security Status',
+              `Validation: ${securityStatus.isValidated ? 'Secure' : 'Not Validated'}\n` +
+              `Sync Drift: ${securityStatus.drift}s\n` +
+              `WiFi Disconnections: ${securityStatus.gracePeriodsUsed}\n` +
+              `Last Sync: ${securityStatus.lastSync ? new Date(securityStatus.lastSync).toLocaleTimeString() : 'Never'}\n\n` +
+              `Note: Unlimited grace periods for WiFi issues - student friendly!`,
+              [{ text: 'OK' }]
+            );
+          }}
+        />
+      )}
 
       <ScrollView
         contentContainerStyle={{ paddingTop: 20, paddingBottom: 110, paddingHorizontal: 20, alignItems: 'center' }}
@@ -4251,8 +4193,8 @@ export default function App() {
             <CircularTimer
               theme={theme}
               initialTime={displayTime}
-              totalLectureTime={serverTimerData.totalLectureSeconds}
-              remainingTime={serverTimerData.remainingLectureSeconds}
+              totalLectureTime={timerState.totalLectureSeconds}
+              remainingTime={Math.max(0, timerState.totalLectureSeconds - displayTime)}
               isRunning={isRunning}
               onToggleTimer={handleStartPause}
               onReset={handleReset}
@@ -4321,11 +4263,11 @@ export default function App() {
             timetable={timetable}
             currentDay={currentDay}
             lectureInfo={{
-              subject: serverTimerData.lectureSubject,
-              teacher: serverTimerData.lectureTeacher,
-              room: serverTimerData.lectureRoom,
-              startTime: serverTimerData.lectureStartTime,
-              endTime: serverTimerData.lectureEndTime
+              subject: currentLecture?.subject || 'Current Lecture',
+              teacher: currentLecture?.teacher,
+              room: currentLecture?.room,
+              startTime: currentLecture?.startTime,
+              endTime: currentLecture?.endTime
             }}
             serverUrl={SOCKET_URL}
             studentId={studentId}
@@ -4557,9 +4499,9 @@ export default function App() {
                   style={{ fontSize: 12, fontWeight: 'bold', textAlign: 'center', color: '#22c55e' }}
                 >
                   ✅ Attendance tracking: {(() => {
-                    const hours = Math.floor(serverTimerData.attendedSeconds / 3600);
-                    const minutes = Math.floor((serverTimerData.attendedSeconds % 3600) / 60);
-                    const seconds = serverTimerData.attendedSeconds % 60;
+                    const hours = Math.floor(attendedSeconds / 3600);
+                    const minutes = Math.floor((attendedSeconds % 3600) / 60);
+                    const seconds = attendedSeconds % 60;
                     return `${hours}h ${minutes}m ${seconds}s`;
                   })()} recorded
                 </Text>
