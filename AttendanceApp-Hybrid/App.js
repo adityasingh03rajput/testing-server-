@@ -37,8 +37,8 @@ import WiFiManager from './WiFiManager';
 import TestBSSID from './TestBSSID';
 // WiFi BSSID Integration from LetsBunk
 
-const API_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net/api/config';
-const SOCKET_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
+const API_URL = 'https://letsbunk-uw7g.onrender.com/api/config';
+const SOCKET_URL = 'https://letsbunk-uw7g.onrender.com';
 const CACHE_KEY = '@timer_config';
 const ROLE_KEY = '@user_role';
 const STUDENT_ID_KEY = '@student_id';
@@ -2524,7 +2524,7 @@ export default function App() {
       <View style={[styles.container, { backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }]}>
         <StatusBar style={theme.statusBar} />
         <Text style={{ fontSize: 48, marginBottom: 20 }}>🎓</Text>
-        <Text style={{ fontSize: 24, color: theme.primary, fontWeight: 'bold' }}>College App</Text>
+        <Text style={{ fontSize: 24, color: theme.primary, fontWeight: 'bold' }}>LetsBunk</Text>
         <Text style={{ fontSize: 14, color: theme.textSecondary, marginTop: 10 }}>Loading...</Text>
       </View>
     );
@@ -2537,7 +2537,7 @@ export default function App() {
         <StatusBar style={theme.statusBar} />
         <View style={styles.loginContainer}>
           <Text style={[styles.glowText, { fontSize: 36, marginBottom: 10, color: theme.primary }]}>
-            🎓 College App
+            🎓 LetsBunk
           </Text>
           <Text style={{ color: theme.textSecondary, fontSize: 16, marginBottom: 40 }}>
             Login to continue

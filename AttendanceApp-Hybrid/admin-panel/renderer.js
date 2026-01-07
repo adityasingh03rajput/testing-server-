@@ -2,7 +2,7 @@
 // Configuration
 // Server URL - can be changed in Settings
 // Priority: 1. Saved in localStorage, 2. Azure URL
-let SERVER_URL = localStorage.getItem('serverUrl') || 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
+let SERVER_URL = localStorage.getItem('serverUrl') || 'https://letsbunk-uw7g.onrender.com';
 
 console.log('🌐 Admin Panel Server URL:', SERVER_URL);
 

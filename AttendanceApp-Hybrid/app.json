@@ -1,9 +1,10 @@
 {
   "expo": {
-    "name": "CountdownTimer",
-    "slug": "countdown-timer",
+    "name": "LetsBunk",
+    "slug": "letsbunk",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "assetBundlePatterns": [
       "**/*"

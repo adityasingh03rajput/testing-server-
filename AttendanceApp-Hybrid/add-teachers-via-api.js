@@ -78,7 +78,7 @@ const sampleTeachers = [
 
 async function addTeachersViaAPI() {
     try {
-        const SERVER_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
+        const SERVER_URL = 'https://letsbunk-uw7g.onrender.com';
         
         console.log('🌐 Adding teachers via API...');
         console.log(`📡 Server URL: ${SERVER_URL}`);

@@ -25,8 +25,8 @@ function createWindow() {
     },
     frame: true,
     backgroundColor: '#0a0e27',
-    // icon: path.join(__dirname, 'icon.ico'),
-    title: 'College Attendance Admin Panel',
+    icon: path.join(__dirname, 'icon.png'),
+    title: 'LetsBunk Admin Panel',
     show: false // Don't show until ready
   });
 
@@ -611,8 +611,8 @@ function createWindow() {
           click: () => {
             dialog.showMessageBox(mainWindow, {
               type: 'info',
-              title: 'About College Admin Panel',
-              message: 'College Attendance Admin Panel',
+              title: 'About LetsBunk Admin Panel',
+              message: 'LetsBunk Admin Panel',
               detail: `Version 1.0.0
 
 A comprehensive admin panel for managing:
@@ -622,7 +622,7 @@ A comprehensive admin panel for managing:
 • Timetables and calendars
 
 Built with Electron & Node.js
-© 2024 All Rights Reserved`
+© 2025 LetsBunk - All Rights Reserved`
             });
           }
         }

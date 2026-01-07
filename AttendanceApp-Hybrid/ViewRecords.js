@@ -121,7 +121,7 @@ const ViewRecords = ({ onBack, theme }) => {
     setLoading(true);
     try {
       const response = await fetch(
-        `https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net/api/view-records/students?semester=${selectedSemester}&branch=${encodeURIComponent(selectedBranch)}`
+        `https://letsbunk-uw7g.onrender.com/api/view-records/students?semester=${selectedSemester}&branch=${encodeURIComponent(selectedBranch)}`
       );
       const data = await response.json();
       if (data.success) {

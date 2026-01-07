@@ -1,7 +1,7 @@
 {
-  "appId": "com.college.attendance.admin",
-  "productName": "College Attendance Admin",
-  "copyright": "Copyright © 2025 College Attendance System",
+  "appId": "com.letsbunk.admin",
+  "productName": "LetsBunk Admin",
+  "copyright": "Copyright © 2025 LetsBunk",
   "win": {
     "target": [
       {
@@ -9,8 +9,9 @@
         "arch": ["x64"]
       }
     ],
-    "publisherName": "College Attendance System",
-    "verifyUpdateCodeSignature": false
+    "publisherName": "LetsBunk",
+    "verifyUpdateCodeSignature": false,
+    "requestedExecutionLevel": "asInvoker"
   },
   "nsis": {
     "oneClick": false,
@@ -18,28 +19,36 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "College Attendance Admin",
-    "include": "installer.nsh",
+    "shortcutName": "LetsBunk Admin",
     "license": "LICENSE.txt",
     "artifactName": "${productName} Setup ${version}.${ext}",
-    "deleteAppDataOnUninstall": false
+    "deleteAppDataOnUninstall": false,
+    "displayLanguageSelector": false,
+    "runAfterFinish": true,
+    "menuCategory": "Education",
+    "include": "installer.nsh",
+    "warningsAsErrors": false,
+    "perMachine": false,
+    "packElevateHelper": true
   },
   "directories": {
     "output": "dist",
-    "buildResources": "build"
+    "buildResources": "."
   },
   "files": [
     "**/*",
-    "!**/*.ts",
-    "!*.map",
-    "!node_modules",
-    "node_modules/electron-squirrel-startup/**/*"
+    "!node_modules/**/*",
+    "node_modules/electron-squirrel-startup/**/*",
+    "!*.md",
+    "!*.bat",
+    "!*.ps1",
+    "!dist/**/*",
+    "!.git/**/*"
   ],
   "extraResources": [
     {
-      "from": ".",
-      "to": "app",
-      "filter": ["**/*"]
+      "from": "LICENSE.txt",
+      "to": "LICENSE.txt"
     }
   ]
 }

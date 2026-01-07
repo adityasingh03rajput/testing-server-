@@ -6,7 +6,7 @@
 import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
 
-const API_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
+const API_URL = 'https://letsbunk-uw7g.onrender.com';
 
 /**
  * Initialize face verification (no-op for server-side)

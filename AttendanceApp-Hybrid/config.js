@@ -9,7 +9,7 @@
 // SERVER CONFIGURATION
 // ============================================
 // Update this URL to your backend server
-export const SERVER_BASE_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
+export const SERVER_BASE_URL = 'https://letsbunk-uw7g.onrender.com';
 
 // Derived URLs (automatically generated from SERVER_BASE_URL)
 export const API_URL = `${SERVER_BASE_URL}/api/config`;
@@ -57,7 +57,7 @@ export const THEMES = {
 // ENVIRONMENT INFO
 // ============================================
 export const APP_VERSION = '1.0.0';
-export const APP_NAME = 'CountdownTimer';
+export const APP_NAME = 'LetsBunk';
 
 // ============================================
 // USAGE INSTRUCTIONS

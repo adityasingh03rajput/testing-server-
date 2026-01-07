@@ -1,6 +1,6 @@
 const https = require('https');
 
-const SERVER_URL = 'https://adioncode-e5gkh4grbqe4g8b7.centralindia-01.azurewebsites.net';
+const SERVER_URL = 'https://letsbunk-uw7g.onrender.com';
 
 async function testServerDirect() {
   console.log('🌐 Testing Server Direct Connection...');

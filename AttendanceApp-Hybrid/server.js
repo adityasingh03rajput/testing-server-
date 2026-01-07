@@ -1513,7 +1513,10 @@ function calculateAttendedTime(student) {
     const pausedDuration = session.pausedDuration || 0;
     const attended = Math.max(0, sessionDuration - pausedDuration);
     
-    console.log(`⏱️  ${student.name}: now=${now}, start=${startTime}, duration=${sessionDuration}s, paused=${pausedDuration}s, attended=${attended}s`);
+    // Log only every 30 seconds to reduce spam
+    if (sessionDuration % 30 === 0) {
+        // console.log(`⏱️  ${student.name}: now=${now}, start=${startTime}, duration=${sessionDuration}s, paused=${pausedDuration}s, attended=${attended}s`);
+    }
     
     // Total attended = session duration - paused duration
     return attended;
