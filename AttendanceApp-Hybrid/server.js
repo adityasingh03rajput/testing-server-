@@ -292,9 +292,9 @@ const subjectSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now }
 });
 
-// Index for faster queries (only for non-unique fields)
+// Index for faster queries with proper unique constraints
 subjectSchema.index({ semester: 1, branch: 1 });
-// subjectCode already has unique index
+subjectSchema.index({ subjectCode: 1 }, { unique: true }); // Unique index for subject code
 
 const Subject = mongoose.model('Subject', subjectSchema);
 
@@ -832,16 +832,18 @@ app.get('/api/students', async (req, res) => {
         const { semester, branch, page = 1, limit = 50 } = req.query;
         
         if (mongoose.connection.readyState === 1) {
-            const query = { isActive: true };
+            const query = {};
             if (semester) query.semester = semester;
-            if (branch) query.branch = branch;
+            if (branch) query.course = branch; // Note: StudentManagement uses 'course' field, not 'branch'
             
-            const students = await Student.find(query)
+            // Use StudentManagement model instead of Student model
+            const students = await StudentManagement.find(query)
                 .sort({ name: 1 })
                 .limit(limit * 1)
-                .skip((page - 1) * limit);
+                .skip((page - 1) * limit)
+                .lean(); // Use lean() for better performance
                 
-            const total = await Student.countDocuments(query);
+            const total = await StudentManagement.countDocuments(query);
             
             res.json({ 
                 success: true, 
@@ -854,7 +856,7 @@ app.get('/api/students', async (req, res) => {
                 }
             });
         } else {
-            res.json({ success: true, students: studentsMemory });
+            res.json({ success: true, students: studentManagementMemory });
         }
     } catch (error) {
         console.error('❌ Error fetching students:', error);
@@ -867,17 +869,31 @@ app.get('/api/student/:id', async (req, res) => {
         const { id } = req.params;
         
         if (mongoose.connection.readyState === 1) {
-            const student = await Student.findById(id);
+            // Use StudentManagement model and try both _id and enrollmentNo
+            let student;
+            try {
+                student = await StudentManagement.findById(id).lean();
+            } catch (dbError) {
+                // If not a valid ObjectId, try by enrollmentNo
+                student = await StudentManagement.findOne({ enrollmentNo: id }).lean();
+            }
+            
             if (!student) {
                 return res.status(404).json({ success: false, error: 'Student not found' });
             }
             res.json({ success: true, student });
         } else {
-            const student = studentsMemory.find(s => s._id === id);
+            const student = studentManagementMemory.find(s => s._id === id || s.enrollmentNo === id);
             if (!student) {
                 return res.status(404).json({ success: false, error: 'Student not found' });
             }
             res.json({ success: true, student });
+        }
+    } catch (error) {
+        console.error('❌ Error fetching student:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
         }
     } catch (error) {
         console.error('❌ Error fetching student:', error);
