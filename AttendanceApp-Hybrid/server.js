@@ -827,83 +827,7 @@ app.post('/api/student/register', async (req, res) => {
 });
 
 // Student Management APIs
-// UPDATED: Optimized Students API - Returns all 123+ students from StudentManagement
-app.get('/api/students', async (req, res) => {
-    try {
-        const { semester, branch, page = 1, limit = 200, search, all } = req.query;
-        
-        if (mongoose.connection.readyState === 1) {
-            const query = {};
-            
-            // Build filter query
-            if (semester) query.semester = semester;
-            if (branch) query.course = branch; // StudentManagement uses 'course' field
-            
-            // Add search functionality
-            if (search) {
-                query.$or = [
-                    { name: { $regex: search, $options: 'i' } },
-                    { enrollmentNo: { $regex: search, $options: 'i' } },
-                    { email: { $regex: search, $options: 'i' } }
-                ];
-            }
-            
-            // If 'all' parameter is true, return all students without pagination
-            let students;
-            let total;
-            
-            if (all === 'true') {
-                // Return ALL students for admin panel and demo purposes
-                students = await StudentManagement.find(query)
-                    .select('enrollmentNo name email course semester status createdAt photoUrl timerValue isRunning lastUpdated attendanceSession')
-                    .sort({ name: 1 }) // Sort alphabetically by name
-                    .lean()
-                    .maxTimeMS(15000); // 15 second timeout
-                    
-                total = students.length;
-                
-                res.json({ 
-                    success: true, 
-                    students,
-                    total,
-                    message: `Retrieved ${total} students from StudentManagement collection`
-                });
-            } else {
-                // Paginated results
-                students = await StudentManagement.find(query)
-                    .select('enrollmentNo name email course semester status createdAt photoUrl timerValue isRunning')
-                    .sort({ createdAt: -1 })
-                    .limit(parseInt(limit))
-                    .skip((parseInt(page) - 1) * parseInt(limit))
-                    .lean()
-                    .maxTimeMS(10000);
-                    
-                total = await StudentManagement.countDocuments(query);
-                
-                res.json({ 
-                    success: true, 
-                    students,
-                    pagination: {
-                        page: parseInt(page),
-                        limit: parseInt(limit),
-                        total,
-                        pages: Math.ceil(total / parseInt(limit))
-                    }
-                });
-            }
-        } else {
-            // Fallback to memory if DB not connected
-            res.json({ success: true, students: studentManagementMemory || [] });
-        }
-    } catch (error) {
-        console.error('❌ Error fetching students:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Failed to fetch students from StudentManagement',
-            error: error.message 
-        });
-    }
-});
+// MOVED: Students API endpoint moved after model definition
 
 app.get('/api/student/:id', async (req, res) => {
     try {
@@ -4210,6 +4134,84 @@ const studentManagementSchema = new mongoose.Schema({
 });
 
 const StudentManagement = mongoose.model('StudentManagement', studentManagementSchema);
+
+// UPDATED: Optimized Students API - Returns all 123+ students from StudentManagement
+app.get('/api/students', async (req, res) => {
+    try {
+        const { semester, branch, page = 1, limit = 200, search, all } = req.query;
+        
+        if (mongoose.connection.readyState === 1) {
+            const query = {};
+            
+            // Build filter query
+            if (semester) query.semester = semester;
+            if (branch) query.course = branch; // StudentManagement uses 'course' field
+            
+            // Add search functionality
+            if (search) {
+                query.$or = [
+                    { name: { $regex: search, $options: 'i' } },
+                    { enrollmentNo: { $regex: search, $options: 'i' } },
+                    { email: { $regex: search, $options: 'i' } }
+                ];
+            }
+            
+            // If 'all' parameter is true, return all students without pagination
+            let students;
+            let total;
+            
+            if (all === 'true') {
+                // Return ALL students for admin panel and demo purposes
+                students = await StudentManagement.find(query)
+                    .select('enrollmentNo name email course semester status createdAt photoUrl timerValue isRunning lastUpdated attendanceSession')
+                    .sort({ name: 1 }) // Sort alphabetically by name
+                    .lean()
+                    .maxTimeMS(15000); // 15 second timeout
+                    
+                total = students.length;
+                
+                res.json({ 
+                    success: true, 
+                    students,
+                    total,
+                    message: `Retrieved ${total} students from StudentManagement collection`
+                });
+            } else {
+                // Paginated results
+                students = await StudentManagement.find(query)
+                    .select('enrollmentNo name email course semester status createdAt photoUrl timerValue isRunning')
+                    .sort({ createdAt: -1 })
+                    .limit(parseInt(limit))
+                    .skip((parseInt(page) - 1) * parseInt(limit))
+                    .lean()
+                    .maxTimeMS(10000);
+                    
+                total = await StudentManagement.countDocuments(query);
+                
+                res.json({ 
+                    success: true, 
+                    students,
+                    pagination: {
+                        page: parseInt(page),
+                        limit: parseInt(limit),
+                        total,
+                        pages: Math.ceil(total / parseInt(limit))
+                    }
+                });
+            }
+        } else {
+            // Fallback to memory if DB not connected
+            res.json({ success: true, students: studentManagementMemory || [] });
+        }
+    } catch (error) {
+        console.error('❌ Error fetching students:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to fetch students from StudentManagement',
+            error: error.message 
+        });
+    }
+});
 
 // Debug endpoint to test timer calculation
 app.get('/api/debug/timer-calc/:enrollmentNo', async (req, res) => {
