@@ -894,12 +894,6 @@ app.get('/api/student/:id', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
-        }
-    } catch (error) {
-        console.error('❌ Error fetching student:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
 
 app.put('/api/student/:id', async (req, res) => {
     try {
@@ -5739,6 +5733,21 @@ const systemSettingsSchema = new mongoose.Schema({
 
 const SystemSettings = mongoose.model('SystemSettings', systemSettingsSchema);
 
+// Department Schema
+const departmentSchema = new mongoose.Schema({
+    name: { type: String, required: true }, // e.g., "Computer Science", "Electronics"
+    code: { type: String, required: true }, // e.g., "CSE", "ECE"
+    head: { type: String }, // Department head name
+    description: { type: String },
+    isActive: { type: Boolean, default: true },
+    createdAt: { type: Date, default: Date.now }
+});
+
+departmentSchema.index({ code: 1 }, { unique: true });
+departmentSchema.index({ name: 1 });
+
+const Department = mongoose.model('Department', departmentSchema);
+
 // Default attendance threshold
 let ATTENDANCE_THRESHOLD = 75; // Default 75%
 
@@ -7176,6 +7185,590 @@ setInterval(() => {
         }
     }
 }, 60000); // Check every minute
+
+// ================================
+// MISSING API ENDPOINTS - ADMIN PANEL COMPATIBILITY
+// ================================
+
+// Department Management APIs
+app.get('/api/departments', async (req, res) => {
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const departments = await Department.find({ isActive: true }).lean();
+            res.json({ success: true, departments });
+        } else {
+            // Fallback departments for in-memory mode
+            const departments = [
+                { _id: '1', name: 'Computer Science', code: 'CSE' },
+                { _id: '2', name: 'Electronics', code: 'ECE' },
+                { _id: '3', name: 'Mechanical', code: 'ME' },
+                { _id: '4', name: 'Civil', code: 'CE' },
+                { _id: '5', name: 'Data Science', code: 'DS' }
+            ];
+            res.json({ success: true, departments });
+        }
+    } catch (error) {
+        console.error('Error fetching departments:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Classroom Management APIs
+app.get('/api/classrooms', async (req, res) => {
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const classrooms = await Classroom.find({ isActive: true }).lean();
+            res.json({ success: true, classrooms });
+        } else {
+            res.json({ success: true, classrooms: classroomsMemory });
+        }
+    } catch (error) {
+        console.error('Error fetching classrooms:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/classrooms', async (req, res) => {
+    try {
+        const { name, building, floor, capacity, type, facilities, bssid } = req.body;
+        
+        if (mongoose.connection.readyState === 1) {
+            const classroom = new Classroom({
+                name, building, floor, capacity, type, facilities, bssid
+            });
+            await classroom.save();
+            res.json({ success: true, classroom });
+        } else {
+            const classroom = {
+                _id: Date.now().toString(),
+                name, building, floor, capacity, type, facilities, bssid,
+                isActive: true,
+                createdAt: new Date()
+            };
+            classroomsMemory.push(classroom);
+            res.json({ success: true, classroom });
+        }
+    } catch (error) {
+        console.error('Error creating classroom:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/classrooms/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updateData = req.body;
+        updateData.updatedAt = new Date();
+        
+        if (mongoose.connection.readyState === 1) {
+            const classroom = await Classroom.findByIdAndUpdate(id, updateData, { new: true });
+            if (classroom) {
+                res.json({ success: true, classroom });
+            } else {
+                res.status(404).json({ success: false, error: 'Classroom not found' });
+            }
+        } else {
+            const index = classroomsMemory.findIndex(c => c._id === id);
+            if (index !== -1) {
+                classroomsMemory[index] = { ...classroomsMemory[index], ...updateData };
+                res.json({ success: true, classroom: classroomsMemory[index] });
+            } else {
+                res.status(404).json({ success: false, error: 'Classroom not found' });
+            }
+        }
+    } catch (error) {
+        console.error('Error updating classroom:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.delete('/api/classrooms/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        if (mongoose.connection.readyState === 1) {
+            const classroom = await Classroom.findByIdAndDelete(id);
+            if (classroom) {
+                res.json({ success: true, message: 'Classroom deleted successfully' });
+            } else {
+                res.status(404).json({ success: false, error: 'Classroom not found' });
+            }
+        } else {
+            const index = classroomsMemory.findIndex(c => c._id === id);
+            if (index !== -1) {
+                classroomsMemory.splice(index, 1);
+                res.json({ success: true, message: 'Classroom deleted successfully' });
+            } else {
+                res.status(404).json({ success: false, error: 'Classroom not found' });
+            }
+        }
+    } catch (error) {
+        console.error('Error deleting classroom:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Student Management - DELETE endpoint
+app.delete('/api/students/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        if (mongoose.connection.readyState === 1) {
+            const student = await StudentManagement.findByIdAndDelete(id);
+            if (student) {
+                res.json({ success: true, message: 'Student deleted successfully' });
+            } else {
+                res.status(404).json({ success: false, error: 'Student not found' });
+            }
+        } else {
+            const index = studentManagementMemory.findIndex(s => s._id === id);
+            if (index !== -1) {
+                studentManagementMemory.splice(index, 1);
+                res.json({ success: true, message: 'Student deleted successfully' });
+            } else {
+                res.status(404).json({ success: false, error: 'Student not found' });
+            }
+        }
+    } catch (error) {
+        console.error('Error deleting student:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Student Management - PUT endpoint
+app.put('/api/students/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updateData = req.body;
+        updateData.updatedAt = new Date();
+        
+        if (mongoose.connection.readyState === 1) {
+            const student = await StudentManagement.findByIdAndUpdate(id, updateData, { new: true });
+            if (student) {
+                res.json({ success: true, student });
+            } else {
+                res.status(404).json({ success: false, error: 'Student not found' });
+            }
+        } else {
+            const index = studentManagementMemory.findIndex(s => s._id === id);
+            if (index !== -1) {
+                studentManagementMemory[index] = { ...studentManagementMemory[index], ...updateData };
+                res.json({ success: true, student: studentManagementMemory[index] });
+            } else {
+                res.status(404).json({ success: false, error: 'Student not found' });
+            }
+        }
+    } catch (error) {
+        console.error('Error updating student:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Teacher Management - DELETE endpoint
+app.delete('/api/teachers/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        if (mongoose.connection.readyState === 1) {
+            const teacher = await Teacher.findByIdAndDelete(id);
+            if (teacher) {
+                res.json({ success: true, message: 'Teacher deleted successfully' });
+            } else {
+                res.status(404).json({ success: false, error: 'Teacher not found' });
+            }
+        } else {
+            const index = teachersMemory.findIndex(t => t._id === id);
+            if (index !== -1) {
+                teachersMemory.splice(index, 1);
+                res.json({ success: true, message: 'Teacher deleted successfully' });
+            } else {
+                res.status(404).json({ success: false, error: 'Teacher not found' });
+            }
+        }
+    } catch (error) {
+        console.error('Error deleting teacher:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Teacher Management - PUT endpoint
+app.put('/api/teachers/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updateData = req.body;
+        updateData.updatedAt = new Date();
+        
+        // Hash password if it's being updated
+        if (updateData.password) {
+            const salt = await bcrypt.genSalt(10);
+            updateData.password = await bcrypt.hash(updateData.password, salt);
+        }
+        
+        if (mongoose.connection.readyState === 1) {
+            const teacher = await Teacher.findByIdAndUpdate(id, updateData, { new: true });
+            if (teacher) {
+                // Don't return password in response
+                const { password, ...teacherResponse } = teacher.toObject();
+                res.json({ success: true, teacher: teacherResponse });
+            } else {
+                res.status(404).json({ success: false, error: 'Teacher not found' });
+            }
+        } else {
+            const index = teachersMemory.findIndex(t => t._id === id);
+            if (index !== -1) {
+                teachersMemory[index] = { ...teachersMemory[index], ...updateData };
+                const { password, ...teacherResponse } = teachersMemory[index];
+                res.json({ success: true, teacher: teacherResponse });
+            } else {
+                res.status(404).json({ success: false, error: 'Teacher not found' });
+            }
+        }
+    } catch (error) {
+        console.error('Error updating teacher:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Teacher Timetable Access Management
+app.put('/api/teachers/:id/timetable-access', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { canEditTimetable } = req.body;
+        
+        if (mongoose.connection.readyState === 1) {
+            const teacher = await Teacher.findByIdAndUpdate(
+                id, 
+                { canEditTimetable, updatedAt: new Date() }, 
+                { new: true }
+            );
+            if (teacher) {
+                res.json({ success: true, teacher: { _id: teacher._id, canEditTimetable: teacher.canEditTimetable } });
+            } else {
+                res.status(404).json({ success: false, error: 'Teacher not found' });
+            }
+        } else {
+            const teacher = teachersMemory.find(t => t._id === id);
+            if (teacher) {
+                teacher.canEditTimetable = canEditTimetable;
+                teacher.updatedAt = new Date();
+                res.json({ success: true, teacher: { _id: teacher._id, canEditTimetable: teacher.canEditTimetable } });
+            } else {
+                res.status(404).json({ success: false, error: 'Teacher not found' });
+            }
+        }
+    } catch (error) {
+        console.error('Error updating teacher timetable access:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Settings Management APIs
+app.get('/api/settings/attendance-threshold', async (req, res) => {
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const setting = await SystemSettings.findOne({ key: 'attendance_threshold' });
+            const threshold = setting ? setting.value : 75; // Default 75%
+            res.json({ success: true, threshold });
+        } else {
+            res.json({ success: true, threshold: 75 }); // Default fallback
+        }
+    } catch (error) {
+        console.error('Error fetching attendance threshold:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/settings/attendance-threshold', async (req, res) => {
+    try {
+        const { threshold } = req.body;
+        
+        if (typeof threshold !== 'number' || threshold < 0 || threshold > 100) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Threshold must be a number between 0 and 100' 
+            });
+        }
+        
+        if (mongoose.connection.readyState === 1) {
+            await SystemSettings.findOneAndUpdate(
+                { key: 'attendance_threshold' },
+                { key: 'attendance_threshold', value: threshold, updatedAt: new Date() },
+                { upsert: true }
+            );
+        }
+        
+        res.json({ success: true, threshold });
+    } catch (error) {
+        console.error('Error updating attendance threshold:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Holiday Management APIs
+app.get('/api/holidays', async (req, res) => {
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const holidays = await Holiday.find({ isActive: true }).sort({ date: 1 }).lean();
+            res.json({ success: true, holidays });
+        } else {
+            // Fallback holidays for in-memory mode
+            const holidays = [
+                { _id: '1', name: 'Republic Day', date: '2026-01-26', type: 'National' },
+                { _id: '2', name: 'Independence Day', date: '2026-08-15', type: 'National' },
+                { _id: '3', name: 'Gandhi Jayanti', date: '2026-10-02', type: 'National' }
+            ];
+            res.json({ success: true, holidays });
+        }
+    } catch (error) {
+        console.error('Error fetching holidays:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/holidays', async (req, res) => {
+    try {
+        const { name, date, type, description } = req.body;
+        
+        if (mongoose.connection.readyState === 1) {
+            const holiday = new Holiday({ name, date, type, description });
+            await holiday.save();
+            res.json({ success: true, holiday });
+        } else {
+            const holiday = {
+                _id: Date.now().toString(),
+                name, date, type, description,
+                isActive: true,
+                createdAt: new Date()
+            };
+            res.json({ success: true, holiday });
+        }
+    } catch (error) {
+        console.error('Error creating holiday:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/holidays/:index', async (req, res) => {
+    try {
+        const { index } = req.params;
+        const updateData = req.body;
+        
+        if (mongoose.connection.readyState === 1) {
+            const holiday = await Holiday.findByIdAndUpdate(index, updateData, { new: true });
+            if (holiday) {
+                res.json({ success: true, holiday });
+            } else {
+                res.status(404).json({ success: false, error: 'Holiday not found' });
+            }
+        } else {
+            res.json({ success: true, message: 'Holiday updated (in-memory mode)' });
+        }
+    } catch (error) {
+        console.error('Error updating holiday:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.delete('/api/holidays/:index', async (req, res) => {
+    try {
+        const { index } = req.params;
+        
+        if (mongoose.connection.readyState === 1) {
+            const holiday = await Holiday.findByIdAndDelete(index);
+            if (holiday) {
+                res.json({ success: true, message: 'Holiday deleted successfully' });
+            } else {
+                res.status(404).json({ success: false, error: 'Holiday not found' });
+            }
+        } else {
+            res.json({ success: true, message: 'Holiday deleted (in-memory mode)' });
+        }
+    } catch (error) {
+        console.error('Error deleting holiday:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Attendance Date Range API
+app.get('/api/attendance/date-range', async (req, res) => {
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const result = await AttendanceRecord.aggregate([
+                {
+                    $group: {
+                        _id: null,
+                        minDate: { $min: '$date' },
+                        maxDate: { $max: '$date' }
+                    }
+                }
+            ]);
+            
+            if (result.length > 0) {
+                res.json({ 
+                    success: true, 
+                    minDate: result[0].minDate,
+                    maxDate: result[0].maxDate
+                });
+            } else {
+                res.json({ 
+                    success: true, 
+                    minDate: new Date(),
+                    maxDate: new Date()
+                });
+            }
+        } else {
+            // Fallback for in-memory mode
+            const now = new Date();
+            const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            res.json({ 
+                success: true, 
+                minDate: monthAgo,
+                maxDate: now
+            });
+        }
+    } catch (error) {
+        console.error('Error fetching attendance date range:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Profile Refresh API (for React Native app)
+app.post('/api/refresh-profile', async (req, res) => {
+    try {
+        const { userId, role } = req.body;
+        
+        if (!userId || !role) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'User ID and role are required' 
+            });
+        }
+        
+        let user = null;
+        
+        if (mongoose.connection.readyState === 1) {
+            if (role === 'student') {
+                user = await StudentManagement.findOne({ 
+                    $or: [{ enrollmentNo: userId }, { _id: userId }] 
+                }).lean();
+            } else if (role === 'teacher') {
+                user = await Teacher.findOne({ 
+                    $or: [{ employeeId: userId }, { _id: userId }] 
+                }).lean();
+                if (user) {
+                    // Don't return password
+                    const { password, ...userResponse } = user;
+                    user = userResponse;
+                }
+            }
+        } else {
+            // Fallback to in-memory storage
+            if (role === 'student') {
+                user = studentManagementMemory.find(s => 
+                    s.enrollmentNo === userId || s._id === userId
+                );
+            } else if (role === 'teacher') {
+                user = teachersMemory.find(t => 
+                    t.employeeId === userId || t._id === userId
+                );
+                if (user) {
+                    const { password, ...userResponse } = user;
+                    user = userResponse;
+                }
+            }
+        }
+        
+        if (user) {
+            res.json({ success: true, user });
+        } else {
+            res.status(404).json({ success: false, error: 'User not found' });
+        }
+    } catch (error) {
+        console.error('Error refreshing profile:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Random Ring Teacher Action API
+app.post('/api/random-ring/teacher-action', async (req, res) => {
+    try {
+        const { randomRingId, studentId, action } = req.body;
+        
+        if (!randomRingId || !studentId || !action) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Random ring ID, student ID, and action are required' 
+            });
+        }
+        
+        if (!['accept', 'reject'].includes(action)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Action must be either "accept" or "reject"' 
+            });
+        }
+        
+        if (mongoose.connection.readyState === 1) {
+            const randomRing = await RandomRing.findById(randomRingId);
+            if (randomRing) {
+                randomRing.teacherResponse = action;
+                randomRing.teacherResponseTime = new Date();
+                randomRing.status = action === 'accept' ? 'accepted' : 'rejected';
+                await randomRing.save();
+                
+                // Emit to student
+                io.emit('random_ring_response', {
+                    randomRingId,
+                    studentId,
+                    action,
+                    timestamp: new Date()
+                });
+                
+                res.json({ success: true, action, randomRingId });
+            } else {
+                res.status(404).json({ success: false, error: 'Random ring not found' });
+            }
+        } else {
+            // Fallback for in-memory mode
+            io.emit('random_ring_response', {
+                randomRingId,
+                studentId,
+                action,
+                timestamp: new Date()
+            });
+            res.json({ success: true, action, randomRingId });
+        }
+    } catch (error) {
+        console.error('Error processing teacher action:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// WiFi Attendance Event API (for React Native app)
+app.post('/api/attendance/wifi-event', async (req, res) => {
+    try {
+        const { studentId, event, bssid, timestamp } = req.body;
+        
+        console.log(`📶 WiFi Event: ${event} for student ${studentId} at BSSID ${bssid}`);
+        
+        // Log the event but don't enforce WiFi restrictions
+        // This is for monitoring purposes only
+        
+        res.json({ 
+            success: true, 
+            message: 'WiFi event logged',
+            event,
+            timestamp: new Date()
+        });
+    } catch (error) {
+        console.error('Error logging WiFi event:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ================================
+// END MISSING API ENDPOINTS
+// ================================
 
 server.listen(PORT, '0.0.0.0', async () => {
     console.log('========================================');
