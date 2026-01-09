@@ -829,19 +829,32 @@ app.post('/api/student/register', async (req, res) => {
 // Student Management APIs
 app.get('/api/students', async (req, res) => {
     try {
-        const { semester, branch, page = 1, limit = 50 } = req.query;
+        const { semester, branch, page = 1, limit = 50, search } = req.query;
         
         if (mongoose.connection.readyState === 1) {
             const query = {};
+            
+            // Build filter query
             if (semester) query.semester = semester;
             if (branch) query.course = branch; // Note: StudentManagement uses 'course' field, not 'branch'
             
-            // Use StudentManagement model instead of Student model
+            // Add search functionality
+            if (search) {
+                query.$or = [
+                    { name: { $regex: search, $options: 'i' } },
+                    { enrollmentNo: { $regex: search, $options: 'i' } },
+                    { email: { $regex: search, $options: 'i' } }
+                ];
+            }
+            
+            // Optimized query with timeout and selected fields
             const students = await StudentManagement.find(query)
-                .sort({ name: 1 })
-                .limit(limit * 1)
-                .skip((page - 1) * limit)
-                .lean(); // Use lean() for better performance
+                .select('enrollmentNo name email course semester status createdAt photoUrl timerValue isRunning')
+                .sort({ createdAt: -1 }) // Sort by newest first
+                .limit(parseInt(limit))
+                .skip((parseInt(page) - 1) * parseInt(limit))
+                .lean() // Use lean() for better performance
+                .maxTimeMS(10000); // 10 second timeout to prevent hanging
                 
             const total = await StudentManagement.countDocuments(query);
             
@@ -852,7 +865,7 @@ app.get('/api/students', async (req, res) => {
                     page: parseInt(page),
                     limit: parseInt(limit),
                     total,
-                    pages: Math.ceil(total / limit)
+                    pages: Math.ceil(total / parseInt(limit))
                 }
             });
         } else {
@@ -860,7 +873,11 @@ app.get('/api/students', async (req, res) => {
         }
     } catch (error) {
         console.error('❌ Error fetching students:', error);
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to fetch students',
+            error: error.message 
+        });
     }
 });
 
