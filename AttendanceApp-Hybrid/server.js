@@ -185,8 +185,8 @@ mongoose.connection.on('disconnected', () => {
 // Student Schema - Updated for data consistency
 const studentSchema = new mongoose.Schema({
     name: { type: String, required: true },
-    enrollmentNo: { type: String, required: true, unique: true },
-    studentId: { type: String, required: true, unique: true },
+    enrollmentNo: { type: String, required: true }, // Remove unique here, add as index below
+    studentId: { type: String, required: true }, // Remove unique here, add as index below
     semester: { type: String, required: true },
     branch: { type: String, required: true },
     email: { type: String },
@@ -202,9 +202,9 @@ const studentSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now }
 });
 
-// Add indexes for better performance
-studentSchema.index({ enrollmentNo: 1 });
-studentSchema.index({ studentId: 1 });
+// Add indexes for better performance with proper unique constraints
+studentSchema.index({ enrollmentNo: 1 }, { unique: true }); // Unique index for enrollment number
+studentSchema.index({ studentId: 1 }, { unique: true }); // Unique index for student ID
 studentSchema.index({ semester: 1, branch: 1 }); // Compound index for common queries
 studentSchema.index({ isActive: 1 });
 studentSchema.index({ status: 1 });
@@ -237,9 +237,9 @@ const Timetable = mongoose.model('Timetable', timetableSchema);
 
 // Teacher Schema - Updated with password hashing
 const teacherSchema = new mongoose.Schema({
-    employeeId: { type: String, required: true, unique: true },
+    employeeId: { type: String, required: true }, // Remove unique here, add as index below
     name: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
+    email: { type: String, required: true }, // Remove unique here, add as index below
     password: { type: String, required: true }, // Will be hashed
     department: { type: String, required: true },
     subject: { type: String, required: true },
@@ -271,15 +271,15 @@ teacherSchema.methods.comparePassword = async function(candidatePassword) {
     return bcrypt.compare(candidatePassword, this.password);
 };
 
-// Add indexes
-teacherSchema.index({ employeeId: 1 });
-teacherSchema.index({ email: 1 });
+// Add indexes with proper unique constraints
+teacherSchema.index({ employeeId: 1 }, { unique: true }); // Unique index for employee ID
+teacherSchema.index({ email: 1 }, { unique: true }); // Unique index for email
 
 const Teacher = mongoose.model('Teacher', teacherSchema);
 
 // Subject Schema - Manage subjects for each semester and branch
 const subjectSchema = new mongoose.Schema({
-    subjectCode: { type: String, required: true, unique: true }, // e.g., "CS301", "DS302"
+    subjectCode: { type: String, required: true }, // Remove unique here, add as index below
     subjectName: { type: String, required: true }, // e.g., "Data Structures", "OOPM"
     shortName: { type: String }, // e.g., "DS", "OOPM" (for display in timetable)
     semester: { type: String, required: true }, // e.g., "3", "4"
@@ -292,9 +292,9 @@ const subjectSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now }
 });
 
-// Index for faster queries
+// Index for faster queries (only for non-unique fields)
 subjectSchema.index({ semester: 1, branch: 1 });
-subjectSchema.index({ subjectCode: 1 });
+// subjectCode already has unique index
 
 const Subject = mongoose.model('Subject', subjectSchema);
 
