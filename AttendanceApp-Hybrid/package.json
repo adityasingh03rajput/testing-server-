@@ -50,6 +50,7 @@
     "@tensorflow/tfjs": "^4.22.0",
     "axios": "^1.13.2",
     "bcrypt": "^5.1.1",
+    "bcryptjs": "^2.4.3",
     "canvas": "^3.2.0",
     "cloudinary": "^2.8.0",
     "compression": "^1.8.1",
@@ -80,8 +81,8 @@
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1",
     "eslint": "^8.57.0",
+    "nodemon": "^3.0.1",
     "prettier": "^3.2.5"
   },
   "config": {

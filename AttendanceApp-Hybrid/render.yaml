@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: letsbunk-server
+    env: node
+    plan: free
+    buildCommand: npm install --production
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NPM_CONFIG_PRODUCTION
+        value: false
+    autoDeploy: true
+    branch: master

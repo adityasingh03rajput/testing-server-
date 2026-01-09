@@ -1,5 +1,12 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcrypt');
+// Try to use bcrypt, fallback to bcryptjs for deployment compatibility
+let bcrypt;
+try {
+    bcrypt = require('bcrypt');
+} catch (error) {
+    console.log('⚠️  bcrypt not available, using bcryptjs fallback');
+    bcrypt = require('bcryptjs');
+}
 require('dotenv').config();
 
 // MongoDB Connection
