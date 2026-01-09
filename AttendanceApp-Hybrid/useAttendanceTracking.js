@@ -106,10 +106,14 @@ export const useAttendanceTracking = (studentId, socketUrl) => {
 
     heartbeatInterval.current = setInterval(async () => {
       try {
-        await fetch(`${socketUrl}/api/attendance/update`, {
+        await fetch(`${socketUrl}/api/attendance/update-timer`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ studentId })
+          body: JSON.stringify({ 
+            studentId,
+            timerValue: 0, // Will be updated by server based on session
+            wifiConnected: true 
+          })
         });
       } catch (err) {
         console.error('Heartbeat error:', err);

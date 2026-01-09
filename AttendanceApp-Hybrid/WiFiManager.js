@@ -296,8 +296,8 @@ class WiFiManager {
    */
   getFallbackBSSID() {
     if (__DEV__) {
-      console.log('📶 Using development BSSID for testing');
-      return 'b4:86:18:6f:fb:ec'; // Example BSSID for testing
+      console.log('📶 Development mode: No fallback BSSID configured');
+      return null; // Removed hardcoded test BSSID
     }
     return null; // Production should return null if no real BSSID
   }

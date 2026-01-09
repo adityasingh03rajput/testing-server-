@@ -38,6 +38,8 @@ import TestBSSID from './TestBSSID';
 // SECURITY FIX: Import unified timer manager
 import { useUnifiedTimer } from './UnifiedTimerManager';
 import SecurityStatusIndicator from './SecurityStatusIndicator';
+// EMERGENCY SECURITY PATCH: WiFi Security Enforcer
+import WiFiSecurityEnforcer from './WiFiSecurityEnforcer';
 // WiFi BSSID Integration from LetsBunk
 
 const API_URL = 'https://letsbunk-uw7g.onrender.com/api/config';

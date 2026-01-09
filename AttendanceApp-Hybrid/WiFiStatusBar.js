@@ -141,19 +141,15 @@ ${wifiStatus.error ? `Error: ${wifiStatus.error}` : ''}`;
           console.log('📶 Link speed:', bssidResult.linkSpeed, 'Mbps');
           console.log('📶 Frequency:', bssidResult.frequency, 'MHz');
           
-          // Check if this matches expected BSSID for room A2
-          const expectedBSSID = 'b4:86:18:6f:fb:ec';
-          const currentBSSID = bssidResult.bssid.toLowerCase();
-          
-          console.log('🔍 BSSID Comparison:');
-          console.log(`   Expected: ${expectedBSSID}`);
-          console.log(`   Current:  ${currentBSSID}`);
-          console.log(`   Match:    ${currentBSSID === expectedBSSID ? '✅ YES' : '❌ NO'}`);
+          console.log('🔍 BSSID Detection Result:');
+          console.log(`   Current BSSID: ${bssidResult.bssid}`);
+          console.log(`   SSID: ${bssidResult.ssid}`);
+          console.log(`   Signal: ${bssidResult.rssi} dBm`);
           
           // Show success dialog
           Alert.alert(
             '✅ BSSID Detection Success',
-            `BSSID: ${bssidResult.bssid}\nSSID: ${bssidResult.ssid}\nSignal: ${bssidResult.rssi} dBm\n\nExpected (Room A2): b4:86:18:6f:fb:ec\nMatch: ${currentBSSID === expectedBSSID ? 'YES ✅' : 'NO ❌'}`,
+            `BSSID: ${bssidResult.bssid}\nSSID: ${bssidResult.ssid}\nSignal: ${bssidResult.rssi} dBm\nFrequency: ${bssidResult.frequency} MHz\nLink Speed: ${bssidResult.linkSpeed} Mbps`,
             [{ text: 'OK' }]
           );
           

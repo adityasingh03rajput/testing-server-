@@ -40,6 +40,10 @@ const http = require('http');
 const { Server } = require('socket.io');
 const axios = require('axios');
 const rateLimit = require('express-rate-limit');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const compression = require('compression');
+const helmet = require('helmet');
 
 // Cloudinary configuration
 const cloudinary = require('cloudinary').v2;
@@ -50,6 +54,13 @@ cloudinary.config({
 });
 
 const app = express();
+
+// Performance and security middleware
+app.use(helmet({
+    contentSecurityPolicy: false, // Disable CSP for API server
+    crossOriginEmbedderPolicy: false
+}));
+app.use(compression()); // Enable gzip compression
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
@@ -66,16 +77,33 @@ app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
-// Request logging middleware
+// Request logging middleware with performance tracking
 app.use((req, res, next) => {
     const start = Date.now();
-    console.log(`📥 ${req.method} ${req.path} - ${req.ip}`);
+    
+    // Skip logging for health checks and frequent endpoints
+    const skipLogging = req.path === '/api/health' || req.path === '/api/time';
+    
+    if (!skipLogging) {
+        console.log(`📥 ${req.method} ${req.path} - ${req.ip}`);
+    }
     
     res.on('finish', () => {
         const duration = Date.now() - start;
         const status = res.statusCode;
-        const statusEmoji = status >= 400 ? '❌' : status >= 300 ? '⚠️' : '✅';
-        console.log(`📤 ${statusEmoji} ${req.method} ${req.path} - ${status} (${duration}ms)`);
+        
+        if (!skipLogging) {
+            const statusEmoji = status >= 400 ? '❌' : status >= 300 ? '⚠️' : '✅';
+            
+            // Highlight slow requests
+            if (duration > 1000) {
+                console.log(`🐌 SLOW: ${req.method} ${req.path} - ${status} (${duration}ms)`);
+            } else if (duration > 500) {
+                console.log(`⚠️  ${statusEmoji} ${req.method} ${req.path} - ${status} (${duration}ms)`);
+            } else {
+                console.log(`📤 ${statusEmoji} ${req.method} ${req.path} - ${status} (${duration}ms)`);
+            }
+        }
     });
     
     next();
@@ -134,8 +162,9 @@ app.use('/uploads', express.static(uploadsDir));
 // MongoDB Connection
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/attendance_app';
 mongoose.connect(MONGO_URI, {
+    maxPoolSize: 10, // Maintain up to 10 socket connections
     serverSelectionTimeoutMS: 30000, // Increased to 30 seconds for Render
-    socketTimeoutMS: 45000,
+    socketTimeoutMS: 45000
 }).then(() => {
     console.log('✅ Connected to MongoDB Atlas');
     console.log('📍 Database:', mongoose.connection.name);
@@ -153,15 +182,33 @@ mongoose.connection.on('disconnected', () => {
     console.log('⚠️  MongoDB disconnected');
 });
 
-// Student Schema
+// Student Schema - Updated for data consistency
 const studentSchema = new mongoose.Schema({
     name: { type: String, required: true },
+    enrollmentNo: { type: String, required: true, unique: true },
+    studentId: { type: String, required: true, unique: true },
+    semester: { type: String, required: true },
+    branch: { type: String, required: true },
+    email: { type: String },
+    phone: { type: String },
+    photoUrl: { type: String, default: '' },
     status: { type: String, enum: ['attending', 'absent', 'present'], default: 'absent' },
     timerValue: { type: Number, default: 120 },
     isRunning: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
     lastUpdated: { type: Date, default: Date.now },
-    sessionDate: { type: Date, default: Date.now }
+    sessionDate: { type: Date, default: Date.now },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
 });
+
+// Add indexes for better performance
+studentSchema.index({ enrollmentNo: 1 });
+studentSchema.index({ studentId: 1 });
+studentSchema.index({ semester: 1, branch: 1 }); // Compound index for common queries
+studentSchema.index({ isActive: 1 });
+studentSchema.index({ status: 1 });
+studentSchema.index({ lastUpdated: -1 }); // For sorting by last update
 
 const Student = mongoose.model('Student', studentSchema);
 
@@ -187,6 +234,48 @@ const timetableSchema = new mongoose.Schema({
 });
 
 const Timetable = mongoose.model('Timetable', timetableSchema);
+
+// Teacher Schema - Updated with password hashing
+const teacherSchema = new mongoose.Schema({
+    employeeId: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true }, // Will be hashed
+    department: { type: String, required: true },
+    subject: { type: String, required: true },
+    dob: { type: Date },
+    phone: { type: String },
+    photoUrl: { type: String, default: '' },
+    semester: { type: String },
+    canEditTimetable: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+});
+
+// Hash password before saving
+teacherSchema.pre('save', async function(next) {
+    if (!this.isModified('password')) return next();
+    
+    try {
+        const salt = await bcrypt.genSalt(10);
+        this.password = await bcrypt.hash(this.password, salt);
+        next();
+    } catch (error) {
+        next(error);
+    }
+});
+
+// Method to compare password
+teacherSchema.methods.comparePassword = async function(candidatePassword) {
+    return bcrypt.compare(candidatePassword, this.password);
+};
+
+// Add indexes
+teacherSchema.index({ employeeId: 1 });
+teacherSchema.index({ email: 1 });
+
+const Teacher = mongoose.model('Teacher', teacherSchema);
 
 // Subject Schema - Manage subjects for each semester and branch
 const subjectSchema = new mongoose.Schema({
@@ -327,11 +416,149 @@ const attendanceRecordSchema = new mongoose.Schema({
 });
 
 // Indexes for faster queries
-attendanceRecordSchema.index({ enrollmentNo: 1, date: -1 });  // Changed from enrollmentNumber
+attendanceRecordSchema.index({ enrollmentNo: 1, date: -1 });
 attendanceRecordSchema.index({ date: -1 });
 attendanceRecordSchema.index({ 'lectures.teacher': 1, date: -1 });
+attendanceRecordSchema.index({ studentId: 1, date: -1 }); // Added for better performance
+attendanceRecordSchema.index({ semester: 1, branch: 1, date: -1 }); // Compound index for filtering
+attendanceRecordSchema.index({ status: 1, date: -1 }); // For status-based queries
+
+// Pre-save middleware to normalize dates
+attendanceRecordSchema.pre('save', function(next) {
+    // Normalize date to midnight UTC
+    if (this.date) {
+        const normalizedDate = new Date(this.date);
+        normalizedDate.setUTCHours(0, 0, 0, 0);
+        this.date = normalizedDate;
+    }
+    
+    // Update updatedAt timestamp
+    this.updatedAt = new Date();
+    next();
+});
 
 const AttendanceRecord = mongoose.model('AttendanceRecord', attendanceRecordSchema);
+
+// Authentication middleware
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+        return res.status(401).json({ success: false, error: 'Access token required' });
+    }
+
+    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+        if (err) {
+            return res.status(403).json({ success: false, error: 'Invalid or expired token' });
+        }
+        req.user = user;
+        next();
+    });
+};
+
+// In-memory cache for frequently accessed data
+const cache = {
+    timetables: new Map(),
+    subjects: new Map(),
+    teachers: new Map(),
+    lastUpdated: {
+        timetables: 0,
+        subjects: 0,
+        teachers: 0
+    }
+};
+
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL
+
+// Cache helper functions
+const getCachedData = (type, key) => {
+    const now = Date.now();
+    if (now - cache.lastUpdated[type] > CACHE_TTL) {
+        cache[type].clear();
+        return null;
+    }
+    return cache[type].get(key);
+};
+
+const setCachedData = (type, key, data) => {
+    cache[type].set(key, data);
+    cache.lastUpdated[type] = Date.now();
+};
+
+const clearCache = (type) => {
+    if (type) {
+        cache[type].clear();
+        cache.lastUpdated[type] = 0;
+    } else {
+        // Clear all caches
+        Object.keys(cache).forEach(key => {
+            if (cache[key] instanceof Map) {
+                cache[key].clear();
+            }
+        });
+        cache.lastUpdated = { timetables: 0, subjects: 0, teachers: 0 };
+    }
+};
+
+// Helper function to generate JWT token
+const generateToken = (user) => {
+    return jwt.sign(
+        { 
+            id: user._id, 
+            employeeId: user.employeeId, 
+            email: user.email,
+            name: user.name 
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+    );
+};
+
+// Helper function to normalize student data
+const normalizeStudentData = (studentData) => {
+    // Ensure consistent enrollment number format
+    if (studentData.enrollmentNo === 'adityasingh') {
+        studentData.enrollmentNo = '0246CD241001';
+    }
+    
+    // Ensure consistent student ID format (use ObjectId format)
+    if (studentData.studentId === 'adityasingh') {
+        studentData.studentId = '6936b3e2a0a2892e8bb86ce3';
+    }
+    
+    return studentData;
+};
+
+// Helper function to prevent duplicate attendance records
+const findOrCreateAttendanceRecord = async (studentData, date) => {
+    const normalizedDate = new Date(date);
+    normalizedDate.setUTCHours(0, 0, 0, 0);
+    
+    const normalizedStudent = normalizeStudentData(studentData);
+    
+    let record = await AttendanceRecord.findOne({
+        studentId: normalizedStudent.studentId,
+        date: normalizedDate
+    });
+    
+    if (!record) {
+        record = new AttendanceRecord({
+            ...normalizedStudent,
+            date: normalizedDate,
+            status: 'present',
+            lectures: [],
+            totalAttended: 0,
+            totalClassTime: 0,
+            dayPercentage: 0,
+            timerValue: 0,
+            checkInTime: new Date()
+        });
+        await record.save();
+    }
+    
+    return record;
+};
 
 // In-memory storage as fallback
 let studentsMemory = [];
@@ -419,19 +646,170 @@ app.get('/api/config', (req, res) => {
     });
 });
 
+// Teacher Authentication APIs
+app.post('/api/teacher/login', async (req, res) => {
+    try {
+        const { employeeId, password } = req.body;
+
+        if (!employeeId || !password) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Employee ID and password are required' 
+            });
+        }
+
+        // Find teacher by employeeId (with lean() for better performance)
+        const teacher = await Teacher.findOne({ employeeId, isActive: true }).lean();
+        if (!teacher) {
+            return res.status(401).json({ 
+                success: false, 
+                error: 'Invalid credentials' 
+            });
+        }
+
+        // Check password
+        const isPasswordValid = await teacher.comparePassword(password);
+        if (!isPasswordValid) {
+            return res.status(401).json({ 
+                success: false, 
+                error: 'Invalid credentials' 
+            });
+        }
+
+        // Generate token
+        const token = generateToken(teacher);
+
+        // Update last login
+        teacher.updatedAt = new Date();
+        await teacher.save();
+
+        res.json({ 
+            success: true, 
+            token,
+            teacher: {
+                id: teacher._id,
+                employeeId: teacher.employeeId,
+                name: teacher.name,
+                email: teacher.email,
+                department: teacher.department,
+                subject: teacher.subject,
+                semester: teacher.semester,
+                canEditTimetable: teacher.canEditTimetable
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Teacher login error:', error);
+        res.status(500).json({ success: false, error: 'Login failed' });
+    }
+});
+
+app.post('/api/teacher/register', async (req, res) => {
+    try {
+        const { employeeId, name, email, password, department, subject, semester } = req.body;
+
+        // Validate required fields
+        if (!employeeId || !name || !email || !password || !department || !subject) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'All required fields must be provided' 
+            });
+        }
+
+        // Check if teacher already exists (with lean() for better performance)
+        const existingTeacher = await Teacher.findOne({ 
+            $or: [{ employeeId }, { email }] 
+        }).lean();
+        
+        if (existingTeacher) {
+            return res.status(409).json({ 
+                success: false, 
+                error: 'Teacher with this employee ID or email already exists' 
+            });
+        }
+
+        // Create new teacher
+        const teacher = new Teacher({
+            employeeId,
+            name,
+            email,
+            password, // Will be hashed by pre-save middleware
+            department,
+            subject,
+            semester: semester || '3',
+            canEditTimetable: false
+        });
+
+        await teacher.save();
+
+        res.status(201).json({ 
+            success: true, 
+            message: 'Teacher registered successfully',
+            teacher: {
+                id: teacher._id,
+                employeeId: teacher.employeeId,
+                name: teacher.name,
+                email: teacher.email,
+                department: teacher.department,
+                subject: teacher.subject
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Teacher registration error:', error);
+        res.status(500).json({ success: false, error: 'Registration failed' });
+    }
+});
+
 // Student APIs
 app.post('/api/student/register', async (req, res) => {
     try {
-        const { name } = req.body;
+        const { name, enrollmentNo, semester, branch, email, phone } = req.body;
+
+        if (!name || !enrollmentNo || !semester || !branch) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Name, enrollment number, semester, and branch are required' 
+            });
+        }
+
+        // Normalize student data
+        const studentData = normalizeStudentData({
+            name,
+            enrollmentNo,
+            studentId: enrollmentNo, // Use enrollment number as student ID initially
+            semester,
+            branch,
+            email: email || `${enrollmentNo.toLowerCase()}@student.global.org.in`,
+            phone: phone || ''
+        });
 
         if (mongoose.connection.readyState === 1) {
-            const student = new Student({ name, status: 'absent' });
+            // Check if student already exists
+            const existingStudent = await Student.findOne({ 
+                $or: [
+                    { enrollmentNo: studentData.enrollmentNo },
+                    { studentId: studentData.studentId }
+                ]
+            });
+
+            if (existingStudent) {
+                return res.json({ 
+                    success: true, 
+                    studentId: existingStudent._id, 
+                    student: existingStudent,
+                    message: 'Student already registered'
+                });
+            }
+
+            const student = new Student(studentData);
             await student.save();
+            
             res.json({ success: true, studentId: student._id, student });
         } else {
             const student = {
                 _id: Date.now().toString(),
-                name,
+                ...studentData,
                 status: 'absent',
                 timerValue: 120,
                 isRunning: false
@@ -441,8 +819,104 @@ app.post('/api/student/register', async (req, res) => {
         }
 
         // Notify all teachers
-        io.emit('student_registered', { name });
+        io.emit('student_registered', { name: studentData.name });
     } catch (error) {
+        console.error('❌ Student registration error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Student Management APIs
+app.get('/api/students', async (req, res) => {
+    try {
+        const { semester, branch, page = 1, limit = 50 } = req.query;
+        
+        if (mongoose.connection.readyState === 1) {
+            const query = { isActive: true };
+            if (semester) query.semester = semester;
+            if (branch) query.branch = branch;
+            
+            const students = await Student.find(query)
+                .sort({ name: 1 })
+                .limit(limit * 1)
+                .skip((page - 1) * limit);
+                
+            const total = await Student.countDocuments(query);
+            
+            res.json({ 
+                success: true, 
+                students,
+                pagination: {
+                    page: parseInt(page),
+                    limit: parseInt(limit),
+                    total,
+                    pages: Math.ceil(total / limit)
+                }
+            });
+        } else {
+            res.json({ success: true, students: studentsMemory });
+        }
+    } catch (error) {
+        console.error('❌ Error fetching students:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/student/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        if (mongoose.connection.readyState === 1) {
+            const student = await Student.findById(id);
+            if (!student) {
+                return res.status(404).json({ success: false, error: 'Student not found' });
+            }
+            res.json({ success: true, student });
+        } else {
+            const student = studentsMemory.find(s => s._id === id);
+            if (!student) {
+                return res.status(404).json({ success: false, error: 'Student not found' });
+            }
+            res.json({ success: true, student });
+        }
+    } catch (error) {
+        console.error('❌ Error fetching student:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/student/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updateData = req.body;
+        
+        // Normalize student data
+        const normalizedData = normalizeStudentData(updateData);
+        normalizedData.updatedAt = new Date();
+        
+        if (mongoose.connection.readyState === 1) {
+            const student = await Student.findByIdAndUpdate(
+                id, 
+                normalizedData, 
+                { new: true, runValidators: true }
+            );
+            
+            if (!student) {
+                return res.status(404).json({ success: false, error: 'Student not found' });
+            }
+            
+            res.json({ success: true, student });
+        } else {
+            const studentIndex = studentsMemory.findIndex(s => s._id === id);
+            if (studentIndex === -1) {
+                return res.status(404).json({ success: false, error: 'Student not found' });
+            }
+            
+            studentsMemory[studentIndex] = { ...studentsMemory[studentIndex], ...normalizedData };
+            res.json({ success: true, student: studentsMemory[studentIndex] });
+        }
+    } catch (error) {
+        console.error('❌ Error updating student:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -468,16 +942,26 @@ app.get('/api/timetables', async (req, res) => {
 app.get('/api/timetable/:semester/:branch', async (req, res) => {
     try {
         const { semester, branch } = req.params;
+        const cacheKey = `${semester}-${branch}`;
+        
+        // Check cache first
+        let timetable = getCachedData('timetables', cacheKey);
+        if (timetable) {
+            return res.json({ success: true, timetable, cached: true });
+        }
 
         if (mongoose.connection.readyState === 1) {
-            let timetable = await Timetable.findOne({ semester, branch });
+            timetable = await Timetable.findOne({ semester, branch }).lean();
             if (!timetable) {
                 timetable = createDefaultTimetable(semester, branch);
             }
+            
+            // Cache the result
+            setCachedData('timetables', cacheKey, timetable);
             res.json({ success: true, timetable });
         } else {
             const key = `${semester}_${branch}`;
-            let timetable = timetableMemory[key];
+            timetable = timetableMemory[key];
             if (!timetable) {
                 timetable = createDefaultTimetable(semester, branch);
                 timetableMemory[key] = timetable;
@@ -573,8 +1057,8 @@ app.get('/api/teacher/current-lecture/:teacherId', async (req, res) => {
         
         console.log(`🔍 Finding current lecture for teacher ${teacherId} at ${currentTime} on ${currentDay}`);
         
-        // Find all timetables where this teacher is assigned
-        const timetables = await Timetable.find();
+        // Find all timetables where this teacher is assigned (optimized with lean())
+        const timetables = await Timetable.find().lean();
         
         let currentLecture = null;
         let matchedTimetable = null;
@@ -660,8 +1144,8 @@ app.get('/api/teacher/allowed-branches/:teacherId', async (req, res) => {
         
         console.log(`🔍 Finding allowed branches for teacher ${teacherId}...`);
         
-        // Find all timetables where this teacher is assigned
-        const timetables = await Timetable.find();
+        // Find all timetables where this teacher is assigned (optimized with lean())
+        const timetables = await Timetable.find().lean();
         
         const allowedBranches = new Set();
         const branchDetails = [];
@@ -829,7 +1313,7 @@ app.get('/api/subjects', async (req, res) => {
 // Get single subject by code
 app.get('/api/subjects/:subjectCode', async (req, res) => {
     try {
-        const subject = await Subject.findOne({ subjectCode: req.params.subjectCode });
+        const subject = await Subject.findOne({ subjectCode: req.params.subjectCode }).lean();
         
         if (!subject) {
             return res.status(404).json({ success: false, error: 'Subject not found' });
@@ -1468,12 +1952,6 @@ io.on('connection', (socket) => {
         console.error('❌ Socket error:', error);
     });
 });
-
-// Helper: Convert time string to minutes
-function timeToMinutes(timeStr) {
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    return hours * 60 + minutes;
-}
 
 // Helper: Get current lecture info from timetable
 async function getCurrentLectureInfo(semester, branch) {
@@ -2568,123 +3046,6 @@ app.post('/api/attendance/backup', async (req, res) => {
     }
 });
 
-// Offline Attendance Sync - Sync offline time when student reconnects
-app.post('/api/attendance/sync-offline', async (req, res) => {
-    try {
-        const { studentId, offlineStartTime, offlineEndTime, offlineDuration, lastKnownSeconds, lectureSubject } = req.body;
-        
-        console.log(`🔄 Syncing offline attendance for student ${studentId}`);
-        console.log(`   Offline period: ${new Date(offlineStartTime).toLocaleTimeString()} - ${new Date(offlineEndTime).toLocaleTimeString()}`);
-        console.log(`   Duration: ${offlineDuration}s (${Math.floor(offlineDuration / 60)}m)`);
-        
-        if (!studentId || !offlineStartTime || !offlineEndTime) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing required fields'
-            });
-        }
-        
-        // Check if Random Ring was triggered during offline period
-        const randomRing = await RandomRing.findOne({
-            'selectedStudents.studentId': studentId,
-            triggerTime: {
-                $gte: new Date(offlineStartTime),
-                $lte: new Date(offlineEndTime)
-            }
-        });
-        
-        if (randomRing) {
-            console.log(`⚠️  Random Ring was triggered during offline period: ${randomRing._id}`);
-            
-            // Check if teacher manually accepted student
-            const studentData = randomRing.selectedStudents.find(s => 
-                s.studentId === studentId || s.enrollmentNo === studentId
-            );
-            
-            if (studentData && studentData.teacherAccepted) {
-                // Teacher accepted, allow full offline time
-                console.log(`✅ Teacher accepted student during offline - allowing full offline time`);
-                
-                const totalSeconds = lastKnownSeconds + offlineDuration;
-                await StudentManagement.findByIdAndUpdate(studentId, {
-                    'attendanceSession.totalAttendedSeconds': totalSeconds,
-                    $push: {
-                        'attendanceSession.offlinePeriods': {
-                            startTime: new Date(offlineStartTime),
-                            endTime: new Date(offlineEndTime),
-                            duration: offlineDuration
-                        }
-                    }
-                });
-                
-                return res.json({
-                    success: true,
-                    randomRingMissed: false,
-                    teacherAccepted: true,
-                    totalAttendedSeconds: totalSeconds,
-                    message: 'Teacher accepted you during offline period - full time counted'
-                });
-            } else {
-                // Random Ring failed, cap attendance at Random Ring time
-                console.log(`❌ Random Ring failed - capping attendance`);
-                
-                const student = await StudentManagement.findById(studentId);
-                if (!student || !student.attendanceSession || !student.attendanceSession.sessionStartTime) {
-                    return res.status(404).json({
-                        success: false,
-                        error: 'Student session not found'
-                    });
-                }
-                
-                const cappedSeconds = Math.floor((randomRing.triggerTime - student.attendanceSession.sessionStartTime) / 1000);
-                
-                await StudentManagement.findByIdAndUpdate(studentId, {
-                    'attendanceSession.totalAttendedSeconds': cappedSeconds,
-                    'attendanceSession.randomRingFailed': true,
-                    isRunning: false,
-                    status: 'absent'
-                });
-                
-                return res.json({
-                    success: true,
-                    randomRingMissed: true,
-                    cappedAt: cappedSeconds,
-                    cappedMinutes: Math.floor(cappedSeconds / 60),
-                    message: `Attendance capped at Random Ring time (${Math.floor(cappedSeconds / 60)} minutes)`
-                });
-            }
-        } else {
-            // No Random Ring during offline period, accept full offline time
-            console.log(`✅ No Random Ring during offline - accepting full offline time`);
-            
-            const totalSeconds = lastKnownSeconds + offlineDuration;
-            await StudentManagement.findByIdAndUpdate(studentId, {
-                'attendanceSession.totalAttendedSeconds': totalSeconds,
-                $push: {
-                    'attendanceSession.offlinePeriods': {
-                        startTime: new Date(offlineStartTime),
-                        endTime: new Date(offlineEndTime),
-                        duration: offlineDuration
-                    }
-                }
-            });
-            
-            return res.json({
-                success: true,
-                randomRingMissed: false,
-                totalAttendedSeconds: totalSeconds,
-                message: 'Offline time synced successfully'
-            });
-        }
-    } catch (error) {
-        console.error('❌ Error syncing offline attendance:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: error.message 
-        });
-    }
-});
-
 // Get attendance statistics
 app.get('/api/attendance/stats', async (req, res) => {
     try {
@@ -2856,13 +3217,12 @@ app.post('/api/verify-face', async (req, res) => {
         }
 
         // SECURITY: Fetch reference photo from database (not from client)
-        // This prevents tampering with the reference photo
         console.log('🔍 Looking for user with ID:', userId);
         let user;
 
         // Try finding by MongoDB ID first
         try {
-            user = await StudentManagement.findById(userId);
+            user = await StudentManagement.findById(userId).lean();
         } catch (dbError) {
             console.log('⚠️ Invalid MongoDB ID format');
         }
@@ -2870,7 +3230,7 @@ app.post('/api/verify-face', async (req, res) => {
         // If not found by ID, try enrollment number
         if (!user) {
             console.log('⚠️ Not found by ID, trying enrollment number...');
-            user = await StudentManagement.findOne({ enrollmentNo: userId });
+            user = await StudentManagement.findOne({ enrollmentNo: userId }).lean();
         }
 
         if (!user) {
@@ -2883,8 +3243,50 @@ app.post('/api/verify-face', async (req, res) => {
             });
         }
 
-        console.log('✅ Found user:', user.name, 'Photo:', user.photoUrl ? 'Yes' : 'No');
+        console.log('✅ Found user:', user.name);
 
+        // OPTIMIZATION: Check if pre-computed face descriptor exists
+        if (user.faceDescriptor && user.faceDescriptor.length > 0) {
+            console.log('🚀 Using pre-computed face descriptor for fast verification');
+            
+            // Extract descriptor from captured image only
+            const faceService = require('./face-api-service');
+            const capturedDescriptor = await faceService.extractDescriptor(capturedImage);
+            
+            if (!capturedDescriptor) {
+                return res.status(400).json({
+                    success: false,
+                    match: false,
+                    confidence: 0,
+                    message: 'No face detected in captured image. Please ensure good lighting and face is clearly visible.'
+                });
+            }
+
+            // Fast comparison using pre-computed descriptor
+            const distance = require('face-api.js').euclideanDistance(
+                new Float32Array(capturedDescriptor), 
+                new Float32Array(user.faceDescriptor)
+            );
+
+            const threshold = 0.6;
+            const match = distance < threshold;
+            const confidence = Math.max(0, Math.min(100, (1 - distance) * 100));
+
+            console.log(`⚡ FAST verification result: Distance: ${distance.toFixed(3)}, Match: ${match ? 'YES ✅' : 'NO ❌'}, Confidence: ${confidence.toFixed(2)}%`);
+
+            return res.json({
+                success: true,
+                match: match,
+                confidence: Math.round(confidence),
+                distance: parseFloat(distance.toFixed(3)),
+                message: match ? 'Face verified successfully!' : 'Face does not match. Please try again.',
+                method: 'fast_descriptor_comparison'
+            });
+        }
+
+        // FALLBACK: Use traditional photo comparison if no descriptor exists
+        console.log('⚠️ No pre-computed descriptor found, falling back to photo comparison');
+        
         // Check if user has profile photo
         if (!user.photoUrl) {
             console.log('⚠️ User has no profile photo:', userId);
@@ -3025,6 +3427,168 @@ app.post('/api/verify-face', async (req, res) => {
             match: false,
             confidence: 0,
             message: 'Verification error: ' + error.message
+        });
+    }
+});
+
+// ==================== FACE DESCRIPTOR OPTIMIZATION ENDPOINTS ====================
+
+// OPTIMIZATION: Face Descriptor Pre-processing Endpoint
+// This endpoint processes profile photos and extracts face descriptors for fast verification
+app.post('/api/process-face-descriptor', async (req, res) => {
+    try {
+        const { userId, photoBase64 } = req.body;
+
+        console.log('🧠 Processing face descriptor for user:', userId);
+
+        if (!userId || !photoBase64) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing userId or photoBase64'
+            });
+        }
+
+        // Find user
+        let user = await StudentManagement.findById(userId);
+        if (!user) {
+            user = await StudentManagement.findOne({ enrollmentNo: userId });
+        }
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Extract face descriptor
+        const faceService = require('./face-api-service');
+        const descriptor = await faceService.extractDescriptor(photoBase64);
+
+        if (!descriptor) {
+            return res.status(400).json({
+                success: false,
+                message: 'No face detected in photo. Please upload a clear, well-lit photo with face clearly visible.'
+            });
+        }
+
+        // Store descriptor in database
+        await StudentManagement.findByIdAndUpdate(user._id, {
+            faceDescriptor: Array.from(descriptor), // Convert Float32Array to regular array
+            faceDescriptorUpdatedAt: new Date()
+        });
+
+        console.log(`✅ Face descriptor processed and stored for ${user.name}`);
+
+        res.json({
+            success: true,
+            message: 'Face descriptor processed successfully. Face verification will now be faster.',
+            descriptorLength: descriptor.length
+        });
+
+    } catch (error) {
+        console.error('❌ Face descriptor processing error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Face descriptor processing failed: ' + error.message
+        });
+    }
+});
+
+// OPTIMIZATION: Bulk Face Descriptor Processing (for existing users)
+app.post('/api/process-all-face-descriptors', async (req, res) => {
+    try {
+        console.log('🔄 Starting bulk face descriptor processing...');
+
+        // Find all users with photos but no face descriptors
+        const usersWithPhotos = await StudentManagement.find({
+            photoUrl: { $exists: true, $ne: '' },
+            $or: [
+                { faceDescriptor: { $exists: false } },
+                { faceDescriptor: { $size: 0 } }
+            ]
+        });
+
+        console.log(`📊 Found ${usersWithPhotos.length} users needing face descriptor processing`);
+
+        let processed = 0;
+        let failed = 0;
+        const results = [];
+
+        for (const user of usersWithPhotos) {
+            try {
+                console.log(`Processing ${user.name} (${user.enrollmentNo})...`);
+
+                // Download photo from Cloudinary
+                const axios = require('axios');
+                const response = await axios.get(user.photoUrl, { responseType: 'arraybuffer' });
+                const photoBase64 = Buffer.from(response.data).toString('base64');
+
+                // Extract face descriptor
+                const faceService = require('./face-api-service');
+                const descriptor = await faceService.extractDescriptor(photoBase64);
+
+                if (descriptor) {
+                    // Store descriptor
+                    await StudentManagement.findByIdAndUpdate(user._id, {
+                        faceDescriptor: Array.from(descriptor),
+                        faceDescriptorUpdatedAt: new Date()
+                    });
+
+                    processed++;
+                    results.push({
+                        userId: user._id,
+                        name: user.name,
+                        enrollmentNo: user.enrollmentNo,
+                        status: 'success'
+                    });
+                    console.log(`✅ Processed ${user.name}`);
+                } else {
+                    failed++;
+                    results.push({
+                        userId: user._id,
+                        name: user.name,
+                        enrollmentNo: user.enrollmentNo,
+                        status: 'failed',
+                        reason: 'No face detected'
+                    });
+                    console.log(`❌ Failed to process ${user.name} - no face detected`);
+                }
+
+                // Small delay to prevent overwhelming the system
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+            } catch (error) {
+                failed++;
+                results.push({
+                    userId: user._id,
+                    name: user.name,
+                    enrollmentNo: user.enrollmentNo,
+                    status: 'error',
+                    reason: error.message
+                });
+                console.log(`❌ Error processing ${user.name}:`, error.message);
+            }
+        }
+
+        console.log(`🎯 Bulk processing complete: ${processed} processed, ${failed} failed`);
+
+        res.json({
+            success: true,
+            message: `Bulk face descriptor processing complete`,
+            stats: {
+                total: usersWithPhotos.length,
+                processed: processed,
+                failed: failed
+            },
+            results: results
+        });
+
+    } catch (error) {
+        console.error('❌ Bulk face descriptor processing error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Bulk processing failed: ' + error.message
         });
     }
 });
@@ -3393,7 +3957,12 @@ const loginLimiter = rateLimit({
     // Use user ID instead of IP address for rate limiting
     keyGenerator: (req) => {
         // Use the login ID (student enrollment or teacher employee ID) as the key
-        return req.body.id || req.ip; // Fallback to IP if no ID provided
+        const userId = req.body.id || req.body.enrollmentNo || req.body.employeeId;
+        if (userId) {
+            return `user:${userId}`;
+        }
+        // Don't use IP fallback to avoid IPv6 issues
+        return 'anonymous';
     },
     // Skip rate limiting for successful logins
     skipSuccessfulRequests: true,
@@ -3523,6 +4092,9 @@ const studentManagementSchema = new mongoose.Schema({
     dob: { type: Date, required: true },
     phone: String,
     photoUrl: String,
+    // Face verification optimization fields
+    faceDescriptor: [Number], // Pre-computed face descriptor for fast verification
+    faceDescriptorUpdatedAt: { type: Date }, // When descriptor was last updated
     createdAt: { type: Date, default: Date.now },
     // Timer and attendance tracking fields
     timerValue: { type: Number, default: 0 },
@@ -3631,20 +4203,6 @@ app.get('/api/debug/timer-calc/:enrollmentNo', async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
-    }
-});
-
-app.get('/api/students', async (req, res) => {
-    try {
-        if (mongoose.connection.readyState === 1) {
-            const students = await StudentManagement.find();
-            res.json({ success: true, students });
-        } else {
-            res.json({ success: true, students: studentManagementMemory });
-        }
-    } catch (error) {
-        console.error('Error fetching students:', error);
-        res.status(500).json({ success: false, error: error.message });
     }
 });
 
@@ -3852,11 +4410,36 @@ app.post('/api/upload-photo', async (req, res) => {
 
         console.log(`✅ Photo prepared for database storage (${base64Data.length} bytes)`);
 
+        // OPTIMIZATION: Auto-process face descriptor for uploaded photo
+        if (faceApiService.areModelsLoaded() && id) {
+            console.log('🧠 Processing face descriptor for uploaded photo...');
+            
+            // Process face descriptor in background (don't wait for it)
+            setImmediate(async () => {
+                try {
+                    const descriptor = await faceApiService.extractDescriptor(base64Data);
+                    
+                    if (descriptor) {
+                        // Update student with face descriptor
+                        await StudentManagement.findByIdAndUpdate(id, {
+                            faceDescriptor: Array.from(descriptor),
+                            faceDescriptorUpdatedAt: new Date()
+                        });
+                        console.log(`✅ Face descriptor processed and stored for user ${id}`);
+                    } else {
+                        console.log(`⚠️ Could not extract face descriptor for user ${id}`);
+                    }
+                } catch (error) {
+                    console.error(`❌ Error processing face descriptor for user ${id}:`, error.message);
+                }
+            });
+        }
+
         res.json({
             success: true,
             photoUrl,
             filename: `${type}_${id}_${Date.now()}`,
-            message: 'Photo uploaded successfully with face detected!'
+            message: 'Photo uploaded successfully with face detected! Face verification will be faster next time.'
         });
     } catch (error) {
         console.error('❌ Error uploading photo:', error);
@@ -3936,6 +4519,38 @@ app.put('/api/students/:id', async (req, res) => {
                 req.body,
                 { new: true, runValidators: true }
             );
+            
+            // OPTIMIZATION: Auto-process face descriptor if photo was updated
+            if (req.body.photoUrl && faceApiService.areModelsLoaded()) {
+                console.log('📸 Photo updated, processing face descriptor...');
+                
+                // Process face descriptor in background (don't wait for it)
+                setImmediate(async () => {
+                    try {
+                        let photoBase64 = req.body.photoUrl;
+                        
+                        // Extract base64 from data URI if needed
+                        if (photoBase64.startsWith('data:image')) {
+                            photoBase64 = photoBase64.replace(/^data:image\/\w+;base64,/, '');
+                        }
+                        
+                        const descriptor = await faceApiService.extractDescriptor(photoBase64);
+                        
+                        if (descriptor) {
+                            await StudentManagement.findByIdAndUpdate(req.params.id, {
+                                faceDescriptor: Array.from(descriptor),
+                                faceDescriptorUpdatedAt: new Date()
+                            });
+                            console.log(`✅ Face descriptor processed for ${student.name}`);
+                        } else {
+                            console.log(`⚠️ Could not extract face descriptor for ${student.name}`);
+                        }
+                    } catch (error) {
+                        console.error(`❌ Error processing face descriptor for ${student.name}:`, error.message);
+                    }
+                });
+            }
+            
             console.log('Student updated in MongoDB:', student);
             res.json({ success: true, student });
         } else {
@@ -3978,23 +4593,7 @@ app.delete('/api/students/:id', async (req, res) => {
     }
 });
 
-// Teacher Management
-const teacherSchema = new mongoose.Schema({
-    employeeId: { type: String, required: true, unique: true },
-    name: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
-    department: { type: String, required: true },
-    subject: { type: String, required: true },
-    dob: { type: Date, required: true },
-    phone: String,
-    photoUrl: String,
-    semester: String,
-    canEditTimetable: { type: Boolean, default: false },
-    createdAt: { type: Date, default: Date.now }
-});
-
-const Teacher = mongoose.model('Teacher', teacherSchema);
+// Teachers API endpoints (using the Teacher model defined earlier)
 
 app.get('/api/teachers', async (req, res) => {
     try {
@@ -4739,17 +5338,24 @@ app.post('/api/attendance/sync-offline', async (req, res) => {
         const {
             studentId, studentName, semester, branch,
             offlineStartTime, offlineEndTime, totalOfflineSeconds,
-            lastKnownOnlineSeconds, currentLecture, events, syncTimestamp
+            lastKnownOnlineSeconds, currentLecture, events, syncTimestamp,
+            // Legacy parameter support for backward compatibility
+            offlineDuration, lastKnownSeconds, lectureSubject
         } = req.body;
+        
+        // Handle legacy parameter names
+        const finalOfflineSeconds = totalOfflineSeconds || offlineDuration;
+        const finalLastKnownSeconds = lastKnownOnlineSeconds || lastKnownSeconds;
+        const finalLecture = currentLecture || (lectureSubject ? { subject: lectureSubject } : null);
         
         console.log('🔄 Syncing offline attendance:', {
             studentId, 
-            offlineMinutes: Math.floor(totalOfflineSeconds / 60),
+            offlineMinutes: Math.floor(finalOfflineSeconds / 60),
             eventCount: events?.length || 0
         });
         
         // Validate offline session
-        if (!studentId || !offlineStartTime || !offlineEndTime) {
+        if (!studentId || !offlineStartTime || !offlineEndTime || !finalOfflineSeconds) {
             return res.status(400).json({
                 success: false,
                 error: 'Missing required offline session data'
@@ -4772,31 +5378,98 @@ app.post('/api/attendance/sync-offline', async (req, res) => {
         }
         
         // Calculate accepted offline time (apply business rules)
-        let acceptedSeconds = totalOfflineSeconds;
+        let acceptedSeconds = finalOfflineSeconds;
         let rejectionReason = null;
+        let randomRingMissed = false;
+        let teacherAccepted = false;
         
-        // Business rule: Maximum 2 hours offline per session
-        const maxOfflineSeconds = 2 * 60 * 60; // 2 hours
-        if (totalOfflineSeconds > maxOfflineSeconds) {
-            acceptedSeconds = maxOfflineSeconds;
-            rejectionReason = 'exceeded_max_offline_time';
+        // CRITICAL: Check if Random Ring was triggered during offline period
+        const randomRing = await RandomRing.findOne({
+            'selectedStudents.studentId': studentId,
+            triggerTime: {
+                $gte: new Date(offlineStartTime),
+                $lte: new Date(offlineEndTime)
+            }
+        });
+        
+        if (randomRing) {
+            console.log(`⚠️  Random Ring was triggered during offline period: ${randomRing._id}`);
+            randomRingMissed = true;
+            
+            // Check if teacher manually accepted student
+            const studentData = randomRing.selectedStudents.find(s => 
+                s.studentId === studentId || s.enrollmentNo === studentId
+            );
+            
+            if (studentData && studentData.teacherAccepted) {
+                // Teacher accepted, allow full offline time
+                console.log(`✅ Teacher accepted student during offline - allowing full offline time`);
+                teacherAccepted = true;
+                randomRingMissed = false; // Teacher override
+                acceptedSeconds = finalOfflineSeconds; // Full time accepted
+                rejectionReason = null;
+            } else {
+                // Random Ring failed, cap attendance at Random Ring time
+                console.log(`❌ Random Ring failed - capping attendance`);
+                
+                if (!student.attendanceSession || !student.attendanceSession.sessionStartTime) {
+                    return res.status(404).json({
+                        success: false,
+                        error: 'Student session not found for Random Ring validation'
+                    });
+                }
+                
+                const cappedSeconds = Math.floor((randomRing.triggerTime - student.attendanceSession.sessionStartTime) / 1000);
+                acceptedSeconds = Math.min(cappedSeconds, finalOfflineSeconds);
+                rejectionReason = 'random_ring_failed';
+                
+                // Mark student as absent due to Random Ring failure
+                await StudentManagement.findByIdAndUpdate(studentId, {
+                    'attendanceSession.randomRingFailed': true,
+                    isRunning: false,
+                    status: 'absent'
+                });
+                
+                return res.json({
+                    success: true,
+                    randomRingMissed: true,
+                    teacherAccepted: false,
+                    cappedAt: acceptedSeconds,
+                    cappedMinutes: Math.floor(acceptedSeconds / 60),
+                    totalOfflineSeconds: finalOfflineSeconds,
+                    acceptedSeconds: acceptedSeconds,
+                    rejectionReason: 'random_ring_failed',
+                    message: `Attendance capped at Random Ring time (${Math.floor(acceptedSeconds / 60)} minutes)`
+                });
+            }
+        } else {
+            console.log(`✅ No Random Ring during offline - proceeding with other business rules`);
         }
-        
-        // Business rule: Must have valid lecture during offline period
-        if (!currentLecture || !currentLecture.subject) {
+
+        // Business rule: Maximum 2 hours offline per session (only if not overridden by teacher)
+        if (!teacherAccepted) {
+            const maxOfflineSeconds = 2 * 60 * 60; // 2 hours
+            if (finalOfflineSeconds > maxOfflineSeconds) {
+                acceptedSeconds = Math.min(acceptedSeconds, maxOfflineSeconds);
+                rejectionReason = rejectionReason || 'exceeded_max_offline_time';
+            }
+        }
+
+        // Business rule: Must have valid lecture during offline period (only if not overridden by teacher)
+        if (!teacherAccepted && (!finalLecture || !finalLecture.subject)) {
             acceptedSeconds = Math.floor(acceptedSeconds * 0.5); // 50% penalty
-            rejectionReason = 'no_valid_lecture';
+            rejectionReason = rejectionReason || 'no_valid_lecture';
         }
-        
-        // Business rule: Check for suspicious patterns in events
-        if (events && events.length > 0) {
+
+        // Business rule: Check for suspicious patterns in events (only if not overridden by teacher)
+        if (!teacherAccepted && events && events.length > 0) {
             const disconnectEvents = events.filter(e => e.type === 'wifi_disconnected').length;
             const connectEvents = events.filter(e => e.type === 'wifi_connected').length;
             
             // Too many WiFi toggles might indicate manipulation
             if (disconnectEvents > 10 || Math.abs(disconnectEvents - connectEvents) > 5) {
                 acceptedSeconds = Math.floor(acceptedSeconds * 0.7); // 30% penalty
-                rejectionReason = 'suspicious_wifi_pattern';
+                rejectionReason = rejectionReason || 'suspicious_wifi_pattern';
             }
         }
         
@@ -4806,8 +5479,28 @@ app.post('/api/attendance/sync-offline', async (req, res) => {
         }
         
         // Add offline time to total attended seconds
-        const previousAttended = student.attendanceSession.totalAttendedSeconds || lastKnownOnlineSeconds || 0;
+        const previousAttended = student.attendanceSession.totalAttendedSeconds || finalLastKnownSeconds || 0;
         student.attendanceSession.totalAttendedSeconds = previousAttended + acceptedSeconds;
+        
+        // Track offline periods for audit trail
+        if (!student.attendanceSession.offlinePeriods) {
+            student.attendanceSession.offlinePeriods = [];
+        }
+        
+        student.attendanceSession.offlinePeriods.push({
+            startTime: new Date(offlineStartTime),
+            endTime: new Date(offlineEndTime),
+            duration: finalOfflineSeconds,
+            acceptedDuration: acceptedSeconds,
+            rejectionReason: rejectionReason,
+            randomRingMissed: randomRingMissed,
+            teacherAccepted: teacherAccepted
+        });
+        
+        // Keep only last 20 offline periods
+        if (student.attendanceSession.offlinePeriods.length > 20) {
+            student.attendanceSession.offlinePeriods = student.attendanceSession.offlinePeriods.slice(-20);
+        }
         
         // Log offline sync event
         if (!student.attendanceSession.offlineSyncs) {
@@ -4815,14 +5508,17 @@ app.post('/api/attendance/sync-offline', async (req, res) => {
         }
         
         student.attendanceSession.offlineSyncs.push({
-            syncTimestamp: new Date(syncTimestamp),
+            syncTimestamp: new Date(syncTimestamp || Date.now()),
             offlineStartTime: new Date(offlineStartTime),
             offlineEndTime: new Date(offlineEndTime),
-            totalOfflineSeconds: totalOfflineSeconds,
+            totalOfflineSeconds: finalOfflineSeconds,
             acceptedSeconds: acceptedSeconds,
             rejectionReason: rejectionReason,
-            currentLecture: currentLecture,
-            eventCount: events?.length || 0
+            currentLecture: finalLecture,
+            eventCount: events?.length || 0,
+            randomRingMissed: randomRingMissed,
+            teacherAccepted: teacherAccepted,
+            randomRingId: randomRing?._id || null
         });
         
         // Keep only last 10 offline syncs
@@ -4832,9 +5528,10 @@ app.post('/api/attendance/sync-offline', async (req, res) => {
         
         await student.save();
         
-        console.log(`✅ Offline sync completed for ${studentName}:`);
-        console.log(`   Total offline: ${Math.floor(totalOfflineSeconds / 60)} minutes`);
+        console.log(`✅ Offline sync completed for ${studentName || 'Student'}:`);
+        console.log(`   Total offline: ${Math.floor(finalOfflineSeconds / 60)} minutes`);
         console.log(`   Accepted: ${Math.floor(acceptedSeconds / 60)} minutes`);
+        console.log(`   Random Ring: ${randomRingMissed ? (teacherAccepted ? 'Missed but Teacher Accepted' : 'Failed') : 'Not Triggered'}`);
         console.log(`   Reason: ${rejectionReason || 'full_acceptance'}`);
         
         // Broadcast updated attendance to teachers
@@ -4842,25 +5539,33 @@ app.post('/api/attendance/sync-offline', async (req, res) => {
             studentId: student._id,
             enrollmentNo: student.enrollmentNo,
             name: student.name,
-            status: 'present',
+            status: randomRingMissed && !teacherAccepted ? 'absent' : 'present',
             isRunning: false,
             timerValue: student.attendanceSession.totalAttendedSeconds,
             offlineSync: {
-                totalOfflineSeconds,
+                totalOfflineSeconds: finalOfflineSeconds,
                 acceptedSeconds,
-                rejectionReason
+                rejectionReason,
+                randomRingMissed,
+                teacherAccepted
             }
         });
         
         res.json({
             success: true,
             acceptedSeconds: acceptedSeconds,
-            totalOfflineSeconds: totalOfflineSeconds,
+            totalOfflineSeconds: finalOfflineSeconds,
             rejectionReason: rejectionReason,
             newTotalSeconds: student.attendanceSession.totalAttendedSeconds,
-            message: rejectionReason ? 
-                `Offline time partially accepted: ${rejectionReason}` : 
-                'Offline time fully accepted'
+            randomRingMissed: randomRingMissed,
+            teacherAccepted: teacherAccepted,
+            message: teacherAccepted ? 
+                'Teacher accepted you during offline period - full time counted' :
+                randomRingMissed ? 
+                    `Random Ring missed during offline - attendance may be affected` :
+                    rejectionReason ? 
+                        `Offline time partially accepted: ${rejectionReason}` : 
+                        'Offline time fully accepted'
         });
         
     } catch (error) {
@@ -5105,6 +5810,88 @@ const randomRingSchema = new mongoose.Schema({
 });
 
 const RandomRing = mongoose.model('RandomRing', randomRingSchema);
+
+// Random Ring timeout handler
+async function handleRandomRingTimeout(randomRingId) {
+    try {
+        console.log(`⏰ Handling Random Ring timeout for: ${randomRingId}`);
+        
+        if (mongoose.connection.readyState !== 1) {
+            console.log('⚠️ Database not connected, skipping timeout handler');
+            return;
+        }
+        
+        const randomRing = await RandomRing.findById(randomRingId);
+        if (!randomRing || randomRing.status !== 'pending') {
+            console.log(`⚠️ Random Ring ${randomRingId} not found or already completed`);
+            return;
+        }
+        
+        let hasChanges = false;
+        
+        // Mark unverified students as failed and stop their timers
+        for (const student of randomRing.selectedStudents) {
+            if (!student.verified && !student.teacherAccepted && !student.failed) {
+                student.failed = true;
+                hasChanges = true;
+                
+                console.log(`❌ Student ${student.name} failed Random Ring - stopping timer`);
+                
+                // Stop student timer permanently
+                await StudentManagement.findOneAndUpdate(
+                    { 
+                        $or: [
+                            { _id: student.studentId },
+                            { enrollmentNo: student.studentId }
+                        ]
+                    },
+                    {
+                        'attendanceSession.isPaused': false,
+                        'attendanceSession.pauseReason': null,
+                        'attendanceSession.randomRingFailed': true,
+                        isRunning: false,
+                        status: 'absent',
+                        lastUpdated: new Date(),
+                        $unset: {
+                            'attendanceSession.randomRingId': 1,
+                            'attendanceSession.randomRingTime': 1
+                        }
+                    }
+                );
+                
+                // Notify student of failure
+                io.emit('random_ring_timeout', {
+                    studentId: student.studentId,
+                    enrollmentNo: student.enrollmentNo,
+                    message: 'Random Ring timeout - Attendance stopped. Contact teacher if needed.',
+                    randomRingId: randomRingId
+                });
+            }
+        }
+        
+        // Update Random Ring status
+        if (hasChanges) {
+            randomRing.status = 'expired';
+            await randomRing.save();
+            
+            // Notify teacher of timeout
+            io.emit('random_ring_expired', {
+                randomRingId: randomRingId,
+                teacherId: randomRing.teacherId,
+                message: 'Random Ring expired - Some students did not respond',
+                failedStudents: randomRing.selectedStudents.filter(s => s.failed).map(s => ({
+                    name: s.name,
+                    enrollmentNo: s.enrollmentNo
+                }))
+            });
+        }
+        
+        console.log(`✅ Random Ring timeout handled for: ${randomRingId}`);
+        
+    } catch (error) {
+        console.error(`❌ Error handling Random Ring timeout for ${randomRingId}:`, error);
+    }
+}
 
 // AttendanceHistory Schema - Detailed per-period, per-day, per-subject tracking
 const attendanceHistorySchema = new mongoose.Schema({
@@ -5698,7 +6485,7 @@ app.post('/api/random-ring', async (req, res) => {
         if (mongoose.connection.readyState === 1) {
             const query = {};
             if (semester) query.semester = semester;
-            if (branch) query.course = branch;
+            if (branch) query.branch = branch; // Fixed: use 'branch' not 'course'
             
             students = await StudentManagement.find(query);
         } else {
@@ -5707,7 +6494,10 @@ app.post('/api/random-ring', async (req, res) => {
 
         // Filter students who are currently attending (connected to WiFi)
         const attendingStudents = students.filter(s => 
-            s.status === 'attending' || s.status === 'active' || s.isRunning
+            (s.status === 'attending' || s.status === 'active' || s.isRunning) &&
+            s.attendanceSession && 
+            s.attendanceSession.sessionStartTime &&
+            !s.attendanceSession.isPaused
         );
 
         console.log(`📊 Found ${attendingStudents.length} attending students out of ${students.length} total`);
@@ -5735,6 +6525,9 @@ app.post('/api/random-ring', async (req, res) => {
         // Create random ring record in database
         let randomRingId = null;
         if (mongoose.connection.readyState === 1) {
+            // Set expiration time (5 minutes from now)
+            const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+            
             const randomRing = new RandomRing({
                 teacherId,
                 teacherName: teacherName || 'Teacher',
@@ -5745,6 +6538,7 @@ app.post('/api/random-ring', async (req, res) => {
                 bssid,
                 type,
                 count: type === 'select' ? count : selectedStudents.length,
+                expiresAt: expiresAt,
                 selectedStudents: selectedStudents.map(s => ({
                     studentId: s._id ? s._id.toString() : s.enrollmentNo,
                     name: s.name,
@@ -5759,6 +6553,11 @@ app.post('/api/random-ring', async (req, res) => {
             await randomRing.save();
             randomRingId = randomRing._id.toString();
             console.log(`💾 Random ring record created: ${randomRingId}`);
+            
+            // Schedule timeout handler (5 minutes)
+            setTimeout(async () => {
+                await handleRandomRingTimeout(randomRingId);
+            }, 5 * 60 * 1000);
         }
 
         // PAUSE TIMER for all selected students
@@ -5854,14 +6653,58 @@ app.post('/api/random-ring/verify', async (req, res) => {
             randomRing.selectedStudents[studentIndex].verificationTime = new Date();
             randomRing.selectedStudents[studentIndex].verificationPhoto = verificationPhoto;
 
-            // Check if all students have verified
-            const allVerified = randomRing.selectedStudents.every(s => s.verified);
-            if (allVerified) {
+            // Check if all students have verified or been handled by teacher
+            const allHandled = randomRing.selectedStudents.every(s => 
+                s.verified || s.teacherAccepted || s.teacherRejected || s.failed
+            );
+            if (allHandled) {
                 randomRing.status = 'completed';
+                console.log(`🎯 Random Ring ${randomRingId} completed - all students handled`);
             }
 
             await randomRing.save();
             console.log(`✅ Student ${studentId} verified for random ring ${randomRingId}`);
+
+            // RESUME TIMER for verified student
+            const student = await StudentManagement.findOneAndUpdate(
+                { 
+                    $or: [
+                        { _id: studentId },
+                        { enrollmentNo: studentId }
+                    ]
+                },
+                {
+                    'attendanceSession.isPaused': false,
+                    'attendanceSession.pauseReason': null,
+                    'attendanceSession.lastResumeTime': new Date(),
+                    isRunning: true,
+                    status: 'attending',
+                    $unset: {
+                        'attendanceSession.randomRingId': 1,
+                        'attendanceSession.randomRingTime': 1
+                    }
+                },
+                { new: true }
+            );
+
+            // Send socket events for timer resume
+            io.emit('random_ring_verified', {
+                randomRingId: randomRingId,
+                studentId: studentId,
+                verified: true,
+                timerResumed: true,
+                message: 'Verification successful - Timer resumed!'
+            });
+
+            // Notify teacher of verification
+            io.emit('random_ring_student_verified', {
+                randomRingId: randomRingId,
+                studentId: studentId,
+                studentName: randomRing.selectedStudents[studentIndex].name,
+                enrollmentNo: randomRing.selectedStudents[studentIndex].enrollmentNo,
+                verificationTime: new Date(),
+                teacherId: randomRing.teacherId
+            });
         }
 
         res.json({
@@ -6078,8 +6921,9 @@ app.post('/api/random-ring/teacher-action', async (req, res) => {
             randomRing.selectedStudents[studentIndex].teacherActionReason = reason || '';
             
             if (action === 'accepted') {
-                // Mark as verified and resume timer
+                // Mark as verified and accepted by teacher
                 randomRing.selectedStudents[studentIndex].verified = true;
+                randomRing.selectedStudents[studentIndex].teacherAccepted = true;
                 randomRing.selectedStudents[studentIndex].verificationTime = now;
                 
                 // Resume student timer
@@ -6114,6 +6958,9 @@ app.post('/api/random-ring/teacher-action', async (req, res) => {
                     });
                 }
             } else if (action === 'rejected') {
+                // Mark as rejected by teacher
+                randomRing.selectedStudents[studentIndex].teacherRejected = true;
+                
                 // Notify student to verify face
                 const student = await StudentManagement.findOne({
                     $or: [{ _id: studentId }, { enrollmentNo: studentId }]
@@ -6128,6 +6975,15 @@ app.post('/api/random-ring/teacher-action', async (req, res) => {
                         expiresAt: new Date(now.getTime() + 5 * 60 * 1000)
                     });
                 }
+            }
+            
+            // Check if all students have been handled
+            const allHandled = randomRing.selectedStudents.every(s => 
+                s.verified || s.teacherAccepted || s.teacherRejected || s.failed
+            );
+            if (allHandled) {
+                randomRing.status = 'completed';
+                console.log(`🎯 Random Ring ${randomRingId} completed via teacher action - all students handled`);
             }
             
             await randomRing.save();
@@ -6156,7 +7012,7 @@ app.post('/api/random-ring/teacher-action', async (req, res) => {
 });
 
 // Startup validation
-function validateEnvironment() {
+async function validateEnvironment() {
     const required = ['MONGODB_URI'];
     const missing = required.filter(key => !process.env[key]);
     
@@ -6166,7 +7022,95 @@ function validateEnvironment() {
     }
     
     console.log('✅ Environment validation passed');
+    
+    // Clean up Random Ring issues on startup
+    await cleanupRandomRingIssues();
+    
     return true;
+}
+
+// Clean up existing Random Ring data issues
+async function cleanupRandomRingIssues() {
+    try {
+        if (mongoose.connection.readyState !== 1) {
+            console.log('⚠️ Database not connected, skipping Random Ring cleanup');
+            return;
+        }
+        
+        console.log('🧹 Cleaning up Random Ring issues...');
+        
+        // Fix status management issue: Update completed Random Rings
+        const result1 = await RandomRing.updateMany(
+            {
+                status: 'pending',
+                'selectedStudents.verified': true,
+                $expr: {
+                    $eq: [
+                        { $size: '$selectedStudents' },
+                        { $size: { $filter: { input: '$selectedStudents', cond: { $eq: ['$$this.verified', true] } } } }
+                    ]
+                }
+            },
+            { status: 'completed' }
+        );
+        
+        // Mark expired Random Rings (older than 5 minutes and still pending)
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        const result2 = await RandomRing.updateMany(
+            {
+                status: 'pending',
+                triggerTime: { $lt: fiveMinutesAgo }
+            },
+            { status: 'expired' }
+        );
+        
+        // Resume timers for students with completed Random Rings
+        const completedRings = await RandomRing.find({
+            status: 'completed',
+            'selectedStudents.verified': true
+        });
+        
+        let resumedTimers = 0;
+        for (const ring of completedRings) {
+            for (const student of ring.selectedStudents) {
+                if (student.verified) {
+                    const updated = await StudentManagement.findOneAndUpdate(
+                        {
+                            $or: [
+                                { _id: student.studentId },
+                                { enrollmentNo: student.studentId }
+                            ],
+                            'attendanceSession.isPaused': true,
+                            'attendanceSession.pauseReason': 'random_ring'
+                        },
+                        {
+                            'attendanceSession.isPaused': false,
+                            'attendanceSession.pauseReason': null,
+                            'attendanceSession.lastResumeTime': new Date(),
+                            isRunning: true,
+                            status: 'attending',
+                            $unset: {
+                                'attendanceSession.randomRingId': 1,
+                                'attendanceSession.randomRingTime': 1
+                            }
+                        }
+                    );
+                    
+                    if (updated) {
+                        resumedTimers++;
+                    }
+                }
+            }
+        }
+        
+        console.log(`✅ Random Ring cleanup completed:`);
+        console.log(`   - Fixed ${result1.modifiedCount} completed Random Rings`);
+        console.log(`   - Marked ${result2.modifiedCount} expired Random Rings`);
+        console.log(`   - Resumed ${resumedTimers} student timers`);
+        
+    } catch (error) {
+        console.error('❌ Error during Random Ring cleanup:', error);
+    }
 }
 
 // Global error handlers
@@ -6188,6 +7132,34 @@ if (!validateEnvironment()) {
     console.error('❌ Server startup aborted due to configuration errors');
     process.exit(1);
 }
+
+// Memory monitoring and cleanup
+setInterval(() => {
+    const memUsage = process.memoryUsage();
+    const memUsageMB = {
+        rss: Math.round(memUsage.rss / 1024 / 1024),
+        heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+        heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+        external: Math.round(memUsage.external / 1024 / 1024)
+    };
+    
+    // Log memory usage if it's high
+    if (memUsageMB.heapUsed > 200) {
+        console.log(`🧠 Memory Usage: RSS: ${memUsageMB.rss}MB, Heap: ${memUsageMB.heapUsed}/${memUsageMB.heapTotal}MB`);
+        
+        // Clear caches if memory is very high
+        if (memUsageMB.heapUsed > 400) {
+            console.log('🧹 High memory usage detected, clearing caches...');
+            clearCache();
+            
+            // Force garbage collection if available
+            if (global.gc) {
+                global.gc();
+                console.log('🗑️ Garbage collection triggered');
+            }
+        }
+    }
+}, 60000); // Check every minute
 
 server.listen(PORT, '0.0.0.0', async () => {
     console.log('========================================');
