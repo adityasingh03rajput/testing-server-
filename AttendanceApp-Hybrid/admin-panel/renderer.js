@@ -254,7 +254,7 @@ function updateServerStatus(connected) {
 async function loadDashboardData() {
     try {
         const [studentsRes, teachersRes, attendanceRes] = await Promise.all([
-            fetch(`${SERVER_URL}/api/students`),
+            fetch(`${SERVER_URL}/api/students?all=true`),
             fetch(`${SERVER_URL}/api/teachers`),
             fetch(`${SERVER_URL}/api/attendance/records`)
         ]);
@@ -377,7 +377,7 @@ function loadRecentActivity() {
 // Students Management
 async function loadStudents() {
     try {
-        const response = await fetch(`${SERVER_URL}/api/students`);
+        const response = await fetch(`${SERVER_URL}/api/students?all=true`);
         const data = await response.json();
         students = data.students || [];
         renderStudents(students);
@@ -5977,7 +5977,7 @@ async function loadAttendanceHistory() {
         await loadAttendanceDateRange();
         
         // Get all students
-        const studentsResponse = await fetch(`${SERVER_URL}/api/students`);
+        const studentsResponse = await fetch(`${SERVER_URL}/api/students?all=true`);
         const studentsData = await studentsResponse.json();
         
         if (!studentsData.success) {
@@ -6177,7 +6177,7 @@ async function viewDetailedAttendance(enrollmentNo) {
         console.log(`📊 Loading attendance overview for ${enrollmentNo}...`);
         
         // Get student info
-        const studentsResponse = await fetch(`${SERVER_URL}/api/students`);
+        const studentsResponse = await fetch(`${SERVER_URL}/api/students?all=true`);
         const studentsData = await studentsResponse.json();
         const student = studentsData.students.find(s => s.enrollmentNo === enrollmentNo);
         
