@@ -1056,7 +1056,8 @@ export default function App() {
           return {
             ...prev,
             selectedStudents: prev.selectedStudents.map(s =>
-              (s.studentId === data.studentId || s.enrollmentNo === data.studentId)
+              // Use consistent ID matching (only studentId, which is _id.toString())
+              s.studentId === data.studentId
                 ? { ...s, teacherAction: data.action, teacherActionTime: data.teacherActionTime }
                 : s
             )
@@ -1085,7 +1086,8 @@ export default function App() {
           return {
             ...prev,
             selectedStudents: prev.selectedStudents.map(s =>
-              (s.studentId === data.studentId || s.enrollmentNo === data.studentId)
+              // Use consistent ID matching (only studentId, which is _id.toString())
+              s.studentId === data.studentId
                 ? { ...s, faceVerifiedAfterRejection: true, verified: true }
                 : s
             )
@@ -3016,7 +3018,8 @@ export default function App() {
           return {
             ...prev,
             selectedStudents: prev.selectedStudents.map(s => 
-              (s.studentId === studentId || s.enrollmentNo === studentId)
+              // Use consistent ID matching (only studentId, which is _id.toString())
+              s.studentId === studentId
                 ? { ...s, teacherAction: action }
                 : s
             )

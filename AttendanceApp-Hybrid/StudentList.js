@@ -42,16 +42,11 @@ const StudentList = ({ theme, students = [], onStudentPress, activeRandomRing = 
 
   const renderStudentItem = ({ item: student }) => {
     // Check if this student is in active random ring
-    // Convert student._id to string for comparison
+    // Use ONLY _id.toString() for consistent matching (matches server logic)
     const studentIdStr = student._id ? student._id.toString() : null;
     const randomRingStudent = activeRandomRing?.selectedStudents?.find(s => {
-      // Try multiple matching strategies
-      if (s.studentId === studentIdStr) return true;
-      if (s.studentId === student._id) return true;
-      if (s.studentId === student.enrollmentNo) return true;
-      if (s.enrollmentNo === student.enrollmentNo) return true;
-      if (s.enrollmentNo === studentIdStr) return true;
-      return false;
+      // Primary matching: Use _id.toString() (matches server random ring creation logic)
+      return s.studentId === studentIdStr;
     });
     
     return (
@@ -237,17 +232,14 @@ const StudentItem = ({ student, theme, onPress, randomRingStudent, onTeacherActi
                 return;
               }
               
-              // Use the same ID that was used to create the random ring
-              // Priority: _id.toString() > enrollmentNo (matching server logic)
-              const studentIdToUse = (student._id ? student._id.toString() : null) || student.enrollmentNo;
+              // Use consistent ID matching (same as server random ring creation)
+              const studentIdToUse = student._id ? student._id.toString() : student.enrollmentNo;
               console.log('👆 Accept button pressed');
               console.log('   Student:', student.name);
               console.log('   Student _id:', student._id);
-              console.log('   Student enrollmentNo:', student.enrollmentNo);
               console.log('   Using ID:', studentIdToUse);
               console.log('   Random Ring ID:', randomRingId);
               console.log('   Random Ring Student ID:', randomRingStudent?.studentId);
-              console.log('   Random Ring Student enrollmentNo:', randomRingStudent?.enrollmentNo);
               
               setActionLoading(true);
               try {
@@ -279,17 +271,14 @@ const StudentItem = ({ student, theme, onPress, randomRingStudent, onTeacherActi
                 return;
               }
               
-              // Use the same ID that was used to create the random ring
-              // Priority: _id.toString() > enrollmentNo (matching server logic)
-              const studentIdToUse = (student._id ? student._id.toString() : null) || student.enrollmentNo;
+              // Use consistent ID matching (same as server random ring creation)
+              const studentIdToUse = student._id ? student._id.toString() : student.enrollmentNo;
               console.log('👆 Reject button pressed');
               console.log('   Student:', student.name);
               console.log('   Student _id:', student._id);
-              console.log('   Student enrollmentNo:', student.enrollmentNo);
               console.log('   Using ID:', studentIdToUse);
               console.log('   Random Ring ID:', randomRingId);
               console.log('   Random Ring Student ID:', randomRingStudent?.studentId);
-              console.log('   Random Ring Student enrollmentNo:', randomRingStudent?.enrollmentNo);
               
               setActionLoading(true);
               try {
