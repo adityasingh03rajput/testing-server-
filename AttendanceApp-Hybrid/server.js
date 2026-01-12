@@ -40,14 +40,8 @@ const http = require('http');
 const { Server } = require('socket.io');
 const axios = require('axios');
 const rateLimit = require('express-rate-limit');
-// Try to use bcrypt, fallback to bcryptjs for deployment compatibility
-let bcrypt;
-try {
-    bcrypt = require('bcrypt');
-} catch (error) {
-    console.log('⚠️  bcrypt not available, using bcryptjs fallback');
-    bcrypt = require('bcryptjs');
-}
+// Use bcryptjs for deployment compatibility (works on all platforms)
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const compression = require('compression');
 const helmet = require('helmet');

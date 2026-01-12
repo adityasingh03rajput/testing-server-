@@ -1,13 +1,8 @@
 // LetsBunk Database Seeder - Populate MongoDB with Demo Data
 const mongoose = require('mongoose');
 // Try to use bcrypt, fallback to bcryptjs for deployment compatibility
-let bcrypt;
-try {
-    bcrypt = require('bcrypt');
-} catch (error) {
-    console.log('⚠️  bcrypt not available, using bcryptjs fallback');
-    bcrypt = require('bcryptjs');
-}
+// Use bcryptjs for deployment compatibility
+const bcrypt = require('bcryptjs');
 
 // MongoDB Connection
 const MONGODB_URI = 'mongodb+srv://adityarajsir162_db_user:fkfWRAFNcVNoVFWW@letsbunk.cdxihb7.mongodb.net/attendance_app?retryWrites=true&w=majority&appName=letsbunk';
