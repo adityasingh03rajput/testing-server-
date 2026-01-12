@@ -32,6 +32,7 @@
     "test:admin": "node test-admin-panel-apis.js",
     "test:apk": "node test-apk-apis.js",
     "test:production": "node test-production-apis.js",
+    "test:render": "node test-render-deployment.js",
     "debug:students": "node debug-students-endpoint.js",
     "check:deployment": "node check-deployment.js",
     "database:cleanup": "node database-cleanup.js",
