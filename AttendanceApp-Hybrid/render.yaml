@@ -3,46 +3,9 @@ services:
     name: letsbunk-server
     env: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: npm start
     runtime: node
     nodeVersion: 18.20.4
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: NPM_CONFIG_PRODUCTION
-        value: false
-      - key: PORT
-        value: 3000
-      - key: MONGODB_URI
-        value: mongodb+srv://adityarajsir162_db_user:fkfWRAFNcVNoVFWW@letsbunk.cdxihb7.mongodb.net/attendance_app?retryWrites=true&w=majority&appName=letsbunk
-      - key: CLOUDINARY_CLOUD_NAME
-        value: cloudinary
-      - key: CLOUDINARY_API_KEY
-        value: 445132764832368
-      - key: CLOUDINARY_API_SECRET
-        value: 0OXqzNMmfifBAjqUUIIQft8P3l0
-      - key: REDIS_HOST
-        value: redis-11769.crce206.ap-south-1-1.ec2.cloud.redislabs.com
-      - key: REDIS_PORT
-        value: 11769
-      - key: REDIS_USERNAME
-        value: default
-      - key: REDIS_PASSWORD
-        value: zZdSNJordmy0BIE52S7LUy4TKWWphNi2
-      - key: FACE_DETECTION_THRESHOLD
-        value: 0.6
-      - key: FACE_MATCH_THRESHOLD
-        value: 0.6
-      - key: MAX_FILE_SIZE
-        value: 10485760
-      - key: UPLOAD_DIR
-        value: ./uploads
-      - key: JWT_SECRET
-        value: letsbunk-jwt-secret-2024-secure-key
-      - key: SESSION_SECRET
-        value: letsbunk-session-secret-2024-secure-key
-      - key: ALLOWED_ORIGINS
-        value: "*"
     autoDeploy: true
     branch: master

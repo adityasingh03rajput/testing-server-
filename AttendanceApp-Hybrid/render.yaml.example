@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: letsbunk-server
+    env: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    runtime: node
+    nodeVersion: 18.20.4
+    autoDeploy: true
+    branch: master
+    # Environment variables should be set in Render dashboard, not here!
+    # Required env vars:
+    # - NODE_ENV
+    # - MONGODB_URI
+    # - CLOUDINARY_CLOUD_NAME
+    # - CLOUDINARY_API_KEY
+    # - CLOUDINARY_API_SECRET
+    # - REDIS_HOST
+    # - REDIS_PORT
+    # - REDIS_USERNAME
+    # - REDIS_PASSWORD
+    # - JWT_SECRET
+    # - SESSION_SECRET
