@@ -41,7 +41,8 @@ const { Server } = require('socket.io');
 const axios = require('axios');
 const rateLimit = require('express-rate-limit');
 // Use bcryptjs for deployment compatibility (works on all platforms)
-const bcrypt = require('bcryptjs');
+// Temporarily disabled for deployment - using plain text passwords
+// const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const compression = require('compression');
 const helmet = require('helmet');
@@ -259,8 +260,10 @@ teacherSchema.pre('save', async function(next) {
     if (!this.isModified('password')) return next();
     
     try {
-        const salt = await bcrypt.genSalt(10);
-        this.password = await bcrypt.hash(this.password, salt);
+        // Temporarily disabled password hashing for deployment
+        // const salt = await bcrypt.genSalt(10);
+        // this.password = await bcrypt.hash(this.password, salt);
+        // For now, store password as-is (NOT SECURE - for deployment testing only)
         next();
     } catch (error) {
         next(error);
@@ -269,7 +272,10 @@ teacherSchema.pre('save', async function(next) {
 
 // Method to compare password
 teacherSchema.methods.comparePassword = async function(candidatePassword) {
-    return bcrypt.compare(candidatePassword, this.password);
+    // Temporarily disabled bcrypt for deployment
+    // return bcrypt.compare(candidatePassword, this.password);
+    // For now, simple string comparison (NOT SECURE - for deployment testing only)
+    return candidatePassword === this.password;
 };
 
 // Add indexes with proper unique constraints
@@ -7444,8 +7450,10 @@ app.put('/api/teachers/:id', async (req, res) => {
         
         // Hash password if it's being updated
         if (updateData.password) {
-            const salt = await bcrypt.genSalt(10);
-            updateData.password = await bcrypt.hash(updateData.password, salt);
+            // Temporarily disabled password hashing for deployment
+            // const salt = await bcrypt.genSalt(10);
+            // updateData.password = await bcrypt.hash(updateData.password, salt);
+            // For now, store password as-is (NOT SECURE - for deployment testing only)
         }
         
         if (mongoose.connection.readyState === 1) {
