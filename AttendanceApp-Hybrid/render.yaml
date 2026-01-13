@@ -8,4 +8,4 @@ services:
     runtime: node
     nodeVersion: 18.20.4
     autoDeploy: true
-    branch: master
+    branch: main
