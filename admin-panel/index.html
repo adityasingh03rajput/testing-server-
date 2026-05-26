@@ -149,6 +149,10 @@
                     <span class="icon">⏰</span>
                     <span>Period Settings</span>
                 </button>
+                <button class="nav-item" data-section="load-distribution" data-tooltip="Load Distribution">
+                    <span class="icon">⚖️</span>
+                    <span>Load Distribution</span>
+                </button>
                 <button class="nav-item" data-section="settings" data-tooltip="Settings">
                     <span class="icon">⚙️</span>
                     <span>Settings</span>
@@ -1356,6 +1360,139 @@
                             <h3>Backup & Restore</h3>
                             <button class="btn btn-secondary">📥 Backup Database</button>
                             <button class="btn btn-secondary">📤 Restore Database</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Load Distribution Section -->
+                <section id="load-distribution-section" class="section">
+                    <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                        <h2 class="section-title" style="margin:0;">⚖️ Load Distribution & Leave Swapping</h2>
+                        <div style="display: flex; align-items: center; gap: 12px; background: var(--bg-card); padding: 8px 16px; border-radius: 10px; border: 1px solid var(--border);">
+                            <span style="font-weight: 600; font-size: 14px; color: var(--text-primary);">Load Distribution Feature:</span>
+                            <button id="toggleLoadDistributionBtn" class="btn btn-secondary" onclick="toggleLoadDistributionFlag()" style="padding: 6px 12px; font-size: 13px; font-weight: bold; border-radius: 6px;">Checking...</button>
+                        </div>
+                    </div>
+
+                    <div class="ld-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+                        <!-- Left Panel: Teachers & Quotas -->
+                        <div class="bento-card">
+                            <h3 style="margin-top:0; margin-bottom:16px; color:var(--text-primary); font-size:16px;">👨‍🏫 Teacher Quota Management</h3>
+                            <div class="filters" style="margin-bottom:16px;">
+                                <input type="text" id="ldTeacherSearch" class="search-input" placeholder="Search teachers..." oninput="renderLdTeachers()">
+                            </div>
+                            <div class="table-container" style="max-height: 500px; overflow-y: auto;">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Teacher Name</th>
+                                            <th>Weekly Quota</th>
+                                            <th>Monthly Quota</th>
+                                            <th>Semester Quota</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ldTeachersTableBody">
+                                        <!-- Will be populated dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Right Panel: Leave Requests & Daily Swaps -->
+                        <div style="display: flex; flex-direction: column; gap: 20px;">
+                            <!-- Leave Requests Card -->
+                            <div class="bento-card">
+                                <h3 style="margin-top:0; margin-bottom:16px; color:var(--text-primary); font-size:16px;">⏳ Leave Requests</h3>
+                                <div id="ldLeaveRequestsContainer" style="display: flex; flex-direction: column; gap: 12px; max-height: 250px; overflow-y: auto;">
+                                    <!-- Will be populated dynamically -->
+                                </div>
+                            </div>
+
+                            <!-- Active Swaps Card -->
+                            <div class="bento-card">
+                                <h3 style="margin-top:0; margin-bottom:16px; color:var(--text-primary); font-size:16px;">🔄 Daily Schedule Swaps</h3>
+                                <div id="ldSwapsContainer" style="display: flex; flex-direction: column; gap: 12px; max-height: 250px; overflow-y: auto;">
+                                    <!-- Will be populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quota Edit Modal -->
+                    <div id="ldQuotaModal" class="modal">
+                        <div class="modal-content" style="max-width: 450px; width: 90%; padding: 24px;">
+                            <div class="modal-header">
+                                <h3 id="ldQuotaModalTitle">Adjust Teacher Quotas</h3>
+                                <button class="close-btn" onclick="closeLdQuotaModal()">×</button>
+                            </div>
+                            <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
+                                <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+                                    <p style="margin:0; font-size:12px; color:var(--text-secondary);">Editing Quotas for:</p>
+                                    <h4 id="ldQuotaTeacherName" style="margin:4px 0 0; color:var(--text-primary);"></h4>
+                                </div>
+
+                                <!-- Week -->
+                                <div>
+                                    <h4 style="margin: 0 0 8px; font-size:13px; color: var(--teal);">📅 Weekly Quotas</h4>
+                                    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+                                        <div>
+                                            <label style="font-size:11px; color:var(--text-secondary); display:block; margin-bottom:4px;">Lectures</label>
+                                            <input type="number" id="ldWeekLectures" class="form-input" style="padding: 6px;">
+                                        </div>
+                                        <div>
+                                            <label style="font-size:11px; color:var(--text-secondary); display:block; margin-bottom:4px;">Leaves Taken</label>
+                                            <input type="number" id="ldWeekLeavesTaken" class="form-input" style="padding: 6px;">
+                                        </div>
+                                        <div>
+                                            <label style="font-size:11px; color:var(--text-secondary); display:block; margin-bottom:4px;">Leaves Left</label>
+                                            <input type="number" id="ldWeekLeavesLeft" class="form-input" style="padding: 6px;">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Month -->
+                                <div>
+                                    <h4 style="margin: 0 0 8px; font-size:13px; color: var(--green);">📅 Monthly Quotas</h4>
+                                    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+                                        <div>
+                                            <label style="font-size:11px; color:var(--text-secondary); display:block; margin-bottom:4px;">Lectures</label>
+                                            <input type="number" id="ldMonthLectures" class="form-input" style="padding: 6px;">
+                                        </div>
+                                        <div>
+                                            <label style="font-size:11px; color:var(--text-secondary); display:block; margin-bottom:4px;">Leaves Taken</label>
+                                            <input type="number" id="ldMonthLeavesTaken" class="form-input" style="padding: 6px;">
+                                        </div>
+                                        <div>
+                                            <label style="font-size:11px; color:var(--text-secondary); display:block; margin-bottom:4px;">Leaves Left</label>
+                                            <input type="number" id="ldMonthLeavesLeft" class="form-input" style="padding: 6px;">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Semester -->
+                                <div>
+                                    <h4 style="margin: 0 0 8px; font-size:13px; color: var(--primary);">🎓 Semester Quotas</h4>
+                                    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+                                        <div>
+                                            <label style="font-size:11px; color:var(--text-secondary); display:block; margin-bottom:4px;">Lectures</label>
+                                            <input type="number" id="ldSemesterLectures" class="form-input" style="padding: 6px;">
+                                        </div>
+                                        <div>
+                                            <label style="font-size:11px; color:var(--text-secondary); display:block; margin-bottom:4px;">Leaves Taken</label>
+                                            <input type="number" id="ldSemesterLeavesTaken" class="form-input" style="padding: 6px;">
+                                        </div>
+                                        <div>
+                                            <label style="font-size:11px; color:var(--text-secondary); display:block; margin-bottom:4px;">Leaves Left</label>
+                                            <input type="number" id="ldSemesterLeavesLeft" class="form-input" style="padding: 6px;">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); padding-top: 16px; margin-top: 16px;">
+                                <button onclick="closeLdQuotaModal()" class="btn btn-secondary">Cancel</button>
+                                <button onclick="saveLdQuota()" class="btn btn-primary">Save Changes</button>
+                            </div>
                         </div>
                     </div>
                 </section>

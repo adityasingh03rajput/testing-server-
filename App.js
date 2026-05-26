@@ -50,7 +50,7 @@ import { showToast, ToastContainer } from './Toast';
 // Configuration - Import from centralized config
 import { SERVER_BASE_URL, API_URL as CONFIG_API_URL, SOCKET_URL as CONFIG_SOCKET_URL } from './config';
 
-import { GET_ATTENDANCE_RECORDS, GET_ATTENDANCE_STATS, GET_CONFIG_APP, GET_DAILY_BSSID_SCHEDULE, GET_HEALTH, GET_STUDENT_MANAGEMENT, GET_STUDENT_VALIDATE, GET_TEACHER_CURRENT_CLASS_STUDENTS, GET_TIMETABLE_BY_SEMESTER_BRANCH, GET_VIEW_RECORDS_STUDENTS, POST_ATTENDANCE_MANUAL_MARK, POST_ATTENDANCE_OFFLINE_SYNC, POST_ATTENDANCE_PERIOD_SYNC, POST_ATTENDANCE_RANDOM_RING_RESPONSE, POST_ATTENDANCE_RECORD, POST_LOGIN, POST_RANDOM_RING, POST_RANDOM_RING_TEACHER_ACTION, POST_RANDOM_RING_VERIFY_AFTER_REJECTION, POST_RANDOM_RING_VERIFY_DIRECT, POST_REFRESH_PROFILE, POST_TIMETABLE, POST_TIMETABLE_UPDATE_ROOM, GET_CLASSROOMS } from './constants/apiEndpoints';
+import { GET_ATTENDANCE_RECORDS, GET_ATTENDANCE_STATS, GET_CONFIG_APP, GET_DAILY_BSSID_SCHEDULE, GET_HEALTH, GET_STUDENT_MANAGEMENT, GET_STUDENT_VALIDATE, GET_TEACHER_CURRENT_CLASS_STUDENTS, GET_TIMETABLE_BY_SEMESTER_BRANCH, GET_VIEW_RECORDS_STUDENTS, POST_ATTENDANCE_MANUAL_MARK, POST_ATTENDANCE_OFFLINE_SYNC, POST_ATTENDANCE_PERIOD_SYNC, POST_ATTENDANCE_RANDOM_RING_RESPONSE, POST_ATTENDANCE_RECORD, POST_LOGIN, POST_RANDOM_RING, POST_RANDOM_RING_TEACHER_ACTION, POST_RANDOM_RING_VERIFY_AFTER_REJECTION, POST_RANDOM_RING_VERIFY_DIRECT, POST_REFRESH_PROFILE, POST_TIMETABLE, POST_TIMETABLE_UPDATE_ROOM, GET_CLASSROOMS, POST_LEAVES_APPLY } from './constants/apiEndpoints';
 // Use Constants.expoConfig.extra for environment variables in Expo SDK 51
 const API_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL || CONFIG_API_URL;
 const SOCKET_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_SOCKET_URL || CONFIG_SOCKET_URL;
@@ -280,11 +280,51 @@ export default function App() {
   const [tempManualSet, setTempManualSet] = useState(false);
   const [showPeriodSelector, setShowPeriodSelector] = useState(false);
   const [isRoomDropdownExpanded, setIsRoomDropdownExpanded] = useState(false);
+  const [showApplyLeaveModal, setShowApplyLeaveModal] = useState(false);
+  const [leaveStartDate, setLeaveStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [leaveEndDate, setLeaveEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [leaveReason, setLeaveReason] = useState('');
+  const [submittingLeave, setSubmittingLeave] = useState(false);
 
   // Real Classrooms and Pagination States
   const [realClassrooms, setRealClassrooms] = useState([]);
   const [classroomsPage, setClassroomsPage] = useState(0);
   const CLASSROOMS_PER_PAGE = 5;
+
+  const handleApplyLeaveSubmit = async () => {
+    if (!leaveStartDate || !leaveEndDate) {
+      showToast('❌ Please fill in start and end dates', 'error');
+      return;
+    }
+    setSubmittingLeave(true);
+    try {
+      console.log('📡 Submitting leave request for:', userData?.name);
+      const response = await fetch(POST_LEAVES_APPLY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          teacherId: userData?.employeeId || userData?.email || 'N/A',
+          teacherName: userData?.name || 'Teacher',
+          startDate: leaveStartDate,
+          endDate: leaveEndDate,
+          reason: leaveReason
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        showToast('✅ Leave request submitted successfully', 'success');
+        setShowApplyLeaveModal(false);
+        setLeaveReason('');
+      } else {
+        showToast(`❌ Error: ${data.error || 'Failed to submit request'}`, 'error');
+      }
+    } catch (err) {
+      showToast('❌ Connection error. Please try again.', 'error');
+      console.error(err);
+    } finally {
+      setSubmittingLeave(false);
+    }
+  };
 
   const fetchRealClassrooms = async () => {
     try {
@@ -4748,6 +4788,7 @@ const onRefreshStudent = async () => {
           onHelpAndSupport={() => setShowHelpAndSupport(true)}
           onFeedback={() => setShowFeedback(true)}
           onLogout={handleLogout}
+          onApplyLeave={() => setShowApplyLeaveModal(true)}
         />
         {/* Current Lecture / Manual Selection Banner */}
         {currentClassInfo && (
@@ -5265,7 +5306,138 @@ const onRefreshStudent = async () => {
               </Text>
             </View>
           </Animated.View>
-        )}
+        {/* Apply Leave Modal */}
+        <Modal
+          visible={showApplyLeaveModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowApplyLeaveModal(false)}
+        >
+          <View style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: 20
+          }}>
+            <View style={{
+              backgroundColor: theme.cardBackground,
+              width: '100%',
+              maxWidth: 400,
+              borderRadius: 16,
+              padding: 24,
+              borderWidth: 1,
+              borderColor: theme.border,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.3,
+              shadowRadius: 20,
+              elevation: 10
+            }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <Text style={{ fontSize: 20, fontWeight: 'bold', color: theme.text }}>📅 Apply for Leave</Text>
+                <TouchableOpacity onPress={() => setShowApplyLeaveModal(false)}>
+                  <Text style={{ fontSize: 22, color: theme.textSecondary }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 8, fontWeight: '600' }}>START DATE (YYYY-MM-DD)</Text>
+              <TextInput
+                style={{
+                  backgroundColor: theme.background,
+                  color: theme.text,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderRadius: 8,
+                  padding: 12,
+                  marginBottom: 16,
+                  fontSize: 15
+                }}
+                value={leaveStartDate}
+                onChangeText={setLeaveStartDate}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={theme.textSecondary + '80'}
+              />
+
+              <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 8, fontWeight: '600' }}>END DATE (YYYY-MM-DD)</Text>
+              <TextInput
+                style={{
+                  backgroundColor: theme.background,
+                  color: theme.text,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderRadius: 8,
+                  padding: 12,
+                  marginBottom: 16,
+                  fontSize: 15
+                }}
+                value={leaveEndDate}
+                onChangeText={setLeaveEndDate}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={theme.textSecondary + '80'}
+              />
+
+              <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 8, fontWeight: '600' }}>REASON (OPTIONAL)</Text>
+              <TextInput
+                style={{
+                  backgroundColor: theme.background,
+                  color: theme.text,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderRadius: 8,
+                  padding: 12,
+                  marginBottom: 20,
+                  fontSize: 15,
+                  height: 80,
+                  textAlignVertical: 'top'
+                }}
+                value={leaveReason}
+                onChangeText={setLeaveReason}
+                placeholder="E.g., Medical leave, Personal work..."
+                placeholderTextColor={theme.textSecondary + '80'}
+                multiline
+              />
+
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    alignItems: 'center'
+                  }}
+                  onPress={() => setShowApplyLeaveModal(false)}
+                >
+                  <Text style={{ color: theme.textSecondary, fontWeight: 'bold' }}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    flex: 2,
+                    backgroundColor: theme.primary,
+                    paddingVertical: 12,
+                    borderRadius: 8,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                    gap: 8
+                  }}
+                  onPress={handleApplyLeaveSubmit}
+                  disabled={submittingLeave}
+                >
+                  {submittingLeave ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={{ color: '#fff', fontWeight: 'bold' }}>Submit Leave</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         <ToastContainer />
       </View>
     );

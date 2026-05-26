@@ -261,3 +261,15 @@ export const POST_EMAIL_BULK                  = `${BASE_URL}/api/email/bulk`;
 // ----------------------------
 export const DELETE_STUDENTS_ALL  = `${BASE_URL}/api/students/delete-all`;  // ⚠️ NOT IMPLEMENTED in server.js
 export const DELETE_TEACHERS_ALL  = `${BASE_URL}/api/teachers/delete-all`;  // ⚠️ NOT IMPLEMENTED in server.js
+
+// ----------------------------
+// Load Distribution
+// ----------------------------
+export const GET_LOAD_DISTRIBUTION_FLAG  = `${BASE_URL}/api/settings/load-distribution-flag`;
+export const POST_LOAD_DISTRIBUTION_FLAG = `${BASE_URL}/api/settings/load-distribution-flag`;
+export const GET_LEAVES_LIST             = `${BASE_URL}/api/leaves/list`;
+export const GET_LEAVES_SWAPS            = `${BASE_URL}/api/leaves/swaps`;
+export const POST_TEACHER_QUOTAS         = (id) => `${BASE_URL}/api/teachers/${id}/quotas`;
+export const POST_LEAVE_APPROVE          = (id) => `${BASE_URL}/api/leaves/${id}/approve`;
+export const POST_LEAVE_REJECT           = (id) => `${BASE_URL}/api/leaves/${id}/reject`;
+export const POST_LEAVES_APPLY           = `${BASE_URL}/api/leaves/apply`;

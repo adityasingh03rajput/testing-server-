@@ -343,6 +343,15 @@ const POST_ATTENDANCE_MANUAL_MARK = api('/api/attendance/manual-mark');
 const POST_PERIODS_UPDATE_ALL = api('/api/periods/update-all');
 const PUT_SUBJECTS_BULK_UPDATE = api('/api/subjects/bulk-update');
 
+// Load Distribution API Endpoints
+const GET_LOAD_DISTRIBUTION_FLAG = api('/api/settings/load-distribution-flag');
+const POST_LOAD_DISTRIBUTION_FLAG = api('/api/settings/load-distribution-flag');
+const GET_LEAVES_LIST = api('/api/leaves/list');
+const GET_LEAVES_SWAPS = api('/api/leaves/swaps');
+const POST_TEACHER_QUOTAS = (id) => api(`/api/teachers/${id}/quotas`);
+const POST_LEAVE_APPROVE = (id) => api(`/api/leaves/${id}/approve`);
+const POST_LEAVE_REJECT = (id) => api(`/api/leaves/${id}/reject`);
+
 console.log(' Admin Panel Server URL:', SERVER_URL);
 
 // State
@@ -868,6 +877,7 @@ function switchSection(sectionName) {
             });
             break;
         case 'settings': loadAttendanceThresholdSetting(); break;
+        case 'load-distribution': loadLoadDistributionData(); break;
         case 'attendance': initAttendanceHistory(); break;
         case 'attendance-showcase': initAttendanceShowcase(); break;
         case 'timetable': autoLoadTimetable(); break;
@@ -14825,5 +14835,291 @@ async function loadSubjectsForShowcase() {
         console.error('Error loading subjects:', error);
         document.getElementById('subjectViewSelect').innerHTML = '<option value="">Error loading subjects</option>';
     }
+}
+
+// ─── LOAD DISTRIBUTION & LEAVE SWAPPING UI HANDLERS ───────────────────────
+let ldTeachers = [];
+let ldSelectedTeacherId = null;
+
+async function loadLoadDistributionData() {
+    try {
+        // 1. Fetch feature flag
+        const flagRes = await fetch(GET_LOAD_DISTRIBUTION_FLAG);
+        const flagData = await flagRes.json();
+        const btn = document.getElementById('toggleLoadDistributionBtn');
+        if (btn) {
+            if (flagData.enabled) {
+                btn.textContent = 'Active (Disable)';
+                btn.className = 'btn btn-success';
+            } else {
+                btn.textContent = 'Inactive (Enable)';
+                btn.className = 'btn btn-secondary';
+            }
+        }
+
+        // 2. Fetch teachers
+        const teachersRes = await fetch(GET_TEACHERS);
+        const teachersData = await teachersRes.json();
+        if (teachersData.success) {
+            ldTeachers = teachersData.teachers || [];
+            renderLdTeachers();
+        }
+
+        // 3. Fetch leave requests
+        const leavesRes = await fetch(GET_LEAVES_LIST);
+        const leavesData = await leavesRes.json();
+        if (leavesData.success) {
+            renderLdLeaveRequests(leavesData.leaves || []);
+        }
+
+        // 4. Fetch swaps
+        const swapsRes = await fetch(GET_LEAVES_SWAPS);
+        const swapsData = await swapsRes.json();
+        if (swapsData.success) {
+            renderLdSwaps(swapsData.swaps || []);
+        }
+    } catch (error) {
+        console.error('Error loading load distribution data:', error);
+        showNotification('Error loading load distribution data: ' + error.message, 'error');
+    }
+}
+
+async function toggleLoadDistributionFlag() {
+    try {
+        const res = await fetch(POST_LOAD_DISTRIBUTION_FLAG, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            const btn = document.getElementById('toggleLoadDistributionBtn');
+            if (btn) {
+                if (data.enabled) {
+                    btn.textContent = 'Active (Disable)';
+                    btn.className = 'btn btn-success';
+                    showNotification('Load distribution feature enabled!', 'success');
+                } else {
+                    btn.textContent = 'Inactive (Enable)';
+                    btn.className = 'btn btn-secondary';
+                    showNotification('Load distribution feature disabled!', 'error');
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error toggling load distribution flag:', error);
+        showNotification('Error toggling feature: ' + error.message, 'error');
+    }
+}
+
+function renderLdTeachers() {
+    const tbody = document.getElementById('ldTeachersTableBody');
+    if (!tbody) return;
+
+    const query = document.getElementById('ldTeacherSearch').value.toLowerCase();
+    const filtered = ldTeachers.filter(t => t.name.toLowerCase().includes(query) || t.employeeId.toLowerCase().includes(query));
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center">No teachers found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(t => {
+        const quotas = t.loadDistributionQuotas || {};
+        const w = quotas.week || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+        const m = quotas.month || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+        const s = quotas.semester || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+
+        return `
+            <tr>
+                <td><strong>${t.name}</strong><br><small style="color:var(--text-secondary);">${t.employeeId}</small></td>
+                <td>
+                    Lec Quota: ${w.lectureQuota}<br>
+                    Lvs Taken: ${w.leavesTaken}<br>
+                    Lvs Left: ${w.leavesLeft}
+                </td>
+                <td>
+                    Lec Quota: ${m.lectureQuota}<br>
+                    Lvs Taken: ${m.leavesTaken}<br>
+                    Lvs Left: ${m.leavesLeft}
+                </td>
+                <td>
+                    Lec Quota: ${s.lectureQuota}<br>
+                    Lvs Taken: ${s.leavesTaken}<br>
+                    Lvs Left: ${s.leavesLeft}
+                </td>
+                <td>
+                    <button class="btn btn-primary btn-sm" onclick="editLdQuota('${t._id}')">⚙️ Edit Quotas</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function editLdQuota(teacherId) {
+    const teacher = ldTeachers.find(t => t._id === teacherId);
+    if (!teacher) return;
+
+    ldSelectedTeacherId = teacherId;
+    document.getElementById('ldQuotaTeacherName').textContent = teacher.name;
+
+    const quotas = teacher.loadDistributionQuotas || {};
+    const w = quotas.week || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+    const m = quotas.month || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+    const s = quotas.semester || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+
+    document.getElementById('ldWeekLectures').value = w.lectureQuota;
+    document.getElementById('ldWeekLeavesTaken').value = w.leavesTaken;
+    document.getElementById('ldWeekLeavesLeft').value = w.leavesLeft;
+
+    document.getElementById('ldMonthLectures').value = m.lectureQuota;
+    document.getElementById('ldMonthLeavesTaken').value = m.leavesTaken;
+    document.getElementById('ldMonthLeavesLeft').value = m.leavesLeft;
+
+    document.getElementById('ldSemesterLectures').value = s.lectureQuota;
+    document.getElementById('ldSemesterLeavesTaken').value = s.leavesTaken;
+    document.getElementById('ldSemesterLeavesLeft').value = s.leavesLeft;
+
+    document.getElementById('ldQuotaModal').style.display = 'flex';
+}
+
+function closeLdQuotaModal() {
+    document.getElementById('ldQuotaModal').style.display = 'none';
+}
+
+async function saveLdQuota() {
+    if (!ldSelectedTeacherId) return;
+
+    const body = {
+        quotas: {
+            week: {
+                lectureQuota: parseInt(document.getElementById('ldWeekLectures').value) || 0,
+                leavesTaken: parseInt(document.getElementById('ldWeekLeavesTaken').value) || 0,
+                leavesLeft: parseInt(document.getElementById('ldWeekLeavesLeft').value) || 0
+            },
+            month: {
+                lectureQuota: parseInt(document.getElementById('ldMonthLectures').value) || 0,
+                leavesTaken: parseInt(document.getElementById('ldMonthLeavesTaken').value) || 0,
+                leavesLeft: parseInt(document.getElementById('ldMonthLeavesLeft').value) || 0
+            },
+            semester: {
+                lectureQuota: parseInt(document.getElementById('ldSemesterLectures').value) || 0,
+                leavesTaken: parseInt(document.getElementById('ldSemesterLeavesTaken').value) || 0,
+                leavesLeft: parseInt(document.getElementById('ldSemesterLeavesLeft').value) || 0
+            }
+        }
+    };
+
+    try {
+        const res = await fetch(POST_TEACHER_QUOTAS(ldSelectedTeacherId), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (data.success) {
+            showNotification('Teacher quotas updated successfully!', 'success');
+            closeLdQuotaModal();
+            loadLoadDistributionData();
+        } else {
+            showNotification('Failed to update quotas: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error saving quotas:', error);
+        showNotification('Error saving quotas: ' + error.message, 'error');
+    }
+}
+
+function renderLdLeaveRequests(leaves) {
+    const container = document.getElementById('ldLeaveRequestsContainer');
+    if (!container) return;
+
+    if (leaves.length === 0) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:20px;">No leave requests</div>';
+        return;
+    }
+
+    container.innerHTML = leaves.map(lv => {
+        const startStr = new Date(lv.startDate).toLocaleDateString();
+        const endStr = new Date(lv.endDate).toLocaleDateString();
+        const isPending = lv.status === 'pending';
+
+        return `
+            <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 8px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <strong style="color:var(--text-primary);">${lv.teacherName}</strong>
+                    <span style="font-size:11px; padding: 2px 6px; border-radius: 4px; font-weight: bold; background:${lv.status === 'approved' ? 'rgba(34,197,94,0.2)' : lv.status === 'rejected' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)'}; color:${lv.status === 'approved' ? '#22c55e' : lv.status === 'rejected' ? '#ef4444' : '#f59e0b'};">
+                        ${lv.status.toUpperCase()}
+                    </span>
+                </div>
+                <div style="font-size:12px; color:var(--text-secondary);">
+                    Period: ${startStr} to ${endStr}<br>
+                    Reason: ${lv.reason || 'None provided'}
+                </div>
+                ${isPending ? `
+                    <div style="display:flex; gap:8px; margin-top:4px;">
+                        <button class="btn btn-success btn-sm" onclick="approveLeave('${lv._id}')" style="flex:1; padding:4px;">Approve</button>
+                        <button class="btn btn-danger btn-sm" onclick="rejectLeave('${lv._id}')" style="flex:1; padding:4px;">Reject</button>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+async function approveLeave(id) {
+    if (!confirm('Are you sure you want to approve this leave request and auto-swap teachers?')) return;
+    try {
+        const res = await fetch(POST_LEAVE_APPROVE(id), { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            showNotification('Leave approved and substitute teachers swapped successfully!', 'success');
+            loadLoadDistributionData();
+        } else {
+            showNotification('Failed to approve: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showNotification('Error approving leave: ' + error.message, 'error');
+    }
+}
+
+async function rejectLeave(id) {
+    if (!confirm('Are you sure you want to reject this leave request?')) return;
+    try {
+        const res = await fetch(POST_LEAVE_REJECT(id), { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            showNotification('Leave request rejected.', 'success');
+            loadLoadDistributionData();
+        } else {
+            showNotification('Failed to reject: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showNotification('Error rejecting leave: ' + error.message, 'error');
+    }
+}
+
+function renderLdSwaps(swaps) {
+    const container = document.getElementById('ldSwapsContainer');
+    if (!container) return;
+
+    if (swaps.length === 0) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:20px;">No daily swaps generated</div>';
+        return;
+    }
+
+    container.innerHTML = swaps.map(sw => {
+        const dateStr = new Date(sw.date).toLocaleDateString();
+        return `
+            <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 8px; border: 1px solid var(--border); font-size:12px; line-height:1.5;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                    <strong style="color:var(--text-primary);">${sw.semester} Sem - ${sw.branch}</strong>
+                    <span style="color:var(--teal); font-weight:bold;">${sw.period}</span>
+                </div>
+                <div style="color:var(--text-secondary);">
+                    Date: ${dateStr}<br>
+                    Subject: ${sw.subject}<br>
+                    Original: <del>${sw.originalTeacher}</del><br>
+                    Substitute: <span style="color:#22c55e; font-weight:bold;">${sw.substituteTeacher}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 

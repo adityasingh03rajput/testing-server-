@@ -19,7 +19,8 @@ const TeacherHeader = ({
   onUpdates,
   onHelpAndSupport,
   onFeedback,
-  onLogout
+  onLogout,
+  onApplyLeave
 }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const [profileVisible, setProfileVisible] = useState(false);
@@ -28,10 +29,11 @@ const TeacherHeader = ({
   const menuItems = [
     { id: 1, label: 'View Records', icon: '📄', onPress: onViewRecords },
     { id: 2, label: 'Notifications', icon: '🔔', onPress: onNotification },
-    { id: 3, label: 'Updates', icon: '🔄', onPress: onUpdates },
-    { id: 4, label: 'Help & Support', icon: '❓', onPress: onHelpAndSupport },
-    { id: 5, label: 'Feedback', icon: '💬', onPress: onFeedback },
-    { id: 6, label: 'Settings', icon: '⚙️', onPress: () => setSettingsVisible(true) },
+    { id: 3, label: 'Apply Leave', icon: '📅', onPress: onApplyLeave },
+    { id: 4, label: 'Updates', icon: '🔄', onPress: onUpdates },
+    { id: 5, label: 'Help & Support', icon: '❓', onPress: onHelpAndSupport },
+    { id: 6, label: 'Feedback', icon: '💬', onPress: onFeedback },
+    { id: 7, label: 'Settings', icon: '⚙️', onPress: () => setSettingsVisible(true) },
   ];
 
   const getInitials = (name) => {

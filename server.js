@@ -689,6 +689,10 @@ app.get('/api/timetable/:semester/*', async (req, res, next) => {
                 timetable.periods = globalPeriods;
             }
 
+            // Apply swaps!
+            const swapped = await applyDynamicSwaps([timetable], now);
+            timetable = swapped[0];
+
             return res.json({ success: true, timetable });
         } else {
             const key = `${semester}_${branch}`;
@@ -699,6 +703,10 @@ app.get('/api/timetable/:semester/*', async (req, res, next) => {
             if (anyMemoryTimetable && anyMemoryTimetable.periods) {
                 timetable.periods = anyMemoryTimetable.periods;
             }
+
+            // Apply swaps!
+            const swapped = await applyDynamicSwaps([timetable], now);
+            timetable = swapped[0];
 
             return res.json({ success: true, timetable });
         }
@@ -713,6 +721,7 @@ app.get('/api/timetable/:semester/:branch', async (req, res) => {
         // Express decodes %2F → '/' in params, so req.params.branch already has the correct value
         // e.g. /api/timetable/3/AI%2FML → branch = "AI/ML"
         const effectiveBranch = req.query.branch || req.params.branch;
+        const now = new Date();
 
         // Disable browser/Chromium caching completely
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
@@ -731,8 +740,11 @@ app.get('/api/timetable/:semester/:branch', async (req, res) => {
                     cached.periods = globalPeriods;
                 }
             }
+            // Apply swaps!
+            const swapped = await applyDynamicSwaps([cached], now);
+            const finalTimetable = swapped[0];
             res.set('X-Cache', 'HIT');
-            return res.json({ success: true, timetable: cached });
+            return res.json({ success: true, timetable: finalTimetable });
         }
 
         if (mongoose.connection.readyState === 1) {
@@ -749,6 +761,11 @@ app.get('/api/timetable/:semester/:branch', async (req, res) => {
             }
 
             await cacheSet(cacheKey, timetable, CACHE_TTL.TIMETABLE);
+
+            // Apply swaps!
+            const swapped = await applyDynamicSwaps([timetable], now);
+            timetable = swapped[0];
+
             res.set('X-Cache', 'MISS');
             res.json({ success: true, timetable });
         } else {
@@ -764,6 +781,10 @@ app.get('/api/timetable/:semester/:branch', async (req, res) => {
             if (anyMemoryTimetable && anyMemoryTimetable.periods) {
                 timetable.periods = anyMemoryTimetable.periods;
             }
+
+            // Apply swaps!
+            const swapped = await applyDynamicSwaps([timetable], now);
+            timetable = swapped[0];
 
             res.json({ success: true, timetable });
         }
@@ -789,7 +810,8 @@ app.get('/api/timetable/current-period', async (req, res) => {
         const istMinutes = istTime.getUTCMinutes();
         const currentMins = istHours * 60 + istMinutes;
 
-        const timetables = await Timetable.find({}).lean();
+        const rawTimetables = await Timetable.find({}).lean();
+        const timetables = await applyDynamicSwaps(rawTimetables, now);
         const active = [];
 
         for (const tt of timetables) {
@@ -1013,8 +1035,40 @@ app.get('/api/teacher/current-lecture/:teacherId', async (req, res) => {
 
         console.log(`🔍 Finding current lecture for teacher ${teacherId} at ${currentTime} on ${currentDay}`);
 
+        // Fetch teacher from DB to match on multiple fields
+        let teacherName = teacherId;
+        let teacherObj = null;
+        if (mongoose.connection.readyState === 1) {
+            teacherObj = await Teacher.findOne({
+                $or: [
+                    { employeeId: teacherId },
+                    { name: teacherId },
+                    { email: teacherId },
+                    { _id: mongoose.isValidObjectId(teacherId) ? teacherId : new mongoose.Types.ObjectId() }
+                ]
+            });
+            if (teacherObj) {
+                teacherName = teacherObj.name;
+            }
+        }
+
+        const isMatch = (lectureTeach, lectureTeachName) => {
+            if (!lectureTeach) return false;
+            const ltLower = lectureTeach.toLowerCase();
+            const tidLower = teacherId.toLowerCase();
+            const nameLower = teacherName.toLowerCase();
+            if (ltLower === tidLower) return true;
+            if (lectureTeachName && lectureTeachName.toLowerCase() === nameLower) return true;
+            if (teacherObj) {
+                if (ltLower === teacherObj.email.toLowerCase()) return true;
+                if (ltLower === teacherObj._id.toString().toLowerCase()) return true;
+            }
+            return false;
+        };
+
         // Find all timetables where this teacher is assigned
-        const timetables = await Timetable.find();
+        const rawTimetables = await Timetable.find();
+        const timetables = await applyDynamicSwaps(rawTimetables, now);
 
         let currentLecture = null;
         let matchedTimetable = null;
@@ -1026,7 +1080,7 @@ app.get('/api/teacher/current-lecture/:teacherId', async (req, res) => {
             // Check each period to find current lecture
             for (const lecture of daySchedule) {
                 if (lecture.isBreak) continue;
-                if (lecture.teacher !== teacherId) continue;
+                if (!isMatch(lecture.teacher, lecture.teacherName)) continue;
 
                 // Find period timing
                 const period = timetable.periods.find(p => p.number === lecture.period);
@@ -1060,7 +1114,7 @@ app.get('/api/teacher/current-lecture/:teacherId', async (req, res) => {
                 const daySchedule = timetable.timetable[day];
                 if (daySchedule) {
                     for (const lecture of daySchedule) {
-                        if (lecture.teacher === teacherId && !lecture.isBreak) {
+                        if (isMatch(lecture.teacher, lecture.teacherName) && !lecture.isBreak) {
                             allowedBranches.add(timetable.branch);
                         }
                     }
@@ -1522,17 +1576,36 @@ app.get('/api/teacher-schedule/:teacherId/:day', async (req, res) => {
                 teacherName = teacher.name;
             }
 
-            // Fetch all timetables
-            const timetables = await Timetable.find({});
+            // Fetch all timetables and apply swaps if day matches today
+            const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const now = new Date();
+            const parts = getISTDateParts(now);
+            const currentDayName = daysOfWeek[parts.dayIndex];
+
+            const rawTimetables = await Timetable.find({});
+            let timetables = rawTimetables;
+            if (day.toLowerCase() === currentDayName.toLowerCase()) {
+                timetables = await applyDynamicSwaps(rawTimetables, now);
+            }
+
             const schedule = [];
 
             timetables.forEach(tt => {
                 const daySchedule = tt.timetable[day.toLowerCase()] || [];
                 daySchedule.forEach((period, idx) => {
-                    // Match by teacher name (case-insensitive)
-                    if (period.teacher &&
-                        (period.teacher.toLowerCase() === teacherName.toLowerCase() ||
-                            period.teacher.toLowerCase().includes(teacherName.toLowerCase()))) {
+                    // Match by teacher name or ID (case-insensitive)
+                    const matchesTeacher = 
+                        (period.teacher && (
+                            period.teacher.toLowerCase() === teacherId.toLowerCase() ||
+                            (teacher && period.teacher.toLowerCase() === teacher.email.toLowerCase()) ||
+                            (teacher && period.teacher.toLowerCase() === teacher._id.toString().toLowerCase())
+                        )) ||
+                        (period.teacherName && (
+                            period.teacherName.toLowerCase() === teacherName.toLowerCase() ||
+                            period.teacherName.toLowerCase().includes(teacherName.toLowerCase())
+                        ));
+
+                    if (matchesTeacher) {
                         schedule.push({
                             subject: period.subject,
                             room: period.room,
@@ -1861,6 +1934,368 @@ function getISTMidnight(date = new Date()) {
     const day = istTime.getUTCDate();
     // Return the UTC date that corresponds to 00:00:00 IST
     return new Date(Date.UTC(y, m, day, 0, 0, 0) - offset);
+}
+
+// Function to generate swaps for a leave request
+async function generateSwapsForLeave(leaveRequest) {
+    const start = new Date(leaveRequest.startDate);
+    const end = new Date(leaveRequest.endDate);
+    const originalTeacherId = leaveRequest.teacherId;
+    const originalTeacherName = leaveRequest.teacherName;
+
+    // Get number of days
+    const diffTime = Math.abs(end - start);
+    const numDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+    console.log(`⚖️ Generating swaps for ${originalTeacherName} from ${start.toISOString()} to ${end.toISOString()} (${numDays} days)`);
+
+    const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+    // For each calendar date in range
+    for (let d = 0; d < numDays; d++) {
+        const currentDate = new Date(start.getTime() + d * 24 * 60 * 60 * 1000);
+        const currentDayIndex = currentDate.getDay();
+        const currentDayName = daysOfWeek[currentDayIndex];
+
+        // 1. Find all periods where the original teacher is scheduled on this day
+        let timetables = [];
+        if (mongoose.connection.readyState === 1) {
+            timetables = await Timetable.find({}).lean();
+        } else {
+            timetables = Object.values(timetableMemory);
+        }
+
+        const scheduledPeriods = []; // objects: { timetable, periodNum, subject, room }
+        for (const tt of timetables) {
+            const daySchedule = tt.timetable?.[currentDayName] || [];
+            for (let i = 0; i < daySchedule.length; i++) {
+                const slot = daySchedule[i];
+                if (slot && !slot.isBreak && slot.subject) {
+                    // Check if slot teacher matches original teacher
+                    const matchesTeacher = 
+                        (slot.teacher && slot.teacher.toString() === originalTeacherId.toString()) ||
+                        (slot.teacherName && slot.teacherName.toLowerCase() === originalTeacherName.toLowerCase()) ||
+                        (slot.teacher && slot.teacher.toLowerCase() === originalTeacherName.toLowerCase());
+                    
+                    if (matchesTeacher) {
+                        scheduledPeriods.push({
+                            semester: tt.semester,
+                            branch: tt.branch,
+                            periodNum: slot.period || (i + 1),
+                            subject: slot.subject,
+                            room: slot.room || 'Room 201'
+                        });
+                    }
+                }
+            }
+        }
+
+        console.log(`⚖️ Found ${scheduledPeriods.length} periods for ${originalTeacherName} on ${currentDate.toDateString()} (${currentDayName})`);
+
+        // 2. For each period, find a substitute
+        for (const sp of scheduledPeriods) {
+            const periodNum = sp.periodNum;
+            const subject = sp.subject;
+            const semester = sp.semester;
+            const branch = sp.branch;
+
+            // Fetch all candidate teachers
+            let allTeachers = [];
+            if (mongoose.connection.readyState === 1) {
+                allTeachers = await Teacher.find({ _id: { $ne: originalTeacherId } }).lean();
+            } else {
+                allTeachers = teachersMemory.filter(t => t._id.toString() !== originalTeacherId.toString());
+            }
+
+            const candidates = [];
+
+            for (const candidate of allTeachers) {
+                // Check if candidate is already scheduled at this period on this day in any timetable
+                let isBusy = false;
+                for (const tt of timetables) {
+                    const daySchedule = tt.timetable?.[currentDayName] || [];
+                    const slot = daySchedule[periodNum - 1];
+                    if (slot && !slot.isBreak && slot.subject) {
+                        const matchesCand = 
+                            (slot.teacher && slot.teacher.toString() === candidate._id.toString()) ||
+                            (slot.teacherName && slot.teacherName.toLowerCase() === candidate.name.toLowerCase()) ||
+                            (slot.teacher && slot.teacher.toLowerCase() === candidate.name.toLowerCase());
+                        if (matchesCand) {
+                            isBusy = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (isBusy) continue;
+
+                // Check if candidate is already swapped for this period on this day
+                let existingSwaps = [];
+                if (mongoose.connection.readyState === 1) {
+                    existingSwaps = await ScheduleSwap.find({
+                        date: getISTMidnight(currentDate),
+                        period: `P${periodNum}`
+                    }).lean();
+                } else {
+                    existingSwaps = scheduleSwapsMemory.filter(s =>
+                        getISTMidnight(new Date(s.date)).getTime() === getISTMidnight(currentDate).getTime() &&
+                        s.period === `P${periodNum}`
+                    );
+                }
+
+                const alreadySwapped = existingSwaps.some(s => s.substituteTeacherId.toString() === candidate._id.toString());
+                if (alreadySwapped) continue;
+
+                // Check consecutive lectures: no teacher should get 3 consecutive lectures
+                const candidatePeriods = new Set();
+
+                // 1. From default timetable
+                for (const tt of timetables) {
+                    const daySchedule = tt.timetable?.[currentDayName] || [];
+                    for (let i = 0; i < daySchedule.length; i++) {
+                        const slot = daySchedule[i];
+                        if (slot && !slot.isBreak && slot.subject) {
+                            const matchesCand = 
+                                (slot.teacher && slot.teacher.toString() === candidate._id.toString()) ||
+                                (slot.teacherName && slot.teacherName.toLowerCase() === candidate.name.toLowerCase()) ||
+                                (slot.teacher && slot.teacher.toLowerCase() === candidate.name.toLowerCase());
+                            if (matchesCand) {
+                                candidatePeriods.add(slot.period || (i + 1));
+                            }
+                        }
+                    }
+                }
+
+                // 2. From schedule swaps on this day where this candidate is the substitute
+                let swapsForCandidate = [];
+                if (mongoose.connection.readyState === 1) {
+                    swapsForCandidate = await ScheduleSwap.find({
+                        date: getISTMidnight(currentDate),
+                        substituteTeacherId: candidate._id
+                    }).lean();
+                } else {
+                    swapsForCandidate = scheduleSwapsMemory.filter(s =>
+                        getISTMidnight(new Date(s.date)).getTime() === getISTMidnight(currentDate).getTime() &&
+                        s.substituteTeacherId.toString() === candidate._id.toString()
+                    );
+                }
+
+                for (const sw of swapsForCandidate) {
+                    const match = sw.period.match(/\d+/);
+                    if (match) {
+                        candidatePeriods.add(parseInt(match[0]));
+                    }
+                }
+
+                // Add the current period we want to assign
+                const testPeriods = Array.from(candidatePeriods);
+                testPeriods.push(periodNum);
+                testPeriods.sort((a, b) => a - b);
+
+                // Check for 3 consecutive lectures
+                let hasThreeConsecutive = false;
+                for (let i = 0; i < testPeriods.length - 2; i++) {
+                    if (testPeriods[i+1] === testPeriods[i] + 1 && testPeriods[i+2] === testPeriods[i] + 2) {
+                        hasThreeConsecutive = true;
+                        break;
+                    }
+                }
+
+                if (hasThreeConsecutive) {
+                    console.log(`⚖️ Candidate ${candidate.name} excluded: would have 3 consecutive lectures on ${currentDate.toDateString()}`);
+                    continue;
+                }
+
+                // If eligible, add to candidates list with their week lectureQuota
+                const weekQuota = candidate.loadDistributionQuotas?.week?.lectureQuota || 0;
+                candidates.push({
+                    teacher: candidate,
+                    quota: weekQuota
+                });
+            }
+
+            // Sort candidates descending by quota
+            candidates.sort((a, b) => b.quota - a.quota);
+
+            if (candidates.length > 0) {
+                const chosen = candidates[0].teacher;
+                console.log(`⚖️ Chosen substitute for ${semester} Sem - ${branch} P${periodNum}: ${chosen.name} (Weekly quota: ${candidates[0].quota})`);
+
+                // Create swap
+                if (mongoose.connection.readyState === 1) {
+                    const swap = new ScheduleSwap({
+                        date: getISTMidnight(currentDate),
+                        semester,
+                        branch,
+                        period: `P${periodNum}`,
+                        subject,
+                        originalTeacherId,
+                        originalTeacher: originalTeacherName,
+                        substituteTeacherId: chosen._id,
+                        substituteTeacher: chosen.name
+                    });
+                    await swap.save();
+                } else {
+                    const swap = {
+                        _id: 'swap-' + Date.now(),
+                        date: getISTMidnight(currentDate),
+                        semester,
+                        branch,
+                        period: `P${periodNum}`,
+                        subject,
+                        originalTeacherId,
+                        originalTeacher: originalTeacherName,
+                        substituteTeacherId: chosen._id,
+                        substituteTeacher: chosen.name,
+                        createdAt: new Date()
+                    };
+                    scheduleSwapsMemory.push(swap);
+                }
+            } else {
+                console.log(`⚠️ No eligible substitute teacher found for ${semester} Sem - ${branch} P${periodNum} on ${currentDate.toDateString()}`);
+            }
+        }
+    }
+}
+
+// Function to deduct lecture quota for a teacher
+async function deductTeacherLectureQuota(teacherIdentifier) {
+    try {
+        let isEnabled = false;
+        if (mongoose.connection.readyState === 1) {
+            const flag = await SystemSettings.findOne({ settingKey: 'load_distribution_flag' });
+            isEnabled = flag ? flag.settingValue === 'true' : false;
+        } else {
+            isEnabled = global.loadDistributionFlagMemory || false;
+        }
+
+        if (!isEnabled) {
+            console.log('⚖️ Load distribution feature is disabled. Skipping quota deduction.');
+            return;
+        }
+
+        console.log(`⚖️ Deducting lecture quota for teacher identifier: ${teacherIdentifier}`);
+        if (mongoose.connection.readyState === 1) {
+            const teacher = await Teacher.findOne({
+                $or: [
+                    { employeeId: teacherIdentifier },
+                    { email: teacherIdentifier },
+                    { _id: mongoose.isValidObjectId(teacherIdentifier) ? teacherIdentifier : new mongoose.Types.ObjectId() },
+                    { name: teacherIdentifier }
+                ]
+            });
+
+            if (teacher) {
+                const currentQuotas = teacher.loadDistributionQuotas || {};
+                const currentWeek = currentQuotas.week || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+                const currentMonth = currentQuotas.month || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+                const currentSemester = currentQuotas.semester || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+
+                const updatedWeek = {
+                    lectureQuota: Number(Math.max(0, (currentWeek.lectureQuota || 0) - 1)),
+                    leavesTaken: Number(currentWeek.leavesTaken || 0),
+                    leavesLeft: Number(currentWeek.leavesLeft || 0)
+                };
+
+                const updatedMonth = {
+                    lectureQuota: Number(Math.max(0, (currentMonth.lectureQuota || 0) - 1)),
+                    leavesTaken: Number(currentMonth.leavesTaken || 0),
+                    leavesLeft: Number(currentMonth.leavesLeft || 0)
+                };
+
+                const updatedSemester = {
+                    lectureQuota: Number(Math.max(0, (currentSemester.lectureQuota || 0) - 1)),
+                    leavesTaken: Number(currentSemester.leavesTaken || 0),
+                    leavesLeft: Number(currentSemester.leavesLeft || 0)
+                };
+
+                teacher.loadDistributionQuotas = {
+                    week: updatedWeek,
+                    month: updatedMonth,
+                    semester: updatedSemester
+                };
+
+                teacher.markModified('loadDistributionQuotas');
+                await teacher.save();
+                console.log(`✅ Deducted lecture quota for teacher ${teacher.name}. New weekly quota: ${teacher.loadDistributionQuotas.week.lectureQuota}`);
+            } else {
+                console.log(`⚠️ Teacher with identifier "${teacherIdentifier}" not found for quota deduction.`);
+            }
+        } else {
+            const index = teachersMemory.findIndex(t =>
+                t.employeeId === teacherIdentifier || t.email === teacherIdentifier || t._id === teacherIdentifier || t.name === teacherIdentifier
+            );
+            if (index !== -1) {
+                const t = teachersMemory[index];
+                const quotas = t.loadDistributionQuotas || {};
+                const week = quotas.week || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+                const month = quotas.month || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+                const semester = quotas.semester || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+
+                if (week.lectureQuota > 0) week.lectureQuota--;
+                if (month.lectureQuota > 0) month.lectureQuota--;
+                if (semester.lectureQuota > 0) semester.lectureQuota--;
+
+                teachersMemory[index].loadDistributionQuotas = { week, month, semester };
+                console.log(`✅ [Memory] Deducted lecture quota for teacher ${t.name}`);
+            }
+        }
+    } catch (err) {
+        console.error('❌ Error deducting teacher lecture quota:', err);
+    }
+}
+
+// Interceptor to dynamically replace teachers on timetable based on swaps
+async function applyDynamicSwaps(timetables, date = new Date()) {
+    try {
+        let isEnabled = false;
+        if (mongoose.connection.readyState === 1) {
+            const flag = await SystemSettings.findOne({ settingKey: 'load_distribution_flag' });
+            isEnabled = flag ? flag.settingValue === 'true' : false;
+        } else {
+            isEnabled = global.loadDistributionFlagMemory || false;
+        }
+
+        if (!isEnabled) return timetables;
+
+        const targetDate = getISTMidnight(date);
+        
+        let swaps = [];
+        if (mongoose.connection.readyState === 1) {
+            swaps = await ScheduleSwap.find({ date: targetDate }).lean();
+        } else {
+            swaps = scheduleSwapsMemory.filter(s => 
+                getISTMidnight(new Date(s.date)).getTime() === targetDate.getTime()
+            );
+        }
+
+        if (swaps.length === 0) return timetables;
+
+        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const currentDay = days[date.getDay()];
+
+        for (const tt of timetables) {
+            const daySchedule = tt.timetable?.[currentDay];
+            if (!daySchedule) continue;
+
+            swaps.forEach(swap => {
+                if (swap.semester === tt.semester && swap.branch === tt.branch) {
+                    const match = swap.period.match(/\d+/);
+                    if (match) {
+                        const periodNum = parseInt(match[0]);
+                        const slot = daySchedule.find(s => s.period === periodNum) || daySchedule[periodNum - 1];
+                        if (slot) {
+                            slot.teacher = swap.substituteTeacherId.toString();
+                            slot.teacherName = swap.substituteTeacher;
+                        }
+                    }
+                }
+            });
+        }
+    } catch (err) {
+        console.error('Error applying dynamic swaps:', err);
+    }
+    return timetables;
 }
 
 // Helper to extract IST date parts regardless of server timezone
@@ -5207,6 +5642,57 @@ app.post('/api/attendance/lecture-end', async (req, res) => {
         const now = new Date();
         const today = getISTMidnight(now);
 
+        // Find teacher identifier to deduct lecture quota
+        let teacherIdentifier = null;
+        const testSessions = await AttendanceSession.find({
+            date: today,
+            semester,
+            branch,
+            'currentClass.period': period,
+            'currentClass.subject': subject
+        });
+
+        if (testSessions.length > 0 && testSessions[0].currentClass) {
+            teacherIdentifier = testSessions[0].currentClass.teacher || testSessions[0].currentClass.teacherName;
+        } else {
+            // Fallback 1: Query TimetableHistory
+            if (mongoose.connection.readyState === 1) {
+                const hist = await TimetableHistory.findOne({
+                    date: today,
+                    semester,
+                    branch,
+                    period,
+                    subject
+                });
+                if (hist) {
+                    teacherIdentifier = hist.teacher || hist.teacherName;
+                }
+            }
+            if (!teacherIdentifier) {
+                // Fallback 2: Query Timetable with active swaps
+                let timetables = [];
+                if (mongoose.connection.readyState === 1) {
+                    timetables = await Timetable.find({ semester, branch }).lean();
+                } else {
+                    timetables = Object.values(timetableMemory).filter(t => t.semester === semester && t.branch === branch);
+                }
+                const swapped = await applyDynamicSwaps(timetables, now);
+                if (swapped.length > 0) {
+                    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+                    const currentDay = days[now.getDay()];
+                    const daySchedule = swapped[0].timetable?.[currentDay] || [];
+                    const slot = daySchedule.find(s => s.period === period) || daySchedule[period - 1];
+                    if (slot) {
+                        teacherIdentifier = slot.teacher || slot.teacherName;
+                    }
+                }
+            }
+        }
+
+        if (teacherIdentifier) {
+            await deductTeacherLectureQuota(teacherIdentifier);
+        }
+
         // Find all sessions with this lecture
         const sessions = await AttendanceSession.find({
             date: today,
@@ -6862,6 +7348,31 @@ studentManagementSchema.index({ enrollmentNo: 1 }); // email already indexed via
 
 const StudentManagement = mongoose.model('StudentManagement', studentManagementSchema);
 
+// Attendance Session Schema for real-time tracking
+const attendanceSessionSchema = new mongoose.Schema({
+    studentId: { type: String, required: true },
+    studentName: { type: String },
+    enrollmentNo: { type: String },
+    date: { type: Date, required: true },
+    sessionStartTime: { type: Date, default: Date.now },
+    timerValue: { type: Number, default: 0 },
+    isActive: { type: Boolean, default: true },
+    wifiConnected: { type: Boolean, default: false },
+    semester: { type: String },
+    branch: { type: String },
+    currentClass: {
+        subject: String,
+        teacher: String,
+        room: String,
+        period: Number,
+        startTime: String,
+        endTime: String
+    }
+}, { timestamps: true });
+
+const AttendanceSession = mongoose.models.AttendanceSession || mongoose.model('AttendanceSession', attendanceSessionSchema);
+
+
 app.get('/api/students', async (req, res) => {
     try {
         const { enrollmentNo, semester, branch } = req.query;
@@ -7716,10 +8227,58 @@ const teacherSchema = new mongoose.Schema({
     photoUrl:   String,
     semester:   String,
     canEditTimetable: { type: Boolean, default: false },
+    loadDistributionQuotas: {
+        week: {
+            lectureQuota: { type: Number, default: 0 },
+            leavesTaken: { type: Number, default: 0 },
+            leavesLeft: { type: Number, default: 0 }
+        },
+        month: {
+            lectureQuota: { type: Number, default: 0 },
+            leavesTaken: { type: Number, default: 0 },
+            leavesLeft: { type: Number, default: 0 }
+        },
+        semester: {
+            lectureQuota: { type: Number, default: 0 },
+            leavesTaken: { type: Number, default: 0 },
+            leavesLeft: { type: Number, default: 0 }
+        }
+    },
     createdAt:  { type: Date, default: Date.now }
 });
 
 const Teacher = mongoose.model('Teacher', teacherSchema);
+
+// Leave Request Schema
+const leaveRequestSchema = new mongoose.Schema({
+    teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher', required: true },
+    teacherName: { type: String, required: true },
+    startDate: { type: Date, required: true },
+    endDate: { type: Date, required: true },
+    reason: String,
+    status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+    createdAt: { type: Date, default: Date.now }
+});
+
+const LeaveRequest = mongoose.model('LeaveRequest', leaveRequestSchema);
+let leaveRequestsMemory = [];
+
+// Schedule Swap Schema (Daily Schedule Swaps)
+const scheduleSwapSchema = new mongoose.Schema({
+    date: { type: Date, required: true },
+    semester: { type: String, required: true },
+    branch: { type: String, required: true },
+    period: { type: String, required: true },
+    subject: { type: String, required: true },
+    originalTeacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher', required: true },
+    originalTeacher: { type: String, required: true },
+    substituteTeacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher', required: true },
+    substituteTeacher: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+});
+
+const ScheduleSwap = mongoose.model('ScheduleSwap', scheduleSwapSchema);
+let scheduleSwapsMemory = [];
 
 app.get('/api/teachers', async (req, res) => {
     try {
@@ -8531,6 +9090,311 @@ app.post('/api/attendance/validate-bssid', async (req, res) => {
 // ============================================
 // SYSTEM SETTINGS ENDPOINTS
 // ============================================
+
+// GET /api/settings/load-distribution-flag
+app.get('/api/settings/load-distribution-flag', async (req, res) => {
+    try {
+        let enabled = false;
+        if (mongoose.connection.readyState === 1) {
+            const flagSetting = await SystemSettings.findOne({ settingKey: 'load_distribution_flag' });
+            if (flagSetting) {
+                enabled = flagSetting.settingValue === 'true';
+            }
+        } else {
+            enabled = global.loadDistributionFlagMemory || false;
+        }
+        res.json({ success: true, enabled });
+    } catch (error) {
+        console.error('Error getting load-distribution-flag:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// POST /api/settings/load-distribution-flag
+app.post('/api/settings/load-distribution-flag', async (req, res) => {
+    try {
+        let newEnabled = false;
+        if (mongoose.connection.readyState === 1) {
+            const flagSetting = await SystemSettings.findOne({ settingKey: 'load_distribution_flag' });
+            newEnabled = flagSetting ? flagSetting.settingValue !== 'true' : true;
+            await SystemSettings.findOneAndUpdate(
+                { settingKey: 'load_distribution_flag' },
+                {
+                    settingValue: newEnabled ? 'true' : 'false',
+                    dataType: 'string',
+                    description: 'Feature flag for load distribution and automatic leave swapping',
+                    updatedAt: new Date(),
+                    updatedBy: 'admin'
+                },
+                { upsert: true }
+            );
+        } else {
+            global.loadDistributionFlagMemory = !global.loadDistributionFlagMemory;
+            newEnabled = global.loadDistributionFlagMemory;
+        }
+        res.json({ success: true, enabled: newEnabled });
+    } catch (error) {
+        console.error('Error toggling load-distribution-flag:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// POST /api/teachers/:id/quotas
+app.post('/api/teachers/:id/quotas', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { quotas } = req.body;
+        if (!quotas) {
+            return res.status(400).json({ success: false, error: 'Missing quotas object' });
+        }
+        if (mongoose.connection.readyState === 1) {
+            const teacher = await Teacher.findById(id);
+            if (!teacher) {
+                return res.status(404).json({ success: false, error: 'Teacher not found' });
+            }
+            teacher.loadDistributionQuotas = quotas;
+            await teacher.save();
+            res.json({ success: true, quotas: teacher.loadDistributionQuotas });
+        } else {
+            const index = teachersMemory.findIndex(t => t._id.toString() === id.toString());
+            if (index === -1) {
+                return res.status(404).json({ success: false, error: 'Teacher not found' });
+            }
+            teachersMemory[index].loadDistributionQuotas = quotas;
+            res.json({ success: true, quotas: teachersMemory[index].loadDistributionQuotas });
+        }
+    } catch (error) {
+        console.error('Error updating teacher quotas:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// POST /api/leaves/apply
+app.post('/api/leaves/apply', async (req, res) => {
+    try {
+        const { teacherId, teacherName, startDate, endDate, reason } = req.body;
+        if (!teacherId || !startDate || !endDate) {
+            return res.status(400).json({ success: false, error: 'Missing required parameters' });
+        }
+
+        let actualTeacherId = null;
+        let actualTeacherName = teacherName;
+
+        if (mongoose.connection.readyState === 1) {
+            // Find teacher by employeeId, email or ID
+            const teacher = await Teacher.findOne({
+                $or: [
+                    { employeeId: teacherId },
+                    { email: teacherId },
+                    { _id: mongoose.isValidObjectId(teacherId) ? teacherId : new mongoose.Types.ObjectId() }
+                ]
+            });
+
+            if (teacher) {
+                actualTeacherId = teacher._id;
+                actualTeacherName = teacher.name;
+            } else {
+                return res.status(404).json({ success: false, error: `Teacher not found with identifier: ${teacherId}` });
+            }
+
+            const leave = new LeaveRequest({
+                teacherId: actualTeacherId,
+                teacherName: actualTeacherName,
+                startDate: new Date(startDate),
+                endDate: new Date(endDate),
+                reason,
+                status: 'pending'
+            });
+
+            await leave.save();
+        } else {
+            const teacher = teachersMemory.find(t => 
+                t.employeeId === teacherId || t.email === teacherId || t._id.toString() === teacherId.toString()
+            );
+
+            if (teacher) {
+                actualTeacherId = teacher._id;
+                actualTeacherName = teacher.name;
+            } else {
+                actualTeacherId = 'temp-' + Date.now();
+            }
+
+            const leave = {
+                _id: 'leave-' + Date.now(),
+                teacherId: actualTeacherId,
+                teacherName: actualTeacherName,
+                startDate: new Date(startDate),
+                endDate: new Date(endDate),
+                reason,
+                status: 'pending',
+                createdAt: new Date()
+            };
+
+            leaveRequestsMemory.push(leave);
+        }
+
+        res.json({ success: true, message: 'Leave request submitted successfully' });
+    } catch (error) {
+        console.error('Error applying for leave:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// GET /api/leaves/list
+app.get('/api/leaves/list', async (req, res) => {
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const leaves = await LeaveRequest.find().sort({ createdAt: -1 });
+            res.json({ success: true, leaves });
+        } else {
+            res.json({ success: true, leaves: [...leaveRequestsMemory].sort((a,b) => b.createdAt - a.createdAt) });
+        }
+    } catch (error) {
+        console.error('Error listing leaves:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// GET /api/leaves/swaps
+app.get('/api/leaves/swaps', async (req, res) => {
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const swaps = await ScheduleSwap.find().sort({ date: -1, period: 1 });
+            res.json({ success: true, swaps });
+        } else {
+            res.json({ success: true, swaps: [...scheduleSwapsMemory].sort((a,b) => b.date - a.date) });
+        }
+    } catch (error) {
+        console.error('Error listing swaps:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// POST /api/leaves/:id/approve
+app.post('/api/leaves/:id/approve', async (req, res) => {
+    try {
+        const { id } = req.params;
+        let leaveRequest = null;
+
+        if (mongoose.connection.readyState === 1) {
+            leaveRequest = await LeaveRequest.findById(id);
+            if (!leaveRequest) {
+                return res.status(404).json({ success: false, error: 'Leave request not found' });
+            }
+            leaveRequest.status = 'approved';
+            await leaveRequest.save();
+
+            // Calculate number of leave days
+            const start = new Date(leaveRequest.startDate);
+            const end = new Date(leaveRequest.endDate);
+            const diffTime = Math.abs(end - start);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+            // Update original teacher leave quota
+            const teacher = await Teacher.findById(leaveRequest.teacherId);
+            if (teacher) {
+                const currentQuotas = teacher.loadDistributionQuotas || {};
+                const currentWeek = currentQuotas.week || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+                const currentMonth = currentQuotas.month || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+                const currentSemester = currentQuotas.semester || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+
+                const updatedWeek = {
+                    lectureQuota: Number(currentWeek.lectureQuota || 0),
+                    leavesTaken: Number((currentWeek.leavesTaken || 0) + diffDays),
+                    leavesLeft: Number(Math.max(0, (currentWeek.leavesLeft || 0) - diffDays))
+                };
+
+                const updatedMonth = {
+                    lectureQuota: Number(currentMonth.lectureQuota || 0),
+                    leavesTaken: Number((currentMonth.leavesTaken || 0) + diffDays),
+                    leavesLeft: Number(Math.max(0, (currentMonth.leavesLeft || 0) - diffDays))
+                };
+
+                const updatedSemester = {
+                    lectureQuota: Number(currentSemester.lectureQuota || 0),
+                    leavesTaken: Number((currentSemester.leavesTaken || 0) + diffDays),
+                    leavesLeft: Number(Math.max(0, (currentSemester.leavesLeft || 0) - diffDays))
+                };
+
+                teacher.loadDistributionQuotas = {
+                    week: updatedWeek,
+                    month: updatedMonth,
+                    semester: updatedSemester
+                };
+
+                teacher.markModified('loadDistributionQuotas');
+                await teacher.save();
+            }
+
+            // Generate daily swaps
+            await generateSwapsForLeave(leaveRequest);
+        } else {
+            leaveRequest = leaveRequestsMemory.find(l => l._id === id);
+            if (!leaveRequest) {
+                return res.status(404).json({ success: false, error: 'Leave request not found' });
+            }
+            leaveRequest.status = 'approved';
+
+            const start = new Date(leaveRequest.startDate);
+            const end = new Date(leaveRequest.endDate);
+            const diffTime = Math.abs(end - start);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+            const teacherIdx = teachersMemory.findIndex(t => t._id.toString() === leaveRequest.teacherId.toString());
+            if (teacherIdx !== -1) {
+                const teacher = teachersMemory[teacherIdx];
+                const quotas = teacher.loadDistributionQuotas || {};
+                const week = quotas.week || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+                const month = quotas.month || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+                const semester = quotas.semester || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+
+                week.leavesTaken += diffDays;
+                week.leavesLeft = Math.max(0, week.leavesLeft - diffDays);
+
+                month.leavesTaken += diffDays;
+                month.leavesLeft = Math.max(0, month.leavesLeft - diffDays);
+
+                semester.leavesTaken += diffDays;
+                semester.leavesLeft = Math.max(0, semester.leavesLeft - diffDays);
+
+                teachersMemory[teacherIdx].loadDistributionQuotas = { week, month, semester };
+            }
+
+            // Generate daily swaps
+            await generateSwapsForLeave(leaveRequest);
+        }
+
+        res.json({ success: true, message: 'Leave approved and schedule swaps generated' });
+    } catch (error) {
+        console.error('Error approving leave:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// POST /api/leaves/:id/reject
+app.post('/api/leaves/:id/reject', async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (mongoose.connection.readyState === 1) {
+            const leaveRequest = await LeaveRequest.findById(id);
+            if (!leaveRequest) {
+                return res.status(404).json({ success: false, error: 'Leave request not found' });
+            }
+            leaveRequest.status = 'rejected';
+            await leaveRequest.save();
+        } else {
+            const leaveRequest = leaveRequestsMemory.find(l => l._id === id);
+            if (!leaveRequest) {
+                return res.status(404).json({ success: false, error: 'Leave request not found' });
+            }
+            leaveRequest.status = 'rejected';
+        }
+        res.json({ success: true, message: 'Leave request rejected' });
+    } catch (error) {
+        console.error('Error rejecting leave:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
 // Get attendance threshold
 app.get('/api/settings/attendance-threshold', async (req, res) => {
