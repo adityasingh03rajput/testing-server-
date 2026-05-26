@@ -14949,6 +14949,131 @@ function renderLdTeachers() {
 
     const pagContainer = document.getElementById('ldTeachersPagination');
 
+    if (typeof ldEditingTeacherId !== 'undefined' && ldEditingTeacherId) {
+        const teacher = ldTeachers.find(t => t._id === ldEditingTeacherId);
+        if (teacher) {
+            const quotas = teacher.loadDistributionQuotas || {};
+            const w = quotas.week || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+            const m = quotas.month || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+            const s = quotas.semester || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
+
+            grid.style.display = 'flex';
+            grid.style.flexDirection = 'column';
+            grid.style.height = '519.98px';
+            grid.style.maxHeight = '519.98px';
+            grid.style.boxSizing = 'border-box';
+            if (pagContainer) pagContainer.style.display = 'none';
+
+            grid.innerHTML = `
+                <div style="
+                    background: var(--bg-card);
+                    border: 1px solid var(--border);
+                    border-radius: 12px;
+                    padding: 20px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                    height: 100%;
+                    box-sizing: border-box;
+                    gap: 16px;
+                ">
+                    <!-- Header -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+                        <div>
+                            <h3 style="margin: 0; font-size: 18px; font-weight: 800; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                                ✏️ Edit Quotas: <span style="color: var(--teal);">${teacher.name}</span>
+                            </h3>
+                            <span style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; display: inline-block;">
+                                Employee ID: <strong>${teacher.employeeId || 'N/A'}</strong>
+                            </span>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-secondary" onclick="cancelLdEdit()" style="padding: 6px 14px; font-size: 13px; font-weight: 700; border-radius: 6px;">
+                                Cancel
+                            </button>
+                            <button class="btn btn-primary" onclick="saveLdEditInline('${teacher._id}')" style="padding: 6px 16px; font-size: 13px; font-weight: 700; border-radius: 6px; background: var(--teal); border-color: var(--teal);">
+                                Save Changes
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Input Groups Row -->
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; flex-grow: 1;">
+                        
+                        <!-- Weekly Quota Card -->
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 14px; border-radius: 10px; display: flex; flex-direction: column; gap: 10px; justify-content: center;">
+                            <h4 style="margin: 0 0 2px 0; font-size: 14px; font-weight: bold; color: var(--teal); border-bottom: 1px dashed var(--border); padding-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Weekly</h4>
+                            
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
+                                    <label style="font-size: 11px; color: var(--text-secondary); font-weight: 600;">Lecture Quota</label>
+                                    <input type="number" id="inline_week_lec_${teacher._id}" value="${w.lectureQuota}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
+                                    <label style="font-size: 11px; color: #f59e0b; font-weight: 600;">Leaves Taken</label>
+                                    <input type="number" id="inline_week_taken_${teacher._id}" value="${w.leavesTaken}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
+                                    <label style="font-size: 11px; color: #22c55e; font-weight: 600;">Leaves Left</label>
+                                    <input type="number" id="inline_week_left_${teacher._id}" value="${w.leavesLeft}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Monthly Quota Card -->
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 14px; border-radius: 10px; display: flex; flex-direction: column; gap: 10px; justify-content: center;">
+                            <h4 style="margin: 0 0 2px 0; font-size: 14px; font-weight: bold; color: var(--teal); border-bottom: 1px dashed var(--border); padding-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Monthly</h4>
+                            
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
+                                    <label style="font-size: 11px; color: var(--text-secondary); font-weight: 600;">Lecture Quota</label>
+                                    <input type="number" id="inline_month_lec_${teacher._id}" value="${m.lectureQuota}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
+                                    <label style="font-size: 11px; color: #f59e0b; font-weight: 600;">Leaves Taken</label>
+                                    <input type="number" id="inline_month_taken_${teacher._id}" value="${m.leavesTaken}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
+                                    <label style="font-size: 11px; color: #22c55e; font-weight: 600;">Leaves Left</label>
+                                    <input type="number" id="inline_month_left_${teacher._id}" value="${m.leavesLeft}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Semester Quota Card -->
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 14px; border-radius: 10px; display: flex; flex-direction: column; gap: 10px; justify-content: center;">
+                            <h4 style="margin: 0 0 2px 0; font-size: 14px; font-weight: bold; color: var(--teal); border-bottom: 1px dashed var(--border); padding-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Semester</h4>
+                            
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
+                                    <label style="font-size: 11px; color: var(--text-secondary); font-weight: 600;">Lecture Quota</label>
+                                    <input type="number" id="inline_semester_lec_${teacher._id}" value="${s.lectureQuota}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
+                                    <label style="font-size: 11px; color: #f59e0b; font-weight: 600;">Leaves Taken</label>
+                                    <input type="number" id="inline_semester_taken_${teacher._id}" value="${s.leavesTaken}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
+                                    <label style="font-size: 11px; color: #22c55e; font-weight: 600;">Leaves Left</label>
+                                    <input type="number" id="inline_semester_left_${teacher._id}" value="${s.leavesLeft}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            `;
+            return;
+        }
+    }
+
+    // Reset styles back to standard grid layout when not in editing state
+    grid.style.display = 'grid';
+    grid.style.flexDirection = '';
+    grid.style.height = '';
+    grid.style.maxHeight = '520px';
+    if (pagContainer) pagContainer.style.display = 'flex';
+
     if (filtered.length === 0) {
         grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 40px; color: var(--text-secondary);">No teachers found</div>';
         if (pagContainer) pagContainer.style.display = 'none';
@@ -14970,94 +15095,7 @@ function renderLdTeachers() {
         const m = quotas.month || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
         const s = quotas.semester || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
 
-        const isEditing = (typeof ldEditingTeacherId !== 'undefined' && ldEditingTeacherId === t._id);
 
-        if (isEditing) {
-            // Edit layout fitting perfectly within the 314.12 x 194.2 box
-            return `
-                <div class="teacher-quota-card editing" style="
-                    background: var(--bg-card);
-                    border: 2px solid var(--teal);
-                    border-radius: 12px;
-                    padding: 12px 14px;
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: space-between;
-                    height: 194.2px;
-                    box-sizing: border-box;
-                    gap: 8px;
-                ">
-                    <!-- Edit Header -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed var(--border); padding-bottom: 6px;">
-                        <span style="font-size: 13px; font-weight: 800; color: var(--teal); text-transform: uppercase; letter-spacing: 0.5px;">✏️ Edit Quotas</span>
-                        <div style="display: flex; gap: 6px;">
-                            <button class="btn btn-secondary" onclick="cancelLdEdit()" style="padding: 2px 6px; font-size: 11px; border-radius: 4px;">Cancel</button>
-                            <button class="btn btn-primary" onclick="saveLdEditInline('${t._id}')" style="padding: 2px 8px; font-size: 11px; border-radius: 4px;">Save</button>
-                        </div>
-                    </div>
-
-                    <!-- Edit Fields Rows -->
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center;">
-                        <!-- Weekly -->
-                        <div style="display: flex; flex-direction: column; gap: 4px;">
-                            <span style="font-size: 11px; font-weight: bold; color: var(--text-primary);">Weekly</span>
-                            <div style="display: flex; flex-direction: column; gap: 3px;">
-                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 2px;">
-                                    <span style="font-size: 10px; color: var(--text-secondary);">Lec:</span>
-                                    <input type="number" id="inline_week_lec_${t._id}" value="${w.lectureQuota}" style="width: 38px; background: rgba(0,0,0,0.15); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; padding: 1px 2px; font-size: 11px; text-align: center;">
-                                </div>
-                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 2px;">
-                                    <span style="font-size: 10px; color: #f59e0b;">Tkn:</span>
-                                    <input type="number" id="inline_week_taken_${t._id}" value="${w.leavesTaken}" style="width: 38px; background: rgba(0,0,0,0.15); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; padding: 1px 2px; font-size: 11px; text-align: center;">
-                                </div>
-                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 2px;">
-                                    <span style="font-size: 10px; color: #22c55e;">Lft:</span>
-                                    <input type="number" id="inline_week_left_${t._id}" value="${w.leavesLeft}" style="width: 38px; background: rgba(0,0,0,0.15); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; padding: 1px 2px; font-size: 11px; text-align: center;">
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Monthly -->
-                        <div style="display: flex; flex-direction: column; gap: 4px;">
-                            <span style="font-size: 11px; font-weight: bold; color: var(--text-primary);">Monthly</span>
-                            <div style="display: flex; flex-direction: column; gap: 3px;">
-                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 2px;">
-                                    <span style="font-size: 10px; color: var(--text-secondary);">Lec:</span>
-                                    <input type="number" id="inline_month_lec_${t._id}" value="${m.lectureQuota}" style="width: 38px; background: rgba(0,0,0,0.15); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; padding: 1px 2px; font-size: 11px; text-align: center;">
-                                </div>
-                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 2px;">
-                                    <span style="font-size: 10px; color: #f59e0b;">Tkn:</span>
-                                    <input type="number" id="inline_month_taken_${t._id}" value="${m.leavesTaken}" style="width: 38px; background: rgba(0,0,0,0.15); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; padding: 1px 2px; font-size: 11px; text-align: center;">
-                                </div>
-                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 2px;">
-                                    <span style="font-size: 10px; color: #22c55e;">Lft:</span>
-                                    <input type="number" id="inline_month_left_${t._id}" value="${m.leavesLeft}" style="width: 38px; background: rgba(0,0,0,0.15); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; padding: 1px 2px; font-size: 11px; text-align: center;">
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Semester -->
-                        <div style="display: flex; flex-direction: column; gap: 4px;">
-                            <span style="font-size: 11px; font-weight: bold; color: var(--text-primary);">Semester</span>
-                            <div style="display: flex; flex-direction: column; gap: 3px;">
-                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 2px;">
-                                    <span style="font-size: 10px; color: var(--text-secondary);">Lec:</span>
-                                    <input type="number" id="inline_semester_lec_${t._id}" value="${s.lectureQuota}" style="width: 38px; background: rgba(0,0,0,0.15); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; padding: 1px 2px; font-size: 11px; text-align: center;">
-                                </div>
-                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 2px;">
-                                    <span style="font-size: 10px; color: #f59e0b;">Tkn:</span>
-                                    <input type="number" id="inline_semester_taken_${t._id}" value="${s.leavesTaken}" style="width: 38px; background: rgba(0,0,0,0.15); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; padding: 1px 2px; font-size: 11px; text-align: center;">
-                                </div>
-                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 2px;">
-                                    <span style="font-size: 10px; color: #22c55e;">Lft:</span>
-                                    <input type="number" id="inline_semester_left_${t._id}" value="${s.leavesLeft}" style="width: 38px; background: rgba(0,0,0,0.15); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; padding: 1px 2px; font-size: 11px; text-align: center;">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
 
         // Beautiful reactive UI cards using standard theme styles and flex layouts
         return `
