@@ -5306,6 +5306,8 @@ const onRefreshStudent = async () => {
               </Text>
             </View>
           </Animated.View>
+        )}
+
         {/* Apply Leave Modal */}
         <Modal
           visible={showApplyLeaveModal}
