@@ -9549,7 +9549,7 @@ app.post('/api/leaves/:id/reject', async (req, res) => {
     }
 });
 
-// Helper to get current period as string based on time
+// Helper to get current period as string based on time (really current or nearest period)
 function getCurrentPeriodString(dateObj = new Date()) {
     const offset = 5.5 * 60 * 60 * 1000;
     const istTime = new Date(dateObj.getTime() + offset);
@@ -9560,22 +9560,30 @@ function getCurrentPeriodString(dateObj = new Date()) {
     // Standard school times:
     // P1: 09:40 - 10:40 (580 to 640)
     // P2: 10:40 - 11:40 (640 to 700)
+    // Break 1: 11:40 - 12:10 (700 to 730)
     // P3: 12:10 - 13:10 (730 to 790)
     // P4: 13:10 - 14:10 (790 to 850)
+    // Break 2: 14:10 - 14:20 (850 to 860)
     // P5: 14:20 - 15:15 (860 to 915)
     // P6: 15:15 - 16:10 (915 to 970)
 
+    if (currentMins < 580) return 'P1'; // Before school hours: nearest is P1
     if (currentMins >= 580 && currentMins < 640) return 'P1';
+    
     if (currentMins >= 640 && currentMins < 700) return 'P2';
-    if (currentMins >= 700 && currentMins < 730) return 'P2'; // Break 1, show P2
+    if (currentMins >= 700 && currentMins < 715) return 'P2'; // Break 1 (first half): nearest P2
+    if (currentMins >= 715 && currentMins < 730) return 'P3'; // Break 1 (second half): nearest P3
+    
     if (currentMins >= 730 && currentMins < 790) return 'P3';
+    
     if (currentMins >= 790 && currentMins < 850) return 'P4';
-    if (currentMins >= 850 && currentMins < 860) return 'P4'; // Break 2
+    if (currentMins >= 850 && currentMins < 855) return 'P4'; // Break 2 (first half): nearest P4
+    if (currentMins >= 855 && currentMins < 860) return 'P5'; // Break 2 (second half): nearest P5
+    
     if (currentMins >= 860 && currentMins < 915) return 'P5';
+    
     if (currentMins >= 915 && currentMins < 970) return 'P6';
-
-    // Outside school hours: fallback to P1
-    return 'P1';
+    return 'P6'; // After school hours: nearest is P6
 }
 
 // GET /api/teachers/status — returns teachers with their current busy/free status
