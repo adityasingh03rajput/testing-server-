@@ -2010,6 +2010,34 @@ async function generateSwapsForLeave(leaveRequest) {
             const candidates = [];
 
             for (const candidate of allTeachers) {
+                // Check if candidate is on approved leave today
+                let isCandidateOnLeave = false;
+                if (mongoose.connection.readyState === 1) {
+                    const startOfDay = getISTMidnight(currentDate);
+                    const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
+                    const candidateLeave = await LeaveRequest.findOne({
+                        teacherId: candidate._id,
+                        status: 'approved',
+                        startDate: { $lte: endOfDay },
+                        endDate: { $gte: startOfDay }
+                    });
+                    if (candidateLeave) {
+                        isCandidateOnLeave = true;
+                    }
+                } else {
+                    isCandidateOnLeave = leaveRequestsMemory.some(l => 
+                        l.teacherId.toString() === candidate._id.toString() &&
+                        l.status === 'approved' &&
+                        new Date(l.startDate).getTime() <= new Date(currentDate).getTime() &&
+                        new Date(l.endDate).getTime() >= new Date(currentDate).getTime()
+                    );
+                }
+
+                if (isCandidateOnLeave) {
+                    console.log(`⚖️ Candidate ${candidate.name} excluded: currently on approved leave`);
+                    continue;
+                }
+
                 // Check if candidate is already scheduled at this period on this day in any timetable
                 let isBusy = false;
                 for (const tt of timetables) {
@@ -2021,8 +2049,28 @@ async function generateSwapsForLeave(leaveRequest) {
                             (slot.teacherName && slot.teacherName.toLowerCase() === candidate.name.toLowerCase()) ||
                             (slot.teacher && slot.teacher.toLowerCase() === candidate.name.toLowerCase());
                         if (matchesCand) {
-                            isBusy = true;
-                            break;
+                            // Only count as busy if the branch/semester actually has enrolled students
+                            let studentCount = 0;
+                            if (mongoose.connection.readyState === 1) {
+                                const totalStudents = await Student.countDocuments({});
+                                if (totalStudents > 0) {
+                                    studentCount = await Student.countDocuments({
+                                        $or: [
+                                            { branch: tt.branch },
+                                            { course: tt.branch }
+                                        ],
+                                        semester: tt.semester.toString()
+                                    });
+                                } else {
+                                    studentCount = 1; // Fallback to 1 if no students exist in DB
+                                }
+                            }
+                            if (studentCount > 0 || mongoose.connection.readyState !== 1) {
+                                isBusy = true;
+                                break;
+                            } else {
+                                console.log(`⚖️ Timetable ${tt.branch} Sem ${tt.semester} has 0 students. Ignoring busy status for ${candidate.name}.`);
+                            }
                         }
                     }
                 }
@@ -2060,7 +2108,25 @@ async function generateSwapsForLeave(leaveRequest) {
                                 (slot.teacherName && slot.teacherName.toLowerCase() === candidate.name.toLowerCase()) ||
                                 (slot.teacher && slot.teacher.toLowerCase() === candidate.name.toLowerCase());
                             if (matchesCand) {
-                                candidatePeriods.add(slot.period || (i + 1));
+                                // Only count towards consecutive classes if the class actually has enrolled students
+                                let studentCount = 0;
+                                if (mongoose.connection.readyState === 1) {
+                                    const totalStudents = await Student.countDocuments({});
+                                    if (totalStudents > 0) {
+                                        studentCount = await Student.countDocuments({
+                                            $or: [
+                                                { branch: tt.branch },
+                                                { course: tt.branch }
+                                            ],
+                                            semester: tt.semester.toString()
+                                        });
+                                    } else {
+                                        studentCount = 1; // Fallback
+                                    }
+                                }
+                                if (studentCount > 0 || mongoose.connection.readyState !== 1) {
+                                    candidatePeriods.add(slot.period || (i + 1));
+                                }
                             }
                         }
                     }
