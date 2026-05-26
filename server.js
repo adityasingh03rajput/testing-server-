@@ -2038,6 +2038,33 @@ async function generateSwapsForLeave(leaveRequest) {
                     continue;
                 }
 
+                // Check if candidate is marked busy by admin for this period
+                let isAdminBusy = false;
+                if (mongoose.connection.readyState === 1) {
+                    const startOfDay = getISTMidnight(currentDate);
+                    const adminBusy = await TeacherBusy.findOne({
+                        teacherId: candidate._id,
+                        date: startOfDay,
+                        period: `P${periodNum}`,
+                        isBusy: true
+                    });
+                    if (adminBusy) {
+                        isAdminBusy = true;
+                    }
+                } else {
+                    isAdminBusy = teacherBusyMemory.some(b =>
+                        b.teacherId.toString() === candidate._id.toString() &&
+                        getISTMidnight(new Date(b.date)).getTime() === getISTMidnight(currentDate).getTime() &&
+                        b.period === `P${periodNum}` &&
+                        b.isBusy === true
+                    );
+                }
+
+                if (isAdminBusy) {
+                    console.log(`⚖️ Candidate ${candidate.name} excluded: marked busy by admin`);
+                    continue;
+                }
+
                 // Check if candidate is already scheduled at this period on this day in any timetable
                 let isBusy = false;
                 for (const tt of timetables) {
@@ -8346,6 +8373,18 @@ const scheduleSwapSchema = new mongoose.Schema({
 const ScheduleSwap = mongoose.model('ScheduleSwap', scheduleSwapSchema);
 let scheduleSwapsMemory = [];
 
+// Teacher Busy Schema (Admin can mark them busy for specific period & date)
+const teacherBusySchema = new mongoose.Schema({
+    teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher', required: true },
+    date: { type: Date, required: true },
+    period: { type: String, required: true },
+    reason: { type: String, default: '' },
+    isBusy: { type: Boolean, default: true }
+}, { timestamps: true });
+
+const TeacherBusy = mongoose.model('TeacherBusy', teacherBusySchema);
+let teacherBusyMemory = [];
+
 app.get('/api/teachers', async (req, res) => {
     try {
         if (mongoose.connection.readyState === 1) {
@@ -9246,6 +9285,22 @@ app.post('/api/leaves/apply', async (req, res) => {
         let actualTeacherId = null;
         let actualTeacherName = teacherName;
 
+        const newStart = new Date(startDate);
+        const newEnd = new Date(endDate);
+
+        const getISTMidnight = (date) => {
+            const d = new Date(date);
+            const offset = 5.5 * 60 * 60 * 1000;
+            const istTime = new Date(d.getTime() + offset);
+            const y = istTime.getUTCFullYear();
+            const m = istTime.getUTCMonth();
+            const day = istTime.getUTCDate();
+            return new Date(Date.UTC(y, m, day, 0, 0, 0) - offset);
+        };
+
+        const targetStart = getISTMidnight(newStart);
+        const targetEnd = new Date(getISTMidnight(newEnd).getTime() + 24 * 60 * 60 * 1000 - 1);
+
         if (mongoose.connection.readyState === 1) {
             // Find teacher by employeeId, email or ID
             const teacher = await Teacher.findOne({
@@ -9261,6 +9316,22 @@ app.post('/api/leaves/apply', async (req, res) => {
                 actualTeacherName = teacher.name;
             } else {
                 return res.status(404).json({ success: false, error: `Teacher not found with identifier: ${teacherId}` });
+            }
+
+            // Check if teacher already has an overlapping leave request that is approved or pending
+            const existingLeave = await LeaveRequest.findOne({
+                teacherId: actualTeacherId,
+                status: { $in: ['approved', 'pending'] },
+                startDate: { $lte: targetEnd },
+                endDate: { $gte: targetStart }
+            });
+
+            if (existingLeave) {
+                if (existingLeave.status === 'approved') {
+                    return res.status(400).json({ success: false, error: 'already granted' });
+                } else if (existingLeave.status === 'pending') {
+                    return res.status(400).json({ success: false, error: 'already requested' });
+                }
             }
 
             const leave = new LeaveRequest({
@@ -9283,6 +9354,22 @@ app.post('/api/leaves/apply', async (req, res) => {
                 actualTeacherName = teacher.name;
             } else {
                 actualTeacherId = 'temp-' + Date.now();
+            }
+
+            // Check in memory overlap
+            const existingLeave = leaveRequestsMemory.find(l =>
+                l.teacherId.toString() === actualTeacherId.toString() &&
+                ['approved', 'pending'].includes(l.status) &&
+                new Date(l.startDate).getTime() <= targetEnd.getTime() &&
+                new Date(l.endDate).getTime() >= targetStart.getTime()
+            );
+
+            if (existingLeave) {
+                if (existingLeave.status === 'approved') {
+                    return res.status(400).json({ success: false, error: 'already granted' });
+                } else if (existingLeave.status === 'pending') {
+                    return res.status(400).json({ success: false, error: 'already requested' });
+                }
             }
 
             const leave = {
@@ -9458,6 +9545,247 @@ app.post('/api/leaves/:id/reject', async (req, res) => {
         res.json({ success: true, message: 'Leave request rejected' });
     } catch (error) {
         console.error('Error rejecting leave:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Helper to get current period as string based on time
+function getCurrentPeriodString(dateObj = new Date()) {
+    const offset = 5.5 * 60 * 60 * 1000;
+    const istTime = new Date(dateObj.getTime() + offset);
+    const hours = istTime.getUTCHours();
+    const minutes = istTime.getUTCMinutes();
+    const currentMins = hours * 60 + minutes;
+
+    // Standard school times:
+    // P1: 09:40 - 10:40 (580 to 640)
+    // P2: 10:40 - 11:40 (640 to 700)
+    // P3: 12:10 - 13:10 (730 to 790)
+    // P4: 13:10 - 14:10 (790 to 850)
+    // P5: 14:20 - 15:15 (860 to 915)
+    // P6: 15:15 - 16:10 (915 to 970)
+
+    if (currentMins >= 580 && currentMins < 640) return 'P1';
+    if (currentMins >= 640 && currentMins < 700) return 'P2';
+    if (currentMins >= 700 && currentMins < 730) return 'P2'; // Break 1, show P2
+    if (currentMins >= 730 && currentMins < 790) return 'P3';
+    if (currentMins >= 790 && currentMins < 850) return 'P4';
+    if (currentMins >= 850 && currentMins < 860) return 'P4'; // Break 2
+    if (currentMins >= 860 && currentMins < 915) return 'P5';
+    if (currentMins >= 915 && currentMins < 970) return 'P6';
+
+    // Outside school hours: fallback to P1
+    return 'P1';
+}
+
+// GET /api/teachers/status — returns teachers with their current busy/free status
+app.get('/api/teachers/status', async (req, res) => {
+    try {
+        let { date, period } = req.query;
+        const targetDate = date ? new Date(date) : new Date();
+        const startOfDay = getISTMidnight(targetDate);
+        const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
+
+        const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const offset = 5.5 * 60 * 60 * 1000;
+        const istDate = new Date(targetDate.getTime() + offset);
+        const dayName = daysOfWeek[istDate.getUTCDay()];
+
+        if (!period) {
+            period = getCurrentPeriodString(targetDate);
+        }
+        const periodNum = parseInt(period.replace(/\D/g, '')) || 1;
+
+        let allTeachers = [];
+        let timetables = [];
+        let approvedLeaves = [];
+        let adminBusyStatuses = [];
+
+        if (mongoose.connection.readyState === 1) {
+            allTeachers = await Teacher.find().lean();
+            timetables = await Timetable.find().lean();
+            approvedLeaves = await LeaveRequest.find({
+                status: 'approved',
+                startDate: { $lte: endOfDay },
+                endDate: { $gte: startOfDay }
+            }).lean();
+            adminBusyStatuses = await TeacherBusy.find({
+                date: startOfDay,
+                period: `P${periodNum}`
+            }).lean();
+        } else {
+            allTeachers = teachersMemory;
+            timetables = timetablesMemory || [];
+            approvedLeaves = leaveRequestsMemory.filter(l =>
+                l.status === 'approved' &&
+                new Date(l.startDate).getTime() <= endOfDay.getTime() &&
+                new Date(l.endDate).getTime() >= startOfDay.getTime()
+            );
+            adminBusyStatuses = teacherBusyMemory.filter(b =>
+                getISTMidnight(new Date(b.date)).getTime() === startOfDay.getTime() &&
+                b.period === `P${periodNum}`
+            );
+        }
+
+        // Check if database has any students total
+        let totalStudents = 0;
+        if (mongoose.connection.readyState === 1) {
+            totalStudents = await Student.countDocuments({});
+        }
+
+        const result = [];
+
+        for (const teacher of allTeachers) {
+            let status = 'free';
+            let reason = 'Available';
+
+            // 1. Check approved leave
+            const isOnLeave = approvedLeaves.some(l => l.teacherId.toString() === teacher._id.toString());
+            if (isOnLeave) {
+                status = 'busy';
+                reason = 'On Approved Leave';
+            }
+
+            // 2. Check admin marked busy status
+            if (status === 'free') {
+                const adminStatus = adminBusyStatuses.find(b => b.teacherId.toString() === teacher._id.toString());
+                if (adminStatus && adminStatus.isBusy) {
+                    status = 'busy';
+                    reason = adminStatus.reason || 'Marked busy by admin';
+                }
+            }
+
+            // 3. Check timetable scheduled busy status
+            if (status === 'free') {
+                for (const tt of timetables) {
+                    const daySchedule = tt.timetable?.[dayName] || [];
+                    const slot = daySchedule[periodNum - 1];
+                    if (slot && !slot.isBreak && slot.subject) {
+                        const matchesTeacher = 
+                            (slot.teacher && slot.teacher.toString() === teacher._id.toString()) ||
+                            (slot.teacherName && slot.teacherName.toLowerCase() === teacher.name.toLowerCase()) ||
+                            (slot.teacher && slot.teacher.toLowerCase() === teacher.name.toLowerCase());
+                        
+                        if (matchesTeacher) {
+                            // Check student count of this timetable's branch
+                            let studentCount = 0;
+                            if (mongoose.connection.readyState === 1) {
+                                if (totalStudents > 0) {
+                                    studentCount = await Student.countDocuments({
+                                        $or: [
+                                            { branch: tt.branch },
+                                            { course: tt.branch }
+                                        ],
+                                        semester: tt.semester.toString()
+                                    });
+                                } else {
+                                    studentCount = 1;
+                                }
+                            } else {
+                                studentCount = 1;
+                            }
+
+                            if (studentCount > 0) {
+                                status = 'busy';
+                                reason = `Teaching ${slot.subject} in ${tt.branch} Sem ${tt.semester}`;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            result.push({
+                teacherId: teacher._id,
+                name: teacher.name,
+                employeeId: teacher.employeeId,
+                email: teacher.email,
+                status,
+                reason,
+                period: `P${periodNum}`,
+                date: startOfDay.toISOString()
+            });
+        }
+
+        res.json({
+            success: true,
+            period: `P${periodNum}`,
+            date: startOfDay.toISOString(),
+            teachers: result
+        });
+
+    } catch (error) {
+        console.error('Error getting teachers status:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// POST /api/teachers/mark-busy — lets admin mark a teacher busy/free for a period with reason
+app.post('/api/teachers/mark-busy', async (req, res) => {
+    try {
+        const { teacherId, date, period, isBusy, reason } = req.body;
+        if (!teacherId || !period) {
+            return res.status(400).json({ success: false, error: 'Missing required fields: teacherId, period' });
+        }
+
+        const targetDate = date ? new Date(date) : new Date();
+        const startOfDay = getISTMidnight(targetDate);
+        const periodStr = period.startsWith('P') ? period : `P${period}`;
+
+        if (mongoose.connection.readyState === 1) {
+            // Find teacher
+            const teacher = await Teacher.findOne({
+                $or: [
+                    { employeeId: teacherId },
+                    { email: teacherId },
+                    { _id: mongoose.isValidObjectId(teacherId) ? teacherId : new mongoose.Types.ObjectId() }
+                ]
+            });
+
+            if (!teacher) {
+                return res.status(404).json({ success: false, error: 'Teacher not found' });
+            }
+
+            const busyRecord = await TeacherBusy.findOneAndUpdate(
+                { teacherId: teacher._id, date: startOfDay, period: periodStr },
+                { isBusy: isBusy !== false, reason: reason || '' },
+                { new: true, upsert: true }
+            );
+
+            res.json({ success: true, message: 'Teacher busy status updated successfully', record: busyRecord });
+        } else {
+            const teacher = teachersMemory.find(t => 
+                t.employeeId === teacherId || t.email === teacherId || t._id.toString() === teacherId.toString()
+            );
+
+            const actualId = teacher ? teacher._id : teacherId;
+
+            const existingIdx = teacherBusyMemory.findIndex(b =>
+                b.teacherId.toString() === actualId.toString() &&
+                getISTMidnight(new Date(b.date)).getTime() === startOfDay.getTime() &&
+                b.period === periodStr
+            );
+
+            const record = {
+                _id: 'busy-' + Date.now(),
+                teacherId: actualId,
+                date: startOfDay,
+                period: periodStr,
+                isBusy: isBusy !== false,
+                reason: reason || ''
+            };
+
+            if (existingIdx >= 0) {
+                teacherBusyMemory[existingIdx] = record;
+            } else {
+                teacherBusyMemory.push(record);
+            }
+
+            res.json({ success: true, message: 'Teacher busy status updated successfully (memory)', record });
+        }
+
+    } catch (error) {
+        console.error('Error marking teacher busy:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
