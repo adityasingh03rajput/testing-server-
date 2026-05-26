@@ -1381,21 +1381,8 @@
                             <div class="filters" style="margin-bottom:16px;">
                                 <input type="text" id="ldTeacherSearch" class="search-input" placeholder="Search teachers..." oninput="renderLdTeachers()">
                             </div>
-                            <div class="table-container" style="max-height: 500px; overflow-y: auto;">
-                                <table class="data-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Teacher Name</th>
-                                            <th>Weekly Quota</th>
-                                            <th>Monthly Quota</th>
-                                            <th>Semester Quota</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="ldTeachersTableBody">
-                                        <!-- Will be populated dynamically -->
-                                    </tbody>
-                                </table>
+                            <div id="ldTeachersCardGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; max-height: 520px; overflow-y: auto; padding: 4px; margin-bottom: 8px;">
+                                <!-- Dynamic gorgeous cards will be injected here -->
                             </div>
                             <div id="ldTeachersPagination" style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; flex-wrap: wrap; gap: 12px; padding-top: 16px; border-top: 1px solid var(--border);">
                                 <!-- Will be populated dynamically -->

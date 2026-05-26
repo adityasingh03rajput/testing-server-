@@ -14932,8 +14932,8 @@ async function toggleLoadDistributionFlag() {
 }
 
 function renderLdTeachers() {
-    const tbody = document.getElementById('ldTeachersTableBody');
-    if (!tbody) return;
+    const grid = document.getElementById('ldTeachersCardGrid');
+    if (!grid) return;
 
     const query = document.getElementById('ldTeacherSearch').value.toLowerCase();
     
@@ -14949,7 +14949,7 @@ function renderLdTeachers() {
     const pagContainer = document.getElementById('ldTeachersPagination');
 
     if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center">No teachers found</td></tr>';
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 40px; color: var(--text-secondary);">No teachers found</div>';
         if (pagContainer) pagContainer.style.display = 'none';
         return;
     }
@@ -14963,34 +14963,74 @@ function renderLdTeachers() {
     const startIdx = (ldTeachersPage - 1) * ldTeachersLimit;
     const paginated = filtered.slice(startIdx, startIdx + ldTeachersLimit);
 
-    tbody.innerHTML = paginated.map(t => {
+    grid.innerHTML = paginated.map(t => {
         const quotas = t.loadDistributionQuotas || {};
         const w = quotas.week || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
         const m = quotas.month || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
         const s = quotas.semester || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
 
+        // Beautiful reactive UI cards using standard theme styles and flex layouts
         return `
-            <tr>
-                <td><strong>${t.name}</strong><br><small style="color:var(--text-secondary);">${t.employeeId || ''}</small></td>
-                <td>
-                    Lec Quota: ${w.lectureQuota}<br>
-                    Lvs Taken: ${w.leavesTaken}<br>
-                    Lvs Left: ${w.leavesLeft}
-                </td>
-                <td>
-                    Lec Quota: ${m.lectureQuota}<br>
-                    Lvs Taken: ${m.leavesTaken}<br>
-                    Lvs Left: ${m.leavesLeft}
-                </td>
-                <td>
-                    Lec Quota: ${s.lectureQuota}<br>
-                    Lvs Taken: ${s.leavesTaken}<br>
-                    Lvs Left: ${s.leavesLeft}
-                </td>
-                <td>
-                    <button class="btn btn-primary btn-sm" onclick="editLdQuota('${t._id}')">⚙️ Edit Quotas</button>
-                </td>
-            </tr>
+            <div class="teacher-quota-card" style="
+                background: var(--bg-card);
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                padding: 16px;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                gap: 16px;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            " onmouseenter="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 20px rgba(0,0,0,0.06)'" onmouseleave="this.style.transform='none'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.02)'">
+                
+                <!-- Card Header -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px dashed var(--border); padding-bottom: 12px;">
+                    <div>
+                        <h4 style="margin: 0; font-size: 15px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                            👨‍🏫 ${t.name}
+                        </h4>
+                        <span style="font-size: 11px; color: var(--text-secondary); font-weight: 500;">ID: ${t.employeeId || 'N/A'}</span>
+                    </div>
+                    <button class="btn btn-secondary" onclick="editLdQuota('${t._id}')" style="padding: 4px 8px; font-size: 11px; border-radius: 6px;">
+                        ⚙️ Edit
+                    </button>
+                </div>
+
+                <!-- Card Body (Metrics Row) -->
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center;">
+                    <!-- Weekly -->
+                    <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); padding: 8px 4px; border-radius: 8px;">
+                        <span style="font-size: 10px; font-weight: bold; color: var(--teal); letter-spacing: 0.5px; text-transform: uppercase;">Weekly</span>
+                        <div style="margin-top: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text-primary);">
+                            <span>Quota: <strong>${w.lectureQuota}</strong></span>
+                            <span style="color: #f59e0b;">Taken: <strong>${w.leavesTaken}</strong></span>
+                            <span style="color: #22c55e;">Left: <strong>${w.leavesLeft}</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Monthly -->
+                    <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); padding: 8px 4px; border-radius: 8px;">
+                        <span style="font-size: 10px; font-weight: bold; color: var(--teal); letter-spacing: 0.5px; text-transform: uppercase;">Monthly</span>
+                        <div style="margin-top: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text-primary);">
+                            <span>Quota: <strong>${m.lectureQuota}</strong></span>
+                            <span style="color: #f59e0b;">Taken: <strong>${m.leavesTaken}</strong></span>
+                            <span style="color: #22c55e;">Left: <strong>${m.leavesLeft}</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Semester -->
+                    <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); padding: 8px 4px; border-radius: 8px;">
+                        <span style="font-size: 10px; font-weight: bold; color: var(--teal); letter-spacing: 0.5px; text-transform: uppercase;">Semester</span>
+                        <div style="margin-top: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text-primary);">
+                            <span>Quota: <strong>${s.lectureQuota}</strong></span>
+                            <span style="color: #f59e0b;">Taken: <strong>${s.leavesTaken}</strong></span>
+                            <span style="color: #22c55e;">Left: <strong>${s.leavesLeft}</strong></span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
         `;
     }).join('');
 
