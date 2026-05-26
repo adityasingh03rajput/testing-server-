@@ -14843,6 +14843,8 @@ let ldSelectedTeacherId = null;
 let ldTeacherStatuses = [];
 let ldSelectedBusyTeacherId = null;
 let ldSelectedBusyPeriod = '';
+let ldTeachersPage = 1;
+let ldTeachersLimit = 10;
 
 async function loadLoadDistributionData() {
     try {
@@ -14934,14 +14936,34 @@ function renderLdTeachers() {
     if (!tbody) return;
 
     const query = document.getElementById('ldTeacherSearch').value.toLowerCase();
-    const filtered = ldTeachers.filter(t => t.name.toLowerCase().includes(query) || t.employeeId.toLowerCase().includes(query));
+    
+    // Automatically reset page to 1 on new search query to avoid getting stuck
+    if (typeof renderLdTeachers.lastQuery === 'undefined') renderLdTeachers.lastQuery = '';
+    if (renderLdTeachers.lastQuery !== query) {
+        ldTeachersPage = 1;
+        renderLdTeachers.lastQuery = query;
+    }
+
+    const filtered = ldTeachers.filter(t => t.name.toLowerCase().includes(query) || (t.employeeId && t.employeeId.toLowerCase().includes(query)));
+
+    const pagContainer = document.getElementById('ldTeachersPagination');
 
     if (filtered.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="text-center">No teachers found</td></tr>';
+        if (pagContainer) pagContainer.style.display = 'none';
         return;
     }
 
-    tbody.innerHTML = filtered.map(t => {
+    // Pagination calculations
+    const total = filtered.length;
+    const pages = Math.ceil(total / ldTeachersLimit) || 1;
+    if (ldTeachersPage > pages) ldTeachersPage = pages;
+    if (ldTeachersPage < 1) ldTeachersPage = 1;
+
+    const startIdx = (ldTeachersPage - 1) * ldTeachersLimit;
+    const paginated = filtered.slice(startIdx, startIdx + ldTeachersLimit);
+
+    tbody.innerHTML = paginated.map(t => {
         const quotas = t.loadDistributionQuotas || {};
         const w = quotas.week || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
         const m = quotas.month || { lectureQuota: 0, leavesTaken: 0, leavesLeft: 0 };
@@ -14949,7 +14971,7 @@ function renderLdTeachers() {
 
         return `
             <tr>
-                <td><strong>${t.name}</strong><br><small style="color:var(--text-secondary);">${t.employeeId}</small></td>
+                <td><strong>${t.name}</strong><br><small style="color:var(--text-secondary);">${t.employeeId || ''}</small></td>
                 <td>
                     Lec Quota: ${w.lectureQuota}<br>
                     Lvs Taken: ${w.leavesTaken}<br>
@@ -14971,6 +14993,66 @@ function renderLdTeachers() {
             </tr>
         `;
     }).join('');
+
+    // Update pagination controls
+    if (pagContainer) {
+        pagContainer.style.display = 'flex';
+        let html = `
+            <div style="color: var(--text-secondary); font-size: 13px;">
+                Showing ${startIdx + 1} to ${Math.min(startIdx + ldTeachersLimit, total)} of ${total} teachers
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 4px; margin-right: 12px;">
+                    <label style="font-size: 12px; color: var(--text-secondary);">Rows per page:</label>
+                    <select onchange="changeLdTeachersLimit(this.value)" class="filter-select" style="padding: 2px 8px; height: 28px; font-size: 12px;">
+                        <option value="5" ${ldTeachersLimit == 5 ? 'selected' : ''}>5</option>
+                        <option value="10" ${ldTeachersLimit == 10 ? 'selected' : ''}>10</option>
+                        <option value="20" ${ldTeachersLimit == 20 ? 'selected' : ''}>20</option>
+                        <option value="50" ${ldTeachersLimit == 50 ? 'selected' : ''}>50</option>
+                    </select>
+                </div>
+                <button class="btn btn-sm btn-secondary" onclick="changeLdTeachersPage(${ldTeachersPage - 1})" ${ldTeachersPage <= 1 ? 'disabled' : ''}>
+                    Previous
+                </button>
+                <div style="display: flex; align-items: center; gap: 4px;">
+        `;
+
+        // Page numbers
+        const maxVisible = 5;
+        let start = Math.max(1, ldTeachersPage - 2);
+        let end = Math.min(pages, start + maxVisible - 1);
+        if (end - start + 1 < maxVisible) start = Math.max(1, end - maxVisible + 1);
+
+        for (let i = start; i <= end; i++) {
+            html += `
+                <button class="btn btn-sm ${i === ldTeachersPage ? 'btn-primary' : 'btn-secondary'}" 
+                    style="min-width: 30px; padding: 0;"
+                    onclick="changeLdTeachersPage(${i})">
+                    ${i}
+                </button>
+            `;
+        }
+
+        html += `
+                </div>
+                <button class="btn btn-sm btn-secondary" onclick="changeLdTeachersPage(${ldTeachersPage + 1})" ${ldTeachersPage >= pages ? 'disabled' : ''}>
+                    Next
+                </button>
+            </div>
+        `;
+        pagContainer.innerHTML = html;
+    }
+}
+
+function changeLdTeachersPage(page) {
+    ldTeachersPage = page;
+    renderLdTeachers();
+}
+
+function changeLdTeachersLimit(limit) {
+    ldTeachersLimit = parseInt(limit) || 10;
+    ldTeachersPage = 1;
+    renderLdTeachers();
 }
 
 function editLdQuota(teacherId) {
