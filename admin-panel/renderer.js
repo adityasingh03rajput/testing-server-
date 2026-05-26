@@ -14845,6 +14845,12 @@ async function loadLoadDistributionData() {
     try {
         // 1. Fetch feature flag
         const flagRes = await fetch(GET_LOAD_DISTRIBUTION_FLAG);
+        if (!flagRes.ok) {
+            if (flagRes.status === 404) {
+                throw new Error('Load distribution is not supported or deployed on the selected server yet. Please switch the Server URL to http://localhost:3000 in Settings, or redeploy your backend.');
+            }
+            throw new Error(`Server returned status ${flagRes.status} for feature flag`);
+        }
         const flagData = await flagRes.json();
         const btn = document.getElementById('toggleLoadDistributionBtn');
         if (btn) {
@@ -14859,6 +14865,7 @@ async function loadLoadDistributionData() {
 
         // 2. Fetch teachers
         const teachersRes = await fetch(GET_TEACHERS);
+        if (!teachersRes.ok) throw new Error(`Teachers fetch returned status ${teachersRes.status}`);
         const teachersData = await teachersRes.json();
         if (teachersData.success) {
             ldTeachers = teachersData.teachers || [];
@@ -14867,6 +14874,7 @@ async function loadLoadDistributionData() {
 
         // 3. Fetch leave requests
         const leavesRes = await fetch(GET_LEAVES_LIST);
+        if (!leavesRes.ok) throw new Error(`Leaves fetch returned status ${leavesRes.status}`);
         const leavesData = await leavesRes.json();
         if (leavesData.success) {
             renderLdLeaveRequests(leavesData.leaves || []);
@@ -14874,19 +14882,26 @@ async function loadLoadDistributionData() {
 
         // 4. Fetch swaps
         const swapsRes = await fetch(GET_LEAVES_SWAPS);
+        if (!swapsRes.ok) throw new Error(`Swaps fetch returned status ${swapsRes.status}`);
         const swapsData = await swapsRes.json();
         if (swapsData.success) {
             renderLdSwaps(swapsData.swaps || []);
         }
     } catch (error) {
         console.error('Error loading load distribution data:', error);
-        showNotification('Error loading load distribution data: ' + error.message, 'error');
+        showNotification(error.message, 'error');
     }
 }
 
 async function toggleLoadDistributionFlag() {
     try {
         const res = await fetch(POST_LOAD_DISTRIBUTION_FLAG, { method: 'POST' });
+        if (!res.ok) {
+            if (res.status === 404) {
+                throw new Error('This action is not supported by the selected server.');
+            }
+            throw new Error(`Server returned status ${res.status}`);
+        }
         const data = await res.json();
         if (data.success) {
             const btn = document.getElementById('toggleLoadDistributionBtn');
@@ -14904,7 +14919,7 @@ async function toggleLoadDistributionFlag() {
         }
     } catch (error) {
         console.error('Error toggling load distribution flag:', error);
-        showNotification('Error toggling feature: ' + error.message, 'error');
+        showNotification(error.message, 'error');
     }
 }
 
