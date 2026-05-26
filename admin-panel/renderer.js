@@ -14840,6 +14840,9 @@ async function loadSubjectsForShowcase() {
 // ─── LOAD DISTRIBUTION & LEAVE SWAPPING UI HANDLERS ───────────────────────
 let ldTeachers = [];
 let ldSelectedTeacherId = null;
+let ldTeacherStatuses = [];
+let ldSelectedBusyTeacherId = null;
+let ldSelectedBusyPeriod = '';
 
 async function loadLoadDistributionData() {
     try {
@@ -14887,6 +14890,9 @@ async function loadLoadDistributionData() {
         if (swapsData.success) {
             renderLdSwaps(swapsData.swaps || []);
         }
+
+        // 5. Fetch teacher live occupancy statuses
+        await loadLdTeacherStatuses();
     } catch (error) {
         console.error('Error loading load distribution data:', error);
         showNotification(error.message, 'error');
@@ -15136,5 +15142,154 @@ function renderLdSwaps(swaps) {
             </div>
         `;
     }).join('');
+}
+
+// Live Teacher Occupancy Tracker Logic
+async function loadLdTeacherStatuses() {
+    const tableBody = document.getElementById('ldStatusTableBody');
+    if (!tableBody) return;
+
+    try {
+        const dateInput = document.getElementById('ldStatusDate');
+        const periodSelect = document.getElementById('ldStatusPeriod');
+
+        const dateVal = dateInput.value || new Date().toISOString().split('T')[0];
+        const periodVal = periodSelect.value || ''; // Let backend calculate dynamically if empty
+
+        if (!dateInput.value) {
+            dateInput.value = dateVal;
+        }
+
+        let url = `${api('/api/teachers/status')}?date=${dateVal}`;
+        if (periodVal) {
+            url += `&period=${periodVal}`;
+        }
+
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Failed to fetch teacher statuses: status ${res.status}`);
+        const data = await res.json();
+
+        if (data.success) {
+            ldTeacherStatuses = data.teachers || [];
+            
+            // Sync current period display back to select if it was auto-detected
+            if (!periodSelect.value && data.period) {
+                const options = Array.from(periodSelect.options).map(o => o.value);
+                if (options.includes(data.period)) {
+                    periodSelect.value = data.period;
+                }
+            }
+
+            renderLdTeacherStatuses();
+        } else {
+            throw new Error(data.error || 'Unknown error');
+        }
+    } catch (error) {
+        console.error('Error loading teacher status tracker:', error);
+        tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-danger);">Error: ${error.message}</td></tr>`;
+    }
+}
+
+function renderLdTeacherStatuses() {
+    const tableBody = document.getElementById('ldStatusTableBody');
+    if (!tableBody) return;
+
+    const searchQuery = document.getElementById('ldStatusSearch').value.toLowerCase();
+    const filterType = document.getElementById('ldStatusFilter').value; // all, free, busy
+
+    const filtered = ldTeacherStatuses.filter(t => {
+        const nameMatch = t.name.toLowerCase().includes(searchQuery);
+        const empIdMatch = t.employeeId && t.employeeId.toLowerCase().includes(searchQuery);
+        const matchesSearch = nameMatch || empIdMatch;
+        const matchesFilter = filterType === 'all' || t.status === filterType;
+        return matchesSearch && matchesFilter;
+    });
+
+    if (filtered.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--text-secondary); padding: 30px;">No teachers match the current filters.</td></tr>';
+        return;
+    }
+
+    tableBody.innerHTML = filtered.map(t => {
+        const badgeColor = t.status === 'busy' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)';
+        const textColor = t.status === 'busy' ? '#ef4444' : '#22c55e';
+        const statusText = t.status === 'busy' ? '🔴 BUSY' : '🟢 FREE';
+
+        const isCurrentlyBusy = t.status === 'busy';
+        
+        return `
+            <tr>
+                <td><strong>${t.name}</strong><br><small style="color:var(--text-secondary);">${t.employeeId || t.email || ''}</small></td>
+                <td><strong style="color:var(--teal);">${t.period}</strong></td>
+                <td>
+                    <span style="font-size:11px; padding: 4px 10px; border-radius: 20px; font-weight: bold; background:${badgeColor}; color:${textColor}; text-transform: uppercase;">
+                        ${statusText}
+                    </span>
+                </td>
+                <td style="color: var(--text-primary); font-size: 13px;">${t.reason}</td>
+                <td>
+                    <button class="btn ${isCurrentlyBusy ? 'btn-secondary' : 'btn-primary'} btn-sm" onclick="openLdMarkBusyModal('${t.teacherId}', '${t.name}', '${t.period}', ${isCurrentlyBusy}, '${t.reason.replace(/'/g, "\\'")}')">
+                        ⚡ Toggle Status
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function openLdMarkBusyModal(teacherId, name, period, isBusy, currentReason) {
+    ldSelectedBusyTeacherId = teacherId;
+    ldSelectedBusyPeriod = period;
+
+    document.getElementById('ldBusyTeacherName').textContent = name;
+    document.getElementById('ldBusyPeriodInfo').textContent = `Period: ${period}`;
+    
+    const select = document.getElementById('ldBusyAction');
+    select.value = isBusy ? 'free' : 'busy';
+
+    const reasonInput = document.getElementById('ldBusyReason');
+    const isCustomReason = currentReason && !currentReason.startsWith('Teaching') && !currentReason.startsWith('On Approved Leave') && currentReason !== 'Available';
+    reasonInput.value = isCustomReason ? currentReason : '';
+
+    document.getElementById('ldMarkBusyModal').style.display = 'flex';
+}
+
+function closeLdMarkBusyModal() {
+    document.getElementById('ldMarkBusyModal').style.display = 'none';
+}
+
+async function saveLdTeacherBusyStatus() {
+    if (!ldSelectedBusyTeacherId || !ldSelectedBusyPeriod) return;
+
+    const action = document.getElementById('ldBusyAction').value; // busy, free
+    const reason = document.getElementById('ldBusyReason').value;
+    const dateVal = document.getElementById('ldStatusDate').value || new Date().toISOString().split('T')[0];
+
+    const body = {
+        teacherId: ldSelectedBusyTeacherId,
+        date: dateVal,
+        period: ldSelectedBusyPeriod,
+        isBusy: action === 'busy',
+        reason: reason || (action === 'busy' ? 'Marked busy by admin' : '')
+    };
+
+    try {
+        const res = await fetch(api('/api/teachers/mark-busy'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (data.success) {
+            showNotification('Teacher busy status updated successfully!', 'success');
+            closeLdMarkBusyModal();
+            loadLdTeacherStatuses();
+        } else {
+            showNotification('Failed to update status: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error saving teacher busy status:', error);
+        showNotification('Error saving status: ' + error.message, 'error');
+    }
 }
 

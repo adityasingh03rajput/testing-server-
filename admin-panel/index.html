@@ -1419,6 +1419,89 @@
                         </div>
                     </div>
 
+                    <!-- Live Teacher Status Section -->
+                    <div class="bento-card" style="margin-top: 24px; padding: 24px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 16px;">
+                            <div>
+                                <h3 style="margin:0; color:var(--text-primary); font-size:18px; display: flex; align-items: center; gap: 8px;">
+                                    🟢 Live Teacher Occupancy Tracker <span style="font-size: 11px; background: var(--primary); color: #fff; padding: 2px 8px; border-radius: 20px; text-transform: uppercase;">Realtime</span>
+                                </h3>
+                                <p style="margin:4px 0 0; font-size:12px; color:var(--text-secondary);">Calculates busy vs free status updated automatically after every lecture period.</p>
+                            </div>
+                            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                                <input type="date" id="ldStatusDate" class="filter-select" style="padding: 6px 12px; font-size:13px;" onchange="loadLdTeacherStatuses()">
+                                <select id="ldStatusPeriod" class="filter-select" style="padding: 6px 12px; font-size:13px;" onchange="loadLdTeacherStatuses()">
+                                    <option value="">-- Current Period --</option>
+                                    <option value="P1">Period 1 (09:40-10:40)</option>
+                                    <option value="P2">Period 2 (10:40-11:40)</option>
+                                    <option value="P3">Period 3 (12:10-13:10)</option>
+                                    <option value="P4">Period 4 (13:10-14:10)</option>
+                                    <option value="P5">Period 5 (14:20-15:15)</option>
+                                    <option value="P6">Period 6 (15:15-16:10)</option>
+                                </select>
+                                <select id="ldStatusFilter" class="filter-select" style="padding: 6px 12px; font-size:13px;" onchange="renderLdTeacherStatuses()">
+                                    <option value="all">All Teachers</option>
+                                    <option value="free">Free Only</option>
+                                    <option value="busy">Busy Only</option>
+                                </select>
+                                <button class="btn btn-primary" onclick="loadLdTeacherStatuses()" style="padding: 6px 12px; font-size:13px;">🔄 Refresh Status</button>
+                            </div>
+                        </div>
+                        <div class="filters" style="margin-bottom:16px;">
+                            <input type="text" id="ldStatusSearch" class="search-input" placeholder="Search teachers by name..." oninput="renderLdTeacherStatuses()">
+                        </div>
+                        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Teacher Name</th>
+                                        <th>Period</th>
+                                        <th>Status</th>
+                                        <th>Details / Reason</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ldStatusTableBody">
+                                    <tr>
+                                        <td colspan="5" style="text-align:center; padding:40px; color:var(--text-secondary);">Loading status data...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Mark Teacher Busy Modal -->
+                    <div id="ldMarkBusyModal" class="modal">
+                        <div class="modal-content" style="max-width: 400px; width: 90%; padding: 24px;">
+                            <div class="modal-header">
+                                <h3 style="margin: 0;">Toggle Busy Status</h3>
+                                <button class="close-btn" onclick="closeLdMarkBusyModal()">×</button>
+                            </div>
+                            <div class="modal-body" style="display:flex; flex-direction:column; gap:16px; margin-top: 16px;">
+                                <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                                    <p style="margin:0; font-size:12px; color:var(--text-secondary);">Teacher:</p>
+                                    <h4 id="ldBusyTeacherName" style="margin:4px 0 0; color:var(--text-primary);"></h4>
+                                    <p style="margin:4px 0 0; font-size:12px; color:var(--text-secondary);" id="ldBusyPeriodInfo"></p>
+                                </div>
+                                <div class="form-group">
+                                    <label>Action</label>
+                                    <select id="ldBusyAction" class="form-input">
+                                        <option value="busy">Mark Busy</option>
+                                        <option value="free">Mark Free / Available</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Reason / Notes</label>
+                                    <input type="text" id="ldBusyReason" class="form-input" placeholder="e.g. In a department meeting, personal work, etc.">
+                                </div>
+                            </div>
+                            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border-color); padding-top: 16px; margin-top: 16px;">
+                                <button onclick="closeLdMarkBusyModal()" class="btn btn-secondary">Cancel</button>
+                                <button onclick="saveLdTeacherBusyStatus()" class="btn btn-primary">Apply</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Quota Edit Modal -->
                     <div id="ldQuotaModal" class="modal">
                         <div class="modal-content" style="max-width: 450px; width: 90%; padding: 24px;">
