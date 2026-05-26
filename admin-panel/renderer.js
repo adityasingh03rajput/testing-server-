@@ -14966,100 +14966,114 @@ function renderLdTeachers() {
 
             grid.innerHTML = `
                 <div style="
-                    background: var(--bg-card);
-                    border: 1px solid var(--border);
-                    border-radius: 12px;
-                    padding: 20px;
+                    background: linear-gradient(135deg, rgba(26, 27, 38, 0.95), rgba(17, 18, 26, 0.98));
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    border-radius: 16px;
+                    padding: 24px;
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
                     height: 100%;
                     box-sizing: border-box;
                     gap: 16px;
+                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
                 ">
                     <!-- Header -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 16px;">
                         <div>
-                            <h3 style="margin: 0; font-size: 18px; font-weight: 800; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-                                ✏️ Edit Quotas: <span style="color: var(--teal);">${teacher.name}</span>
+                            <span style="font-size: 12px; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1.5px; display: block; margin-bottom: 4px;">Teacher Quota Management</span>
+                            <h3 style="margin: 0; font-size: 22px; font-weight: 800; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                                ✏️ Edit: <span style="color: var(--teal); text-shadow: 0 0 15px rgba(0, 242, 254, 0.2);">${teacher.name}</span>
+                                <span style="font-size: 13px; color: var(--text-secondary); font-weight: 600; margin-left: 8px; background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 4px;">ID: ${teacher.employeeId || 'N/A'}</span>
                             </h3>
-                            <span style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; display: inline-block;">
-                                Employee ID: <strong>${teacher.employeeId || 'N/A'}</strong>
-                            </span>
                         </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-secondary" onclick="cancelLdEdit()" style="padding: 6px 14px; font-size: 13px; font-weight: 700; border-radius: 6px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <button class="btn btn-secondary" onclick="cancelLdEdit()" style="padding: 8px 16px; font-size: 13px; font-weight: 700; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); cursor: pointer; transition: all 0.2s;">
                                 Cancel
                             </button>
-                            <button class="btn btn-primary" onclick="saveLdEditInline('${teacher._id}')" style="padding: 6px 16px; font-size: 13px; font-weight: 700; border-radius: 6px; background: var(--teal); border-color: var(--teal);">
+                            <button class="btn btn-primary" onclick="saveLdEditInline('${teacher._id}')" style="padding: 8px 20px; font-size: 13px; font-weight: 700; border-radius: 8px; background: linear-gradient(135deg, var(--teal), #00b4d8); border: none; color: #fff; cursor: pointer; box-shadow: 0 4px 15px rgba(0, 242, 254, 0.2); transition: all 0.2s;">
                                 Save Changes
+                            </button>
+                            <button class="btn" onclick="goToNextTeacher()" style="padding: 8px 16px; font-size: 13px; font-weight: 700; border-radius: 8px; background: linear-gradient(135deg, #f59e0b, #d97706); border: none; color: #fff; display: flex; align-items: center; gap: 6px; cursor: pointer; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2); transition: all 0.2s;" onmouseenter="this.style.transform='translateX(2px)'" onmouseleave="this.style.transform='none'">
+                                Next Teacher ➡️
                             </button>
                         </div>
                     </div>
 
                     <!-- Input Groups Row -->
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; flex-grow: 1;">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; flex-grow: 1;">
                         
                         <!-- Weekly Quota Card -->
-                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 14px; border-radius: 10px; display: flex; flex-direction: column; gap: 10px; justify-content: center;">
-                            <h4 style="margin: 0 0 2px 0; font-size: 14px; font-weight: bold; color: var(--teal); border-bottom: 1px dashed var(--border); padding-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Weekly</h4>
+                        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); padding: 18px; border-radius: 12px; display: flex; flex-direction: column; gap: 14px; transition: border-color 0.2s;" onfocusin="this.style.borderColor='rgba(0, 242, 254, 0.3)'" onfocusout="this.style.borderColor='rgba(255, 255, 255, 0.06)'">
+                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed rgba(255, 255, 255, 0.08); padding-bottom: 10px;">
+                                <span style="background: rgba(0, 242, 254, 0.08); border: 1px solid rgba(0, 242, 254, 0.15); color: var(--teal); padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;">Weekly</span>
+                            </div>
                             
-                            <div style="display: flex; flex-direction: column; gap: 6px;">
-                                <div style="display: flex; flex-direction: column; gap: 2px;">
-                                    <label style="font-size: 11px; color: var(--text-secondary); font-weight: 600;">Lecture Quota</label>
-                                    <input type="number" id="inline_week_lec_${teacher._id}" value="${w.lectureQuota}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                            <div style="display: flex; flex-direction: column; gap: 10px;">
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <label style="font-size: 11px; color: var(--text-secondary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Lecture Quota</label>
+                                    <input type="number" id="inline_week_lec_${teacher._id}" value="${w.lectureQuota}" style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-primary); border-radius: 8px; padding: 10px; font-size: 15px; font-weight: 700; text-align: center; width: 100%; box-sizing: border-box; transition: all 0.2s; outline: none;" onfocus="this.style.borderColor='var(--teal)'; this.style.boxShadow='0 0 8px rgba(0, 242, 254, 0.15)'" onblur="this.style.borderColor='rgba(255, 255, 255, 0.1)'; this.style.boxShadow='none'">
                                 </div>
-                                <div style="display: flex; flex-direction: column; gap: 2px;">
-                                    <label style="font-size: 11px; color: #f59e0b; font-weight: 600;">Leaves Taken</label>
-                                    <input type="number" id="inline_week_taken_${teacher._id}" value="${w.leavesTaken}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <label style="font-size: 11px; color: #f59e0b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Leaves Taken</label>
+                                    <input type="number" id="inline_week_taken_${teacher._id}" value="${w.leavesTaken}" style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-primary); border-radius: 8px; padding: 10px; font-size: 15px; font-weight: 700; text-align: center; width: 100%; box-sizing: border-box; transition: all 0.2s; outline: none;" onfocus="this.style.borderColor='var(--teal)'; this.style.boxShadow='0 0 8px rgba(0, 242, 254, 0.15)'" onblur="this.style.borderColor='rgba(255, 255, 255, 0.1)'; this.style.boxShadow='none'">
                                 </div>
-                                <div style="display: flex; flex-direction: column; gap: 2px;">
-                                    <label style="font-size: 11px; color: #22c55e; font-weight: 600;">Leaves Left</label>
-                                    <input type="number" id="inline_week_left_${teacher._id}" value="${w.leavesLeft}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <label style="font-size: 11px; color: #22c55e; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Leaves Left</label>
+                                    <input type="number" id="inline_week_left_${teacher._id}" value="${w.leavesLeft}" style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-primary); border-radius: 8px; padding: 10px; font-size: 15px; font-weight: 700; text-align: center; width: 100%; box-sizing: border-box; transition: all 0.2s; outline: none;" onfocus="this.style.borderColor='var(--teal)'; this.style.boxShadow='0 0 8px rgba(0, 242, 254, 0.15)'" onblur="this.style.borderColor='rgba(255, 255, 255, 0.1)'; this.style.boxShadow='none'">
                                 </div>
                             </div>
                         </div>
 
                         <!-- Monthly Quota Card -->
-                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 14px; border-radius: 10px; display: flex; flex-direction: column; gap: 10px; justify-content: center;">
-                            <h4 style="margin: 0 0 2px 0; font-size: 14px; font-weight: bold; color: var(--teal); border-bottom: 1px dashed var(--border); padding-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Monthly</h4>
+                        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); padding: 18px; border-radius: 12px; display: flex; flex-direction: column; gap: 14px; transition: border-color 0.2s;" onfocusin="this.style.borderColor='rgba(0, 242, 254, 0.3)'" onfocusout="this.style.borderColor='rgba(255, 255, 255, 0.06)'">
+                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed rgba(255, 255, 255, 0.08); padding-bottom: 10px;">
+                                <span style="background: rgba(0, 242, 254, 0.08); border: 1px solid rgba(0, 242, 254, 0.15); color: var(--teal); padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;">Monthly</span>
+                            </div>
                             
-                            <div style="display: flex; flex-direction: column; gap: 6px;">
-                                <div style="display: flex; flex-direction: column; gap: 2px;">
-                                    <label style="font-size: 11px; color: var(--text-secondary); font-weight: 600;">Lecture Quota</label>
-                                    <input type="number" id="inline_month_lec_${teacher._id}" value="${m.lectureQuota}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                            <div style="display: flex; flex-direction: column; gap: 10px;">
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <label style="font-size: 11px; color: var(--text-secondary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Lecture Quota</label>
+                                    <input type="number" id="inline_month_lec_${teacher._id}" value="${m.lectureQuota}" style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-primary); border-radius: 8px; padding: 10px; font-size: 15px; font-weight: 700; text-align: center; width: 100%; box-sizing: border-box; transition: all 0.2s; outline: none;" onfocus="this.style.borderColor='var(--teal)'; this.style.boxShadow='0 0 8px rgba(0, 242, 254, 0.15)'" onblur="this.style.borderColor='rgba(255, 255, 255, 0.1)'; this.style.boxShadow='none'">
                                 </div>
-                                <div style="display: flex; flex-direction: column; gap: 2px;">
-                                    <label style="font-size: 11px; color: #f59e0b; font-weight: 600;">Leaves Taken</label>
-                                    <input type="number" id="inline_month_taken_${teacher._id}" value="${m.leavesTaken}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <label style="font-size: 11px; color: #f59e0b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Leaves Taken</label>
+                                    <input type="number" id="inline_month_taken_${teacher._id}" value="${m.leavesTaken}" style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-primary); border-radius: 8px; padding: 10px; font-size: 15px; font-weight: 700; text-align: center; width: 100%; box-sizing: border-box; transition: all 0.2s; outline: none;" onfocus="this.style.borderColor='var(--teal)'; this.style.boxShadow='0 0 8px rgba(0, 242, 254, 0.15)'" onblur="this.style.borderColor='rgba(255, 255, 255, 0.1)'; this.style.boxShadow='none'">
                                 </div>
-                                <div style="display: flex; flex-direction: column; gap: 2px;">
-                                    <label style="font-size: 11px; color: #22c55e; font-weight: 600;">Leaves Left</label>
-                                    <input type="number" id="inline_month_left_${teacher._id}" value="${m.leavesLeft}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <label style="font-size: 11px; color: #22c55e; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Leaves Left</label>
+                                    <input type="number" id="inline_month_left_${teacher._id}" value="${m.leavesLeft}" style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-primary); border-radius: 8px; padding: 10px; font-size: 15px; font-weight: 700; text-align: center; width: 100%; box-sizing: border-box; transition: all 0.2s; outline: none;" onfocus="this.style.borderColor='var(--teal)'; this.style.boxShadow='0 0 8px rgba(0, 242, 254, 0.15)'" onblur="this.style.borderColor='rgba(255, 255, 255, 0.1)'; this.style.boxShadow='none'">
                                 </div>
                             </div>
                         </div>
 
                         <!-- Semester Quota Card -->
-                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 14px; border-radius: 10px; display: flex; flex-direction: column; gap: 10px; justify-content: center;">
-                            <h4 style="margin: 0 0 2px 0; font-size: 14px; font-weight: bold; color: var(--teal); border-bottom: 1px dashed var(--border); padding-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Semester</h4>
+                        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); padding: 18px; border-radius: 12px; display: flex; flex-direction: column; gap: 14px; transition: border-color 0.2s;" onfocusin="this.style.borderColor='rgba(0, 242, 254, 0.3)'" onfocusout="this.style.borderColor='rgba(255, 255, 255, 0.06)'">
+                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed rgba(255, 255, 255, 0.08); padding-bottom: 10px;">
+                                <span style="background: rgba(0, 242, 254, 0.08); border: 1px solid rgba(0, 242, 254, 0.15); color: var(--teal); padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;">Semester</span>
+                            </div>
                             
-                            <div style="display: flex; flex-direction: column; gap: 6px;">
-                                <div style="display: flex; flex-direction: column; gap: 2px;">
-                                    <label style="font-size: 11px; color: var(--text-secondary); font-weight: 600;">Lecture Quota</label>
-                                    <input type="number" id="inline_semester_lec_${teacher._id}" value="${s.lectureQuota}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                            <div style="display: flex; flex-direction: column; gap: 10px;">
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <label style="font-size: 11px; color: var(--text-secondary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Lecture Quota</label>
+                                    <input type="number" id="inline_semester_lec_${teacher._id}" value="${s.lectureQuota}" style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-primary); border-radius: 8px; padding: 10px; font-size: 15px; font-weight: 700; text-align: center; width: 100%; box-sizing: border-box; transition: all 0.2s; outline: none;" onfocus="this.style.borderColor='var(--teal)'; this.style.boxShadow='0 0 8px rgba(0, 242, 254, 0.15)'" onblur="this.style.borderColor='rgba(255, 255, 255, 0.1)'; this.style.boxShadow='none'">
                                 </div>
-                                <div style="display: flex; flex-direction: column; gap: 2px;">
-                                    <label style="font-size: 11px; color: #f59e0b; font-weight: 600;">Leaves Taken</label>
-                                    <input type="number" id="inline_semester_taken_${teacher._id}" value="${s.leavesTaken}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <label style="font-size: 11px; color: #f59e0b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Leaves Taken</label>
+                                    <input type="number" id="inline_semester_taken_${teacher._id}" value="${s.leavesTaken}" style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-primary); border-radius: 8px; padding: 10px; font-size: 15px; font-weight: 700; text-align: center; width: 100%; box-sizing: border-box; transition: all 0.2s; outline: none;" onfocus="this.style.borderColor='var(--teal)'; this.style.boxShadow='0 0 8px rgba(0, 242, 254, 0.15)'" onblur="this.style.borderColor='rgba(255, 255, 255, 0.1)'; this.style.boxShadow='none'">
                                 </div>
-                                <div style="display: flex; flex-direction: column; gap: 2px;">
-                                    <label style="font-size: 11px; color: #22c55e; font-weight: 600;">Leaves Left</label>
-                                    <input type="number" id="inline_semester_left_${teacher._id}" value="${s.leavesLeft}" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600;">
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <label style="font-size: 11px; color: #22c55e; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Leaves Left</label>
+                                    <input type="number" id="inline_semester_left_${teacher._id}" value="${s.leavesLeft}" style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-primary); border-radius: 8px; padding: 10px; font-size: 15px; font-weight: 700; text-align: center; width: 100%; box-sizing: border-box; transition: all 0.2s; outline: none;" onfocus="this.style.borderColor='var(--teal)'; this.style.boxShadow='0 0 8px rgba(0, 242, 254, 0.15)'" onblur="this.style.borderColor='rgba(255, 255, 255, 0.1)'; this.style.boxShadow='none'">
                                 </div>
                             </div>
                         </div>
 
+                    </div>
+
+                    <!-- Footer Tip -->
+                    <div style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.05);">
+                        <span>💡 <strong>Pro-Tip:</strong> Press <strong>Save Changes</strong> to store values, or click <strong>Next Teacher</strong> to cycle through without leaving the edit mode.</span>
                     </div>
                 </div>
             `;
@@ -15232,6 +15246,15 @@ function editLdQuota(teacherId) {
 
 function cancelLdEdit() {
     ldEditingTeacherId = null;
+    renderLdTeachers();
+}
+
+function goToNextTeacher() {
+    if (!ldEditingTeacherId || ldTeachers.length === 0) return;
+    const currentIndex = ldTeachers.findIndex(t => t._id === ldEditingTeacherId);
+    if (currentIndex === -1) return;
+    const nextIndex = (currentIndex + 1) % ldTeachers.length;
+    ldEditingTeacherId = ldTeachers[nextIndex]._id;
     renderLdTeachers();
 }
 
