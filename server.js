@@ -1954,7 +1954,9 @@ async function generateSwapsForLeave(leaveRequest) {
     // For each calendar date in range
     for (let d = 0; d < numDays; d++) {
         const currentDate = new Date(start.getTime() + d * 24 * 60 * 60 * 1000);
-        const currentDayIndex = currentDate.getDay();
+        const offset = 5.5 * 60 * 60 * 1000;
+        const istDate = new Date(currentDate.getTime() + offset);
+        const currentDayIndex = istDate.getUTCDay();
         const currentDayName = daysOfWeek[currentDayIndex];
 
         // 1. Find all periods where the original teacher is scheduled on this day
@@ -2365,7 +2367,9 @@ async function applyDynamicSwaps(timetables, date = new Date()) {
         if (swaps.length === 0) return timetables;
 
         const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-        const currentDay = days[date.getDay()];
+        const offset = 5.5 * 60 * 60 * 1000;
+        const istDate = new Date(date.getTime() + offset);
+        const currentDay = days[istDate.getUTCDay()];
 
         for (const tt of timetables) {
             const daySchedule = tt.timetable?.[currentDay];
@@ -5772,7 +5776,9 @@ app.post('/api/attendance/lecture-end', async (req, res) => {
                 const swapped = await applyDynamicSwaps(timetables, now);
                 if (swapped.length > 0) {
                     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-                    const currentDay = days[now.getDay()];
+                    const offset = 5.5 * 60 * 60 * 1000;
+                    const istNow = new Date(now.getTime() + offset);
+                    const currentDay = days[istNow.getUTCDay()];
                     const daySchedule = swapped[0].timetable?.[currentDay] || [];
                     const slot = daySchedule.find(s => s.period === period) || daySchedule[period - 1];
                     if (slot) {
