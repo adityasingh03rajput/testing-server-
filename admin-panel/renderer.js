@@ -14018,6 +14018,10 @@ function setupShowcaseViewSwitcher() {
 }
 
 // ========== STUDENT VIEW ==========
+let showcaseStudentItems = [];
+let showcaseStudentPage = 1;
+const SHOWCASE_STUDENTS_PER_PAGE = 8;
+
 async function loadShowcaseStudents() {
     const branch = document.getElementById('showcaseBranch').value;
     const semester = document.getElementById('showcaseSemester').value;
@@ -14027,29 +14031,42 @@ async function loadShowcaseStudents() {
     }
     
     try {
-        const response = await fetch(GET_STUDENTS);
+        const container = document.getElementById('studentListContainer');
+        container.innerHTML = '<div style="text-align: center; padding: 20px;">Loading attendance data...</div>';
+        
+        const paginationContainer = document.getElementById('studentListPagination');
+        if (paginationContainer) paginationContainer.style.display = 'none';
+
+        // Fetch only filtered students to save memory and requests
+        const response = await fetch(`${GET_STUDENTS}?branch=${encodeURIComponent(branch)}&semester=${encodeURIComponent(semester)}`);
         const data = await response.json();
         if (data.success) {
-            const container = document.getElementById('studentListContainer');
-            container.innerHTML = '<div style="text-align: center; padding: 20px;">Loading attendance data...</div>';
-            const studentItems = [];
+            showcaseStudentItems = [];
+            showcaseStudentPage = 1;
             
-            for (const student of data.students) {
+            if (data.students.length === 0) {
+                renderShowcaseStudentPage();
+                return;
+            }
+
+            // Fetch attendance summaries in parallel for maximum speed
+            const summaryPromises = data.students.map(async (student) => {
                 try {
                     const attendanceResponse = await fetch(GET_ATTENDANCE_SUMMARY(student.enrollmentNo));
                     const attendanceData = await attendanceResponse.json();
                     let percentage = 0;
-                    // summary endpoint returns data.summary.overallPercentage
                     if (attendanceData.success && attendanceData.summary) {
                         percentage = attendanceData.summary.overallPercentage || 0;
                     }
-                    studentItems.push({ student, percentage, attendanceData });
+                    return { student, percentage, attendanceData };
                 } catch (error) {
                     console.error(`Error loading attendance for ${student.enrollmentNo}:`, error);
-                    studentItems.push({ student, percentage: 0, attendanceData: null });
+                    return { student, percentage: 0, attendanceData: null };
                 }
-            }
-            renderStudentList(studentItems);
+            });
+
+            showcaseStudentItems = await Promise.all(summaryPromises);
+            renderShowcaseStudentPage();
         }
     } catch (error) {
         console.error('Error loading students:', error);
@@ -14057,15 +14074,26 @@ async function loadShowcaseStudents() {
     }
 }
 
-function renderStudentList(studentItems) {
+function renderShowcaseStudentPage() {
     const container = document.getElementById('studentListContainer');
-    if (studentItems.length === 0) {
+    const paginationContainer = document.getElementById('studentListPagination');
+    
+    if (showcaseStudentItems.length === 0) {
         container.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No students found</div>';
+        if (paginationContainer) paginationContainer.style.display = 'none';
         return;
     }
-    
+
+    const totalPages = Math.ceil(showcaseStudentItems.length / SHOWCASE_STUDENTS_PER_PAGE);
+    if (showcaseStudentPage > totalPages) showcaseStudentPage = totalPages;
+    if (showcaseStudentPage < 1) showcaseStudentPage = 1;
+
+    const startIdx = (showcaseStudentPage - 1) * SHOWCASE_STUDENTS_PER_PAGE;
+    const endIdx = startIdx + SHOWCASE_STUDENTS_PER_PAGE;
+    const pageItems = showcaseStudentItems.slice(startIdx, endIdx);
+
     let html = '<div class="showcase-student-grid">';
-    studentItems.forEach(item => {
+    pageItems.forEach(item => {
         const { student, percentage } = item;
         const percentageColor = percentage >= 75 ? '#28a745' : percentage >= 50 ? '#ffc107' : '#dc3545';
         html += `
@@ -14089,7 +14117,28 @@ function renderStudentList(studentItems) {
     });
     html += '</div>';
     container.innerHTML = html;
+
+    if (paginationContainer) {
+        if (totalPages <= 1) {
+            paginationContainer.style.display = 'none';
+        } else {
+            paginationContainer.style.display = 'flex';
+            paginationContainer.innerHTML = `
+                <button class="btn btn-secondary btn-sm" onclick="changeShowcaseStudentPage(-1)" ${showcaseStudentPage === 1 ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''}>◀ Prev</button>
+                <span style="font-weight: 600; color: var(--text-primary);">Page ${showcaseStudentPage} of ${totalPages} (${showcaseStudentItems.length} students)</span>
+                <button class="btn btn-secondary btn-sm" onclick="changeShowcaseStudentPage(1)" ${showcaseStudentPage === totalPages ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''}>Next ▶</button>
+            `;
+        }
+    }
 }
+
+function changeShowcaseStudentPage(direction) {
+    showcaseStudentPage += direction;
+    renderShowcaseStudentPage();
+}
+
+window.changeShowcaseStudentPage = changeShowcaseStudentPage;
+window.renderShowcaseStudentPage = renderShowcaseStudentPage;
 
 async function showStudentCalendar(enrollmentNo, studentName) {
     _openCalendarEnrollmentNo = enrollmentNo;
