@@ -8488,9 +8488,9 @@ app.get('/api/teachers/status', async (req, res) => {
                     const daySchedule = tt.timetable?.[dayName] || [];
                     const slot = daySchedule[periodNum - 1];
                     if (slot && !slot.isBreak && slot.subject) {
-                        const slotTeacherId = slot.teacher ? slot.teacher.toString().trim() : '';
+                        const slotTeacherId = slot.teacher ? slot.teacher.toString().trim().toLowerCase() : '';
                         const slotTeacherName = slot.teacherName ? slot.teacherName.toString().trim().toLowerCase() : '';
-                        const dbTeacherId = teacher._id ? teacher._id.toString().trim() : '';
+                        const dbTeacherId = teacher._id ? teacher._id.toString().trim().toLowerCase() : '';
                         const dbTeacherName = teacher.name ? teacher.name.toString().trim().toLowerCase() : '';
                         const dbTeacherEmail = teacher.email ? teacher.email.toString().trim().toLowerCase() : '';
 
