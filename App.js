@@ -281,8 +281,20 @@ export default function App() {
   const [showPeriodSelector, setShowPeriodSelector] = useState(false);
   const [isRoomDropdownExpanded, setIsRoomDropdownExpanded] = useState(false);
   const [showApplyLeaveModal, setShowApplyLeaveModal] = useState(false);
-  const [leaveStartDate, setLeaveStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [leaveEndDate, setLeaveEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [leaveStartDate, setLeaveStartDate] = useState((() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  })());
+  const [leaveEndDate, setLeaveEndDate] = useState((() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  })());
   const [leaveReason, setLeaveReason] = useState('');
   const [submittingLeave, setSubmittingLeave] = useState(false);
 
