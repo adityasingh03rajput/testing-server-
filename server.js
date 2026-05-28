@@ -8482,22 +8482,31 @@ app.get('/api/teachers/status', async (req, res) => {
                     const daySchedule = tt.timetable?.[dayName] || [];
                     const slot = daySchedule[periodNum - 1];
                     if (slot && !slot.isBreak && slot.subject) {
+                        const slotTeacherId = slot.teacher ? slot.teacher.toString().trim() : '';
+                        const slotTeacherName = slot.teacherName ? slot.teacherName.toString().trim().toLowerCase() : '';
+                        const dbTeacherId = teacher._id ? teacher._id.toString().trim() : '';
+                        const dbTeacherName = teacher.name ? teacher.name.toString().trim().toLowerCase() : '';
+                        const dbTeacherEmail = teacher.email ? teacher.email.toString().trim().toLowerCase() : '';
+
                         const matchesTeacher = 
-                            (slot.teacher && slot.teacher.toString() === teacher._id.toString()) ||
-                            (slot.teacherName && slot.teacherName.toLowerCase() === teacher.name.toLowerCase()) ||
-                            (slot.teacher && slot.teacher.toLowerCase() === teacher.name.toLowerCase());
+                            (slotTeacherId && (slotTeacherId === dbTeacherId || slotTeacherId === dbTeacherName || slotTeacherId === dbTeacherEmail)) ||
+                            (slotTeacherName && (slotTeacherName === dbTeacherName || slotTeacherName === dbTeacherId || slotTeacherName === dbTeacherEmail));
                         
                         if (matchesTeacher) {
-                            // Check student count of this timetable's branch
+                            // Check student count of this timetable's branch (robust type-insensitive query)
                             let studentCount = 0;
                             if (mongoose.connection.readyState === 1) {
                                 if (totalStudents > 0) {
+                                    const semStr = tt.semester.toString();
+                                    const semNum = parseInt(semStr, 10);
+                                    const semQuery = isNaN(semNum) ? [semStr] : [semStr, semNum];
+
                                     studentCount = await Student.countDocuments({
                                         $or: [
                                             { branch: tt.branch },
                                             { course: tt.branch }
                                         ],
-                                        semester: tt.semester.toString()
+                                        semester: { $in: semQuery }
                                     });
                                 } else {
                                     studentCount = 1;
@@ -8506,7 +8515,23 @@ app.get('/api/teachers/status', async (req, res) => {
                                 studentCount = 1;
                             }
 
-                            if (studentCount > 0) {
+                            // If studentCount is 0, we perform a fallback check: is the branch active in our config?
+                            // This ensures that even if students aren't imported or are under consolidated names,
+                            // if it is an active branch in the system config, we treat the timetable slot as active.
+                            let isBranchActive = false;
+                            if (studentCount === 0 && mongoose.connection.readyState === 1) {
+                                try {
+                                    const configBranches = await getBranchesFromConfig();
+                                    isBranchActive = configBranches.some(b => 
+                                        b.value.toLowerCase() === tt.branch.toLowerCase() || 
+                                        b.name.toLowerCase() === tt.branch.toLowerCase()
+                                    );
+                                } catch (err) {
+                                    console.warn('Error reading config branches fallback:', err);
+                                }
+                            }
+
+                            if (studentCount > 0 || isBranchActive || totalStudents === 0) {
                                 status = 'busy';
                                 reason = `Teaching ${slot.subject} in ${tt.branch} Sem ${tt.semester}`;
                                 break;
