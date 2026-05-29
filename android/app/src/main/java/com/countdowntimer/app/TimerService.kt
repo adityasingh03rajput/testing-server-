@@ -74,11 +74,10 @@ class TimerService : Service() {
     private var lectureEndMinutes: Int = -1  // -1 = no end time set
 
     // Consecutive ticks where BSSID was null/fake/disconnected.
-    // We require 3 consecutive bad reads (~3 seconds) before stopping the timer.
-    // This prevents a single transient API glitch from falsely stopping the timer,
-    // while still catching a student who leaves the classroom (sustained null).
+    // We require 60 consecutive bad reads (~60 seconds) before stopping the timer.
+    // This gives the screen wake logic enough time to refresh the WiFi state.
     private var nullBssidStreak: Int = 0
-    private val NULL_BSSID_STOP_THRESHOLD = 10
+    private val NULL_BSSID_STOP_THRESHOLD = 60
 
     inner class LocalBinder : Binder() {
         fun getService(): TimerService = this@TimerService
@@ -338,7 +337,7 @@ class TimerService : Service() {
                 Log.w(TAG, "BSSID check: null/fake/disconnected (streak=$nullBssidStreak/$NULL_BSSID_STOP_THRESHOLD) — current='$currentBSSID'")
                 
                 // Force turn on the screen if the streak is getting high, to refresh WiFi state on Xiaomi/OEMs
-                if (nullBssidStreak == NULL_BSSID_STOP_THRESHOLD / 2) {
+                if (nullBssidStreak == 15 || nullBssidStreak == 30 || nullBssidStreak == 45) {
                     forceScreenOn()
                 }
 
@@ -375,10 +374,10 @@ class TimerService : Service() {
             if (!pm.isInteractive) {
                 Log.d(TAG, "Forcing screen on to refresh BSSID")
                 val wl = pm.newWakeLock(
-                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
                     "LetsBunk::WakeUpScreen"
                 )
-                wl.acquire(3000) // Keep screen on for 3 seconds
+                wl.acquire(5000) // Keep screen on for 5 seconds
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to force screen on: ${e.message}")

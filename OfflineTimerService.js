@@ -1113,8 +1113,20 @@ class OfflineTimerService {
 
       if (TimerModule) {
         try {
-          const { seconds, isRunning } = await TimerModule.getElapsedSeconds();
+          const { seconds, isRunning, stoppedDueToWifiInvalid } = await TimerModule.getElapsedSeconds();
           const nativeSec = Math.floor(seconds);
+
+          if (stoppedDueToWifiInvalid) {
+            console.warn('🚨 Native BSSID check stopped timer — student left classroom or WiFi masked');
+            this.timerSeconds = nativeSec;
+            this.isRunning = false;
+            this.isPaused = false;
+            await this.saveState();
+            await this.syncToServer();
+            TimerModule.clearWifiInvalidFlag().catch(() => {});
+            this.notifyListeners({ type: 'timer_tick', timerSeconds: this.timerSeconds });
+            return;
+          }
           
           if (nativeSec >= this.timerSeconds) {
             this.timerSeconds = nativeSec;
