@@ -193,6 +193,24 @@ class TimerModule(private val reactContext: ReactApplicationContext) :
     }
     
     /**
+     * Opens the App Info settings screen where users can manually grant
+     * "AutoStart" or "Unrestricted Background Activity" permissions.
+     */
+    @ReactMethod
+    fun openAppInfoSettings(promise: Promise) {
+        try {
+            val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = android.net.Uri.parse("package:${reactContext.packageName}")
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            reactContext.startActivity(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("ERROR", e.message)
+        }
+    }
+    
+    /**
      * Save timer value to secure storage (encrypted, survives app kill/restart)
      */
     @ReactMethod

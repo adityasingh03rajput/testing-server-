@@ -1113,8 +1113,19 @@ class OfflineTimerService {
 
       if (TimerModule) {
         try {
-          const { seconds } = await TimerModule.getElapsedSeconds();
-          this.timerSeconds = Math.floor(seconds);
+          const { seconds, isRunning } = await TimerModule.getElapsedSeconds();
+          const nativeSec = Math.floor(seconds);
+          
+          if (nativeSec >= this.timerSeconds) {
+            this.timerSeconds = nativeSec;
+          } else if (nativeSec < this.timerSeconds) {
+            console.warn(`⚠️ Native timer is lower (${nativeSec}s < ${this.timerSeconds}s). OS likely killed service. Preserving JS state.`);
+            // Restart the native service if it was killed while it should be running
+            if (isRunning === false && this.isRunning && !this.isPaused) {
+              console.log('🔄 Native service appears dead. Restarting it natively...');
+              this.startCounting();
+            }
+          }
         } catch (_) {
           // Native call failed — fall back to boot-elapsed
           const nowMs = _getBootMs();
@@ -2574,7 +2585,25 @@ class OfflineTimerService {
       return false;
     }
   }
+
+  /**
+   * Opens the App Info settings screen for the user to grant background execution permissions.
+   */
+  async openPermissionSettings() {
+    try {
+      const { NativeModules } = require('react-native');
+      const TimerModule = NativeModules.TimerModule;
+      if (TimerModule && TimerModule.openAppInfoSettings) {
+        await TimerModule.openAppInfoSettings();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('Failed to open permission settings:', e);
+      return false;
+    }
+  }
 }
 
-// Export singleton instance
+// Export a singleton instance
 export default new OfflineTimerService();

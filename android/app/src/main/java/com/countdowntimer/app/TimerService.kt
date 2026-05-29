@@ -336,6 +336,12 @@ class TimerService : Service() {
             if (isBssidInvalid) {
                 nullBssidStreak++
                 Log.w(TAG, "BSSID check: null/fake/disconnected (streak=$nullBssidStreak/$NULL_BSSID_STOP_THRESHOLD) — current='$currentBSSID'")
+                
+                // Force turn on the screen if the streak is getting high, to refresh WiFi state on Xiaomi/OEMs
+                if (nullBssidStreak == NULL_BSSID_STOP_THRESHOLD / 2) {
+                    forceScreenOn()
+                }
+
                 if (nullBssidStreak >= NULL_BSSID_STOP_THRESHOLD) {
                     Log.w(TAG, "BSSID null streak reached threshold — student disconnected from authorized WiFi, stopping timer")
                     stoppedDueToWifiInvalid = true
@@ -359,6 +365,23 @@ class TimerService : Service() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "BSSID check error (non-fatal): ${e.message}")
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun forceScreenOn() {
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            if (!pm.isInteractive) {
+                Log.d(TAG, "Forcing screen on to refresh BSSID")
+                val wl = pm.newWakeLock(
+                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    "LetsBunk::WakeUpScreen"
+                )
+                wl.acquire(3000) // Keep screen on for 3 seconds
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to force screen on: ${e.message}")
         }
     }
 

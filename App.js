@@ -1838,6 +1838,30 @@ export default function App() {
         // Success - timer started — vibrate to confirm face verification passed
         try { Vibration.vibrate([0, 80, 60, 80]); } catch (_) { }
         showToast('✅ Timer started — attendance tracking active', 'success');
+        
+        // Show permission pop up for background activity to prevent OS killing
+        try {
+          AsyncStorage.getItem('@hasShownBgPermissionPopup').then(hasShown => {
+            if (!hasShown) {
+              Alert.alert(
+                'Prevent Timer from Stopping ⚠️',
+                'To ensure your timer runs perfectly in the background (especially on OnePlus, Xiaomi, Realme devices), please click "Settings" and allow "Background Activity" or "Auto-Start" for this app.',
+                [
+                  { text: 'Skip', style: 'cancel', onPress: () => AsyncStorage.setItem('@hasShownBgPermissionPopup', 'true') },
+                  { 
+                    text: '⚙️ Settings', 
+                    onPress: () => {
+                      AsyncStorage.setItem('@hasShownBgPermissionPopup', 'true');
+                      OfflineTimerService.openPermissionSettings();
+                    } 
+                  }
+                ]
+              );
+            }
+          });
+        } catch (e) {
+          console.error('Error showing permission popup:', e);
+        }
       }
       }
     } catch (err) {
