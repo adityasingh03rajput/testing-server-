@@ -15927,7 +15927,7 @@ function renderCurrentStatusStudentList() {
         }
 
         html += `
-            <tr id="row-${student.enrollmentNo}">
+            <tr id="row-${student.enrollmentNo}" class="${student.status === 'active' ? 'active-student-row' : ''}">
                 <td>
                     <div class="student-cell">
                         <div class="avatar">${initial}</div>
@@ -15960,6 +15960,13 @@ function _updateCurrentStatusRowLive(data) {
     // Find the row for this student
     const row = document.getElementById(`row-${data.enrollmentNo}`) || document.querySelector(`#currentStatusListBody tr[id*="${data.enrollmentNo}"]`);
     if (!row) return;
+
+    const isActive = (data.status === 'active' || (data.isRunning && data.status !== 'present'));
+    if (isActive) {
+        row.classList.add('active-student-row');
+    } else {
+        row.classList.remove('active-student-row');
+    }
 
     const statusPill = row.querySelector('.status-pill');
     const timerContainer = row.querySelector('.timer-container');
@@ -16014,4 +16021,39 @@ function handleStatusScroll() {
         fetchCurrentStatusData(false);
     }
 }
+
+// Global real-time stopwatch ticker for active student timers in Current Status dashboard
+setInterval(() => {
+    const activeSection = document.querySelector('.section.active')?.id?.replace('-section', '');
+    if (activeSection !== 'current-status') return;
+
+    const activeRows = document.querySelectorAll('#currentStatusListBody tr.active-student-row');
+    activeRows.forEach(row => {
+        const timerContainer = row.querySelector('.timer-container');
+        if (!timerContainer) return;
+        
+        // Find the second span which holds the time value (not the .timer-dot span)
+        const timeSpan = timerContainer.querySelector('span:not(.timer-dot)');
+        if (!timeSpan) return;
+
+        const timeText = timeSpan.textContent.trim();
+        if (timeText === '--:--' || !timeText.includes(':')) return;
+
+        const parts = timeText.split(':');
+        if (parts.length === 2) {
+            let mins = parseInt(parts[0], 10);
+            let secs = parseInt(parts[1], 10);
+            if (isNaN(mins) || isNaN(secs)) return;
+
+            secs++;
+            if (secs >= 60) {
+                mins += Math.floor(secs / 60);
+                secs = secs % 60;
+            }
+
+            const formattedTime = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            timeSpan.textContent = formattedTime;
+        }
+    });
+}, 1000);
 

@@ -8798,4 +8798,17 @@ tr:hover .status-active .timer-dot {
 @keyframes pulse-border {
     0%, 100% { border-color: rgba(0, 242, 254, 0.3); box-shadow: 0 0 0 rgba(0, 242, 254, 0); }
     50% { border-color: rgba(0, 242, 254, 0.8); box-shadow: 0 0 8px rgba(0, 242, 254, 0.3); }
+}
+
+/* Live Active Student Row Visuals */
+.active-student-row .timer-container {
+    color: #00f2fe !important;
+    text-shadow: 0 0 8px rgba(0, 242, 254, 0.6);
+    animation: pulse 2s infinite ease-in-out;
+}
+
+.active-student-row .timer-dot {
+    background: #00f2fe !important;
+    box-shadow: 0 0 8px #00f2fe;
+    animation: blink 1s infinite;
 }
