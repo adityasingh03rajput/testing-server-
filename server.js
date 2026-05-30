@@ -1816,7 +1816,9 @@ app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
         const teacher = await Teacher.findOne({
             $or: [
                 { employeeId: { $regex: new RegExp('^\\s*' + cleanTeacherId + '\\s*$', 'i') } },
-                { name: { $regex: new RegExp('^\\s*' + cleanTeacherId + '\\s*$', 'i') } }
+                { name: { $regex: new RegExp('^\\s*' + cleanTeacherId + '\\s*$', 'i') } },
+                { email: { $regex: new RegExp('^\\s*' + cleanTeacherId + '\\s*$', 'i') } },
+                { _id: mongoose.isValidObjectId(teacherId) ? teacherId : new mongoose.Types.ObjectId() }
             ]
         });
 
