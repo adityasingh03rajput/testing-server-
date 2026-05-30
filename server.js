@@ -1035,15 +1035,16 @@ app.get('/api/teacher/current-lecture/:teacherId', async (req, res) => {
 
         console.log(`🔍 Finding current lecture for teacher ${teacherId} at ${currentTime} on ${currentDay}`);
 
-        // Fetch teacher from DB to match on multiple fields
+        // Fetch teacher from DB to match on multiple fields (case-insensitive and whitespace-tolerant)
         let teacherName = teacherId;
         let teacherObj = null;
         if (mongoose.connection.readyState === 1) {
+            const cleanTeacherId = teacherId.trim().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
             teacherObj = await Teacher.findOne({
                 $or: [
-                    { employeeId: teacherId },
-                    { name: teacherId },
-                    { email: teacherId },
+                    { employeeId: { $regex: new RegExp('^\\s*' + cleanTeacherId + '\\s*$', 'i') } },
+                    { name: { $regex: new RegExp('^\\s*' + cleanTeacherId + '\\s*$', 'i') } },
+                    { email: { $regex: new RegExp('^\\s*' + cleanTeacherId + '\\s*$', 'i') } },
                     { _id: mongoose.isValidObjectId(teacherId) ? teacherId : new mongoose.Types.ObjectId() }
                 ]
             });
@@ -1810,11 +1811,12 @@ app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
 
         console.log(`🔍 Finding current class for teacher: ${teacherId} at ${now.toLocaleTimeString()}`);
 
-        // Find teacher
+        // Find teacher (case-insensitive and trimmed/whitespace-tolerant)
+        const cleanTeacherId = teacherId.trim().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
         const teacher = await Teacher.findOne({
             $or: [
-                { employeeId: teacherId },
-                { name: teacherId }
+                { employeeId: { $regex: new RegExp('^\\s*' + cleanTeacherId + '\\s*$', 'i') } },
+                { name: { $regex: new RegExp('^\\s*' + cleanTeacherId + '\\s*$', 'i') } }
             ]
         });
 
