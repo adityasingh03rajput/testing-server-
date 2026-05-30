@@ -15954,6 +15954,7 @@ function renderCurrentStatusStudentList() {
 }
 
 function _updateCurrentStatusRowLive(data) {
+    const activeSection = document.querySelector('.section.active')?.id?.replace('-section', '');
     if (activeSection !== 'current-status') return;
     
     // Find the row for this student
