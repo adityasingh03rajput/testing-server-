@@ -855,11 +855,25 @@ function switchSection(sectionName) {
     document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
     document.querySelectorAll('.section').forEach(section => section.classList.remove('active'));
 
-    document.querySelector(`[data-section="${sectionName}"]`).classList.add('active');
-    document.getElementById(`${sectionName}-section`).classList.add('active');
+    const navItem = document.querySelector(`[data-section="${sectionName}"]`);
+    const sectionEl = document.getElementById(`${sectionName}-section`);
+
+    if (!navItem || !sectionEl) {
+        console.warn(`Section ${sectionName} not found, defaulting to dashboard`);
+        sectionName = 'dashboard';
+        document.querySelector(`[data-section="dashboard"]`).classList.add('active');
+        document.getElementById(`dashboard-section`).classList.add('active');
+    } else {
+        navItem.classList.add('active');
+        sectionEl.classList.add('active');
+    }
 
     // Persist active section so reload returns to the same page
     localStorage.setItem('activeSection', sectionName);
+
+    if (sectionName !== 'current-status' && typeof stopAutoRefresh === 'function') {
+        stopAutoRefresh();
+    }
 
     // Load section data
     switch (sectionName) {
@@ -881,6 +895,10 @@ function switchSection(sectionName) {
         case 'attendance': initAttendanceHistory(); break;
         case 'attendance-showcase': initAttendanceShowcase(); break;
         case 'timetable': autoLoadTimetable(); break;
+        case 'current-status': 
+            loadCurrentStatusConfigDropdowns(); 
+            fetchCurrentStatusData(true); 
+            break;
     }
 }
 
@@ -921,8 +939,8 @@ function updateServerStatus(connected) {
 }
 
 
-let attendanceTrendChartInstance = null;
-let branchDistChartInstance = null;
+var attendanceTrendChartInstance = null;
+var branchDistChartInstance = null;
 
 // Dashboard
 function handlePeriodChange() {
@@ -13597,6 +13615,7 @@ function _subscribeAttendanceLiveUpdates() {
         _attendanceSocket = io(SERVER_URL, { transports: ['websocket'], reconnection: true });
         _attendanceSocket.on('timer_broadcast', (data) => {
             _updateAttendanceRowLive(data);
+            _updateCurrentStatusRowLive(data);
         });
         // Real-time calendar refresh — fires on every student timer sync
         _attendanceSocket.on('student_timer_sync', (data) => {
@@ -15598,6 +15617,398 @@ async function saveLdTeacherBusyStatus() {
     } catch (error) {
         console.error('Error saving teacher busy status:', error);
         showNotification('Error saving status: ' + error.message, 'error');
+    }
+}
+
+// ==========================================
+// Current Status (Live Student Status) Logic
+// ==========================================
+
+var currentStatusPage = 1;
+var currentStatusTotalPages = 1;
+var isCurrentStatusFetching = false;
+
+var currentStatusLoadedStudents = [];
+
+async function loadCurrentStatusConfigDropdowns() {
+    try {
+        // Load teachers (fresh fetch needed)
+        const teacherRes = await fetch(api('/api/teachers'));
+        const teacherData = await teacherRes.json();
+        if (teacherData.success && teacherData.teachers) {
+            const teacherSelect = document.getElementById('statusFilterTeacher');
+            teacherSelect.innerHTML = '<option value="">Select a Teacher</option>';
+            teacherData.teachers.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t._id || t.employeeId;
+                opt.textContent = t.name;
+                teacherSelect.appendChild(opt);
+            });
+        }
+
+        // Load branches from system config
+        const branchSelect = document.getElementById('statusFilterBranch');
+        branchSelect.innerHTML = '<option value="">Branch</option>';
+        try {
+            const branchRes = await fetch(GET_CONFIG_BRANCHES);
+            const branchData = await branchRes.json();
+            console.log('[CurrentStatus] Branches response:', branchData);
+            if (branchData.success && branchData.branches && branchData.branches.length > 0) {
+                branchData.branches.forEach(b => {
+                    const opt = document.createElement('option');
+                    // Server returns { name, displayName, value, id }
+                    opt.value = b.value || b.name || b;
+                    opt.textContent = b.displayName || b.name || b;
+                    branchSelect.appendChild(opt);
+                });
+            }
+        } catch (e) {
+            console.error('[CurrentStatus] Branch fetch failed:', e);
+        }
+
+        // Load semesters from system config
+        const semSelect = document.getElementById('statusFilterSemester');
+        semSelect.innerHTML = '<option value="">Semester</option>';
+        try {
+            const semRes = await fetch(GET_CONFIG_SEMESTERS);
+            const semData = await semRes.json();
+            console.log('[CurrentStatus] Semesters response:', semData);
+            if (semData.success && semData.semesters && semData.semesters.length > 0) {
+                semData.semesters.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s;
+                    opt.textContent = `Semester ${s}`;
+                    semSelect.appendChild(opt);
+                });
+            }
+        } catch (e) {
+            console.error('[CurrentStatus] Semester fetch failed:', e);
+        }
+    } catch (err) {
+        console.error('Failed to load status filter configurations:', err);
+    }
+}
+
+// When teacher is selected, clear branch+semester (mutual exclusion)
+function handleTeacherFilterChange() {
+    const teacherVal = document.getElementById('statusFilterTeacher').value;
+    if (teacherVal) {
+        document.getElementById('statusFilterBranch').value = '';
+        document.getElementById('statusFilterSemester').value = '';
+    }
+    fetchCurrentStatusData(true);
+}
+
+// When branch or semester is selected, clear teacher (mutual exclusion)
+function handleBranchSemFilterChange() {
+    const branchVal = document.getElementById('statusFilterBranch').value;
+    const semVal = document.getElementById('statusFilterSemester').value;
+    if (branchVal || semVal) {
+        document.getElementById('statusFilterTeacher').value = '';
+    }
+    // Only fetch if both branch AND semester are selected
+    if (branchVal && semVal) {
+        fetchCurrentStatusData(true);
+    }
+}
+
+function _clearStatusStats() {
+    document.getElementById('statTotal').textContent = '0';
+    document.getElementById('statActive').textContent = '0';
+    document.getElementById('statPresent').textContent = '0';
+    document.getElementById('statOffline').textContent = '0';
+    document.getElementById('statAbsent').textContent = '0';
+}
+
+async function _resolveAnyTeacherForBranchSem(branch, semester) {
+    // Fetch timetable for this branch+semester
+    const ttRes = await fetch(api(`/api/timetable/${encodeURIComponent(semester)}/${encodeURIComponent(branch)}`));
+    if (!ttRes.ok) return null;
+    const ttData = await ttRes.json();
+
+    const timetable = ttData.timetable || ttData;
+    const tt = timetable.timetable || timetable;
+    const periods = timetable.periods || [];
+
+    // Look through all days and find ANY teacher assigned to this class
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    for (const day of days) {
+        const daySchedule = tt[day] || [];
+        for (const slot of daySchedule) {
+            if (!slot.isBreak && slot.teacher && slot.teacher.trim()) {
+                return slot.teacher.trim();
+            }
+        }
+    }
+    return null;
+}
+
+async function fetchCurrentStatusData(reset = false) {
+    if (isCurrentStatusFetching) return;
+    isCurrentStatusFetching = true;
+
+    if (reset) {
+        currentStatusPage = 1;
+        const trigger = document.getElementById('statusScrollTrigger');
+        if (trigger) trigger.style.display = 'flex';
+    }
+
+    const search = document.getElementById('statusFilterSearch').value.trim();
+    const teacherId = document.getElementById('statusFilterTeacher').value;
+    const branchVal = document.getElementById('statusFilterBranch').value;
+    const semVal = document.getElementById('statusFilterSemester').value;
+    const statusFilter = document.getElementById('statusFilterStatus').value;
+
+    let resolvedTeacherId = teacherId;
+    // When branch+semester mode, pass these as override query params to skip time-check on server
+    let overrideParams = '';
+
+    // Branch+semester mode: find any teacher from timetable, pass branch+sem as override
+    if (!teacherId && branchVal && semVal) {
+        const tbody = document.getElementById('currentStatusListBody');
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color: var(--text-secondary);">🔍 Loading class roster...</td></tr>';
+        document.getElementById('statusEmptyState').style.display = 'none';
+
+        try {
+            const teacherName = await _resolveAnyTeacherForBranchSem(branchVal, semVal);
+            if (!teacherName) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px;">No timetable found for ${branchVal} Sem ${semVal}. Check timetable configuration.</td></tr>`;
+                _clearStatusStats();
+                isCurrentStatusFetching = false;
+                return;
+            }
+            resolvedTeacherId = encodeURIComponent(teacherName);
+            // Pass branch+sem so server skips time check and loads all students directly
+            overrideParams = `?branch=${encodeURIComponent(branchVal)}&semester=${encodeURIComponent(semVal)}`;
+        } catch (e) {
+            console.error('[CurrentStatus] Failed to resolve teacher from branch/sem:', e);
+            isCurrentStatusFetching = false;
+            return;
+        }
+    }
+
+    if (!resolvedTeacherId) {
+        currentStatusLoadedStudents = [];
+        renderCurrentStatusStudentList();
+        isCurrentStatusFetching = false;
+        _clearStatusStats();
+        return;
+    }
+
+    const url = api(`/api/teacher/current-class-students/${resolvedTeacherId}${overrideParams}`);
+
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`API returned ${res.status}`);
+        const data = await res.json();
+
+        if (data.success && (data.hasActiveClass || overrideParams)) {
+            let allStudents = data.students || [];
+            let filteredStudents = [...allStudents];
+
+            if (search) {
+                const s = search.toLowerCase();
+                filteredStudents = filteredStudents.filter(st =>
+                    st.name.toLowerCase().includes(s) || st.enrollmentNo.toLowerCase().includes(s)
+                );
+            }
+            if (statusFilter !== 'All') {
+                filteredStudents = filteredStudents.filter(st => {
+                    let stat = st.status;
+                    if (st.isRunning && st.status !== 'present') stat = 'active';
+                    return stat === statusFilter;
+                });
+            }
+
+            const activeCount = allStudents.filter(s => s.isRunning && s.status !== 'present').length;
+            const offlineCount = allStudents.filter(s => s.status === 'offline').length;
+
+            document.getElementById('statTotal').textContent = data.totalStudents || allStudents.length;
+            document.getElementById('statActive').textContent = activeCount;
+            document.getElementById('statPresent').textContent = data.presentStudents || allStudents.filter(s => s.status === 'present').length;
+            document.getElementById('statOffline').textContent = offlineCount;
+            document.getElementById('statAbsent').textContent = data.absentStudents || allStudents.filter(s => s.status === 'absent').length;
+
+            currentStatusTotalPages = 1;
+            currentStatusLoadedStudents = filteredStudents;
+
+            // Show "no active class" info banner if manual override and no current period
+            if (overrideParams && data.currentClass && data.currentClass.isManual && data.currentClass.subject === 'Manual Selection') {
+                const tbody = document.getElementById('currentStatusListBody');
+                const bannerRow = `<tr><td colspan="5" style="text-align:center; padding:8px 12px; background: rgba(255,180,0,0.08); color: var(--text-secondary); font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">⚠️ No active class period right now — showing full roster for ${branchVal} Sem ${semVal}</td></tr>`;
+                renderCurrentStatusStudentList();
+                tbody.insertAdjacentHTML('afterbegin', bannerRow);
+            } else {
+                renderCurrentStatusStudentList();
+            }
+
+            // Join socket room for live updates
+            if (data.currentClass && _attendanceSocket) {
+                const { semester, branch } = data.currentClass;
+                _attendanceSocket.emit('join_class_room', { semester, branch });
+            } else if (branchVal && semVal && _attendanceSocket) {
+                _attendanceSocket.emit('join_class_room', { semester: semVal, branch: branchVal });
+            }
+        } else if (data.success && !data.hasActiveClass) {
+            currentStatusLoadedStudents = [];
+            renderCurrentStatusStudentList();
+            _clearStatusStats();
+            const tbody = document.getElementById('currentStatusListBody');
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px;">${data.message || 'No active class right now.'}</td></tr>`;
+            document.getElementById('statusEmptyState').style.display = 'none';
+        }
+    } catch (err) {
+        console.error('Failed to fetch status data:', err);
+    } finally {
+        isCurrentStatusFetching = false;
+        const trigger = document.getElementById('statusScrollTrigger');
+        if (trigger) trigger.style.display = (currentStatusPage < currentStatusTotalPages) ? 'flex' : 'none';
+    }
+}
+
+function renderCurrentStatusStudentList() {
+    const tbody = document.getElementById('currentStatusListBody');
+    const emptyState = document.getElementById('statusEmptyState');
+
+    if (currentStatusLoadedStudents.length === 0) {
+        tbody.innerHTML = '';
+        emptyState.style.display = 'block';
+        return;
+    }
+
+    emptyState.style.display = 'none';
+    
+    let html = '';
+    currentStatusLoadedStudents.forEach(student => {
+        const initial = student.name ? student.name.charAt(0).toUpperCase() : 'S';
+        
+        let statusClass = 'status-absent';
+        let statusLabel = 'Absent';
+        if (student.status === 'active') {
+            statusClass = 'status-active';
+            statusLabel = 'Active (Live)';
+        } else if (student.status === 'present') {
+            statusClass = 'status-present';
+            statusLabel = 'Present';
+        } else if (student.status === 'offline') {
+            statusClass = 'status-offline';
+            statusLabel = 'Offline (Sync Delay)';
+        }
+
+        let lectureHtml = `
+            <div style="color: var(--text-secondary); font-size: 13px;">No Class Scheduled</div>
+        `;
+        if (student.currentSubject && student.currentSubject !== 'No Class') {
+            lectureHtml = `
+                <div class="class-badge">${student.period || 'Active Period'}</div>
+                <div class="lecture-subject">${student.currentSubject}</div>
+                <div class="lecture-details">📍 Room: ${student.room} | 👨‍🏫 ${student.teacherName}</div>
+            `;
+        }
+
+        let timerHtml = `
+            <div class="timer-container" style="color: var(--text-secondary)">
+                <span class="timer-dot"></span>
+                <span>--:--</span>
+            </div>
+        `;
+        if (student.status !== 'absent') {
+            const mins = Math.floor(student.timerValue / 60);
+            const secs = student.timerValue % 60;
+            const formattedTime = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            timerHtml = `
+                <div class="timer-container" style="color: ${student.status === 'active' ? 'var(--teal)' : 'var(--success)'}">
+                    <span class="timer-dot"></span>
+                    <span>${formattedTime}</span>
+                </div>
+            `;
+        }
+
+        html += `
+            <tr id="row-${student._id}">
+                <td>
+                    <div class="student-cell">
+                        <div class="avatar">${initial}</div>
+                        <div class="student-details">
+                            <span class="student-name">${student.name}</span>
+                            <span class="student-roll">${student.enrollmentNo}</span>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <div style="font-weight: 600; color: var(--text-primary)">${student.branch}</div>
+                    <div style="font-size: 12px; color: var(--text-secondary)">Semester ${student.semester}</div>
+                </td>
+                <td>${lectureHtml}</td>
+                <td>
+                    <span class="status-pill ${statusClass}">${statusLabel}</span>
+                </td>
+                <td>${timerHtml}</td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+}
+
+function _updateCurrentStatusRowLive(data) {
+    if (activeSection !== 'current-status') return;
+    
+    // Find the row for this student
+    const row = document.getElementById(`row-${data.enrollmentNo}`) || document.querySelector(`#currentStatusListBody tr[id*="${data.enrollmentNo}"]`);
+    if (!row) return;
+
+    const statusPill = row.querySelector('.status-pill');
+    const timerContainer = row.querySelector('.timer-container');
+
+    let statusClass = 'status-absent';
+    let statusLabel = 'Absent';
+    if (data.status === 'active' || (data.isRunning && data.status !== 'present')) {
+        statusClass = 'status-active';
+        statusLabel = 'Active (Live)';
+    } else if (data.status === 'present') {
+        statusClass = 'status-present';
+        statusLabel = 'Present';
+    } else if (data.status === 'offline') {
+        statusClass = 'status-offline';
+        statusLabel = 'Offline (Sync Delay)';
+    }
+
+    if (statusPill) {
+        statusPill.className = `status-pill ${statusClass}`;
+        statusPill.textContent = statusLabel;
+    }
+
+    if (timerContainer && data.timerValue != null) {
+        if (data.status === 'absent') {
+            timerContainer.style.color = 'var(--text-secondary)';
+            timerContainer.innerHTML = '<span class="timer-dot"></span><span>--:--</span>';
+        } else {
+            const mins = Math.floor(data.timerValue / 60);
+            const secs = data.timerValue % 60;
+            const formattedTime = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            timerContainer.style.color = (data.status === 'active' || (data.isRunning && data.status !== 'present')) ? 'var(--teal)' : 'var(--success)';
+            timerContainer.innerHTML = `<span class="timer-dot"></span><span>${formattedTime}</span>`;
+        }
+    }
+}
+
+let statusFilterTimeout = null;
+function handleStatusFilterChange() {
+    clearTimeout(statusFilterTimeout);
+    statusFilterTimeout = setTimeout(() => {
+        fetchCurrentStatusData(true);
+    }, 300);
+}
+
+function handleStatusScroll() {
+    const container = document.getElementById('statusScrollContainer');
+    const triggerOffset = 80;
+    const reachedBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + triggerOffset;
+    
+    if (reachedBottom && !isCurrentStatusFetching && currentStatusPage < currentStatusTotalPages) {
+        currentStatusPage++;
+        fetchCurrentStatusData(false);
     }
 }
 

@@ -101,6 +101,10 @@
                     <span class="icon">📊</span>
                     <span>Dashboard</span>
                 </button>
+                <button class="nav-item" data-section="current-status" data-tooltip="Current Status">
+                    <span class="icon">⚡</span>
+                    <span>Current Status</span>
+                </button>
                 <button class="nav-item" data-section="students" data-tooltip="Students">
                     <span class="icon">👨‍🎓</span>
                     <span>Students</span>
@@ -474,6 +478,113 @@
                                     <span>Send Emails</span>
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Current Status Section -->
+                <section id="current-status-section" class="section">
+                    <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                        <div class="header-title-container" style="display: flex; align-items: center; gap: 12px;">
+                            <span class="header-icon" style="font-size: 28px; animation: pulse 2s infinite;">⚡</span>
+                            <div>
+                                <h2 class="section-title" style="margin: 0; font-size: 22px; font-weight: 600; background: linear-gradient(135deg, var(--primary), var(--teal)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Live Student Status</h2>
+                                <p style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">Real-time Attendance Tracking & Background Timers Monitoring</p>
+                            </div>
+                        </div>
+
+                        <div class="controls-container" style="display: flex; align-items: center; gap: 20px;">
+                            <div class="sync-container" style="display: flex; align-items: center; gap: 8px; background: var(--bg-hover); padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border);">
+                                <span class="pulse-dot pulse-active" id="liveIndicator" style="width: 8px; height: 8px; border-radius: 50%; background: var(--success); display: inline-block; animation: blink 1.5s infinite;"></span>
+                                <span class="sync-label" id="syncLabel" style="font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Live Syncing (Sockets)</span>
+                            </div>
+                            <button onclick="fetchCurrentStatusData(true)" class="btn btn-secondary" style="display: flex; align-items: center; gap: 6px;">
+                                🔄 Refresh Now
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="stats-grid modern-grid" style="margin-bottom: 24px;">
+                        <div class="bento-card" style="border-left: 3px solid var(--secondary);">
+                            <div class="bento-header">
+                                <div class="bento-icon" style="background: rgba(124, 58, 237, 0.15); color: var(--secondary)">👥</div>
+                                <h3 id="statTotal" style="font-size: 24px; margin: 0; font-weight: 600; color: var(--text-primary)">0</h3>
+                            </div>
+                            <p class="bento-title" style="margin: 8px 0 0; color: var(--text-secondary); font-size: 13px;">Enrolled Students</p>
+                        </div>
+                        <div class="bento-card" style="border-left: 3px solid var(--teal);">
+                            <div class="bento-header">
+                                <div class="bento-icon teal-bg" style="color: var(--teal)">⚡</div>
+                                <h3 id="statActive" style="font-size: 24px; margin: 0; font-weight: 600; color: var(--text-primary)">0</h3>
+                            </div>
+                            <p class="bento-title" style="margin: 8px 0 0; color: var(--text-secondary); font-size: 13px;">Active / Attending</p>
+                        </div>
+                        <div class="bento-card" style="border-left: 3px solid var(--green);">
+                            <div class="bento-header">
+                                <div class="bento-icon green-bg" style="color: var(--green)">✅</div>
+                                <h3 id="statPresent" style="font-size: 24px; margin: 0; font-weight: 600; color: var(--text-primary)">0</h3>
+                            </div>
+                            <p class="bento-title" style="margin: 8px 0 0; color: var(--text-secondary); font-size: 13px;">Attended / Present</p>
+                        </div>
+                        <div class="bento-card" style="border-left: 3px solid var(--orange);">
+                            <div class="bento-header">
+                                <div class="bento-icon orange-bg" style="color: var(--orange)">⚠️</div>
+                                <h3 id="statOffline" style="font-size: 24px; margin: 0; font-weight: 600; color: var(--text-primary)">0</h3>
+                            </div>
+                            <p class="bento-title" style="margin: 8px 0 0; color: var(--text-secondary); font-size: 13px;">Offline Sync Delay</p>
+                        </div>
+                        <div class="bento-card" style="border-left: 3px solid var(--danger);">
+                            <div class="bento-header">
+                                <div class="bento-icon" style="background: rgba(239, 68, 68, 0.15); color: var(--danger)">❌</div>
+                                <h3 id="statAbsent" style="font-size: 24px; margin: 0; font-weight: 600; color: var(--text-primary)">0</h3>
+                            </div>
+                            <p class="bento-title" style="margin: 8px 0 0; color: var(--text-secondary); font-size: 13px;">Absent / Idle</p>
+                        </div>
+                    </div>
+
+                    <div class="filters" style="margin-bottom: 24px; flex-wrap: wrap; gap: 10px;">
+                        <select id="statusFilterTeacher" class="filter-select" onchange="handleTeacherFilterChange()" style="flex: 1.5; min-width: 160px;">
+                            <option value="">Select a Teacher</option>
+                        </select>
+                        <span style="display: flex; align-items: center; padding: 0 6px; font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; opacity: 0.6;">or</span>
+                        <select id="statusFilterBranch" class="filter-select" onchange="handleBranchSemFilterChange()" style="flex: 1; min-width: 130px;">
+                            <option value="">Branch</option>
+                        </select>
+                        <select id="statusFilterSemester" class="filter-select" onchange="handleBranchSemFilterChange()" style="flex: 0.7; min-width: 110px;">
+                            <option value="">Semester</option>
+                        </select>
+                        <input type="text" id="statusFilterSearch" class="search-input" placeholder="Search by name or enrollment..." oninput="handleStatusFilterChange()" style="flex: 2; min-width: 180px;">
+                        <select id="statusFilterStatus" class="filter-select" onchange="handleStatusFilterChange()" style="flex: 0.8; min-width: 130px;">
+                            <option value="All">All Statuses</option>
+                            <option value="active">Active (Attending Live)</option>
+                            <option value="present">Present (Attended)</option>
+                            <option value="offline">Offline / Disconnected</option>
+                            <option value="absent">Absent</option>
+                        </select>
+                    </div>
+
+                    <div class="table-container" id="statusScrollContainer" onscroll="handleStatusScroll()" style="max-height: calc(100vh - 350px); overflow-y: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Student Profile</th>
+                                    <th>Class details</th>
+                                    <th>Current Lecture / Subject</th>
+                                    <th>Status</th>
+                                    <th>Lecture timer</th>
+                                </tr>
+                            </thead>
+                            <tbody id="currentStatusListBody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                        <div id="statusEmptyState" class="empty-state" style="display: none; padding: 60px; text-align: center; color: var(--text-secondary);">
+                            <div class="empty-icon" style="font-size: 48px; margin-bottom: 12px; opacity: 0.6;">🔍</div>
+                            <div class="empty-title" style="font-size: 18px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">No matches found</div>
+                            <div class="empty-description">Try adjusting your filters or search query to find students.</div>
+                        </div>
+                        <div id="statusScrollTrigger" class="scroll-trigger" style="display: none; padding: 20px; text-align: center; color: var(--text-secondary); display: flex; justify-content: center; align-items: center; gap: 10px;">
+                            <span>Loading more student records...</span>
                         </div>
                     </div>
                 </section>

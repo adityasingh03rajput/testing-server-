@@ -1636,6 +1636,155 @@ app.get('/api/teacher-schedule/:teacherId/:day', async (req, res) => {
     }
 });
 
+// Admin: Get live student status for any branch + semester
+app.get('/api/admin/class-status', async (req, res) => {
+    try {
+        const { branch, semester } = req.query;
+        if (!branch || !semester) {
+            return res.status(400).json({ success: false, error: 'branch and semester are required' });
+        }
+
+        const nowMs = Date.now();
+        const STALE_THRESHOLD_MS = 10 * 60 * 1000;
+        const SYNC_TIMEOUT_MS   =      90 * 1000;
+
+        const todayMidnight = getISTMidnight();
+        const partsToday = getISTDateParts(todayMidnight);
+        const todayStr = partsToday.year + '-' + partsToday.month.toString().padStart(2, '0') + '-' + partsToday.date.toString().padStart(2, '0');
+
+        // Find current period from the timetable for this branch+semester so we can show subject info
+        const now = new Date();
+        const dayParts = getISTDateParts(now);
+        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const currentDay = days[dayParts.dayIndex];
+        const offset = 5.5 * 60 * 60 * 1000;
+        const istTime = new Date(now.getTime() + offset);
+        const currentTime = istTime.getUTCHours() * 60 + istTime.getUTCMinutes();
+
+        const tt = await Timetable.findOne({ semester: semester.toString(), branch });
+        let currentPeriodInfo = null;
+        if (tt) {
+            const daySchedule = tt.timetable[currentDay];
+            if (daySchedule) {
+                for (let i = 0; i < daySchedule.length; i++) {
+                    const periodInfo = tt.periods[i];
+                    if (!periodInfo) continue;
+                    const pStart = timeToMinutes(periodInfo.startTime);
+                    const pEnd   = timeToMinutes(periodInfo.endTime);
+                    if (currentTime >= pStart && currentTime <= pEnd) {
+                        currentPeriodInfo = {
+                            period: daySchedule[i].period || (i + 1),
+                            subject: daySchedule[i].subject,
+                            teacher: daySchedule[i].teacher,
+                            room: daySchedule[i].room,
+                            startTime: periodInfo.startTime,
+                            endTime: periodInfo.endTime,
+                            isBreak: daySchedule[i].isBreak || false
+                        };
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Fetch students
+        const students = await StudentManagement.find({
+            semester: semester.toString(),
+            branch
+        }).select('-password');
+
+        // Manual marks for the current period (if we have one)
+        let manualMarkMap = new Map();
+        if (currentPeriodInfo && !currentPeriodInfo.isBreak) {
+            const periodRecords = await PeriodAttendance.find({
+                date: todayMidnight,
+                period: `P${currentPeriodInfo.period}`,
+                semester: semester.toString(),
+                branch
+            });
+            manualMarkMap = new Map(periodRecords.map(r => [r.enrollmentNo, r]));
+        }
+
+        const studentsWithStatus = students.map(student => {
+            const s = student.toObject();
+            const live = liveTimerState.get(s.enrollmentNo);
+            const isStale = live && live.lastSeen && (nowMs - live.lastSeen) > STALE_THRESHOLD_MS;
+            const effectiveLive = (live && !isStale) ? live : null;
+            const manualMark = manualMarkMap.get(s.enrollmentNo);
+            const isSyncTimedOut = effectiveLive && effectiveLive.isRunning &&
+                effectiveLive.lastSeen && (nowMs - effectiveLive.lastSeen) > SYNC_TIMEOUT_MS;
+
+            const session = s.attendanceSession || {};
+            let timerSecs = effectiveLive ? effectiveLive.attendedSeconds : (session.totalAttendedSeconds || 0);
+            let isRunning = effectiveLive ? effectiveLive.isRunning : (session.isRunning || false);
+            let status    = effectiveLive ? effectiveLive.status    : (session.status    || 'absent');
+
+            if (manualMark) {
+                status = manualMark.status;
+                isRunning = false;
+                timerSecs = manualMark.timerSeconds || timerSecs;
+            }
+            if (isSyncTimedOut && !manualMark) {
+                isRunning = false;
+                status    = 'offline';
+            }
+
+            const lastSync = effectiveLive ? effectiveLive.lastSyncTime : (session.lastSyncTime || null);
+            const lastSyncDate = lastSync ? getISTDateString(lastSync) : null;
+            if (lastSyncDate && lastSyncDate !== todayStr) {
+                timerSecs = 0;
+                status = 'absent';
+                isRunning = false;
+            }
+
+            // If current period has a subject, check lecture mismatch
+            if (currentPeriodInfo && currentPeriodInfo.subject) {
+                const studentLecture = effectiveLive
+                    ? effectiveLive.lectureSubject
+                    : (session.lectureSubject || null);
+                if (studentLecture && studentLecture !== currentPeriodInfo.subject) {
+                    timerSecs = 0;
+                    status = 'absent';
+                    isRunning = false;
+                }
+            }
+
+            const displayTimer = (status === 'absent') ? 0 : timerSecs;
+
+            return {
+                _id: s._id,
+                name: s.name,
+                enrollmentNo: s.enrollmentNo,
+                branch: s.branch,
+                semester: s.semester,
+                isRunning,
+                timerValue: displayTimer,
+                status,
+                lastUpdated: lastSync,
+                currentSubject: currentPeriodInfo ? currentPeriodInfo.subject : 'No Class',
+                period: currentPeriodInfo ? `Period ${currentPeriodInfo.period}` : null,
+                room: currentPeriodInfo ? currentPeriodInfo.room : null,
+                teacherName: currentPeriodInfo ? currentPeriodInfo.teacher : null
+            };
+        });
+
+        res.json({
+            success: true,
+            hasActiveClass: !!currentPeriodInfo && !currentPeriodInfo.isBreak,
+            currentClass: currentPeriodInfo ? { semester, branch, ...currentPeriodInfo } : null,
+            students: studentsWithStatus,
+            totalStudents: studentsWithStatus.length,
+            activeStudents: studentsWithStatus.filter(s => s.isRunning && s.status !== 'present').length,
+            presentStudents: studentsWithStatus.filter(s => s.status === 'present').length,
+            absentStudents: studentsWithStatus.filter(s => s.status === 'absent').length,
+            attendanceThreshold: ATTENDANCE_THRESHOLD
+        });
+    } catch (error) {
+        console.error('❌ Error in admin/class-status:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Get Teacher's Current Class Students (Role-based filtering)
 app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
     try {
@@ -1688,9 +1837,50 @@ app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
             }
         });
 
-        // Find current period
+        // ── MANUAL OVERRIDE ── admin/teacher can pass ?branch=X&semester=Y to bypass time check
+        const overrideBranch = req.query.branch;
+        const overrideSemester = req.query.semester;
         let currentClass = null;
         let matchedTimetable = null;
+
+        if (overrideBranch && overrideSemester) {
+            // Find the timetable for this branch+semester to get subject/room info if possible
+            const manualTT = await Timetable.findOne({ semester: overrideSemester.toString(), branch: overrideBranch });
+            currentClass = {
+                subject: 'Manual Selection',
+                semester: overrideSemester.toString(),
+                branch: overrideBranch,
+                period: null,
+                room: null,
+                startTime: null,
+                endTime: null,
+                isBreak: false,
+                day: currentDay,
+                isManual: true
+            };
+            // Try to enrich with actual current period info if available
+            if (manualTT) {
+                const daySchedule = manualTT.timetable[currentDay] || [];
+                for (let i = 0; i < daySchedule.length; i++) {
+                    const slot = daySchedule[i];
+                    const pInfo = manualTT.periods[i];
+                    if (!pInfo || slot.isBreak) continue;
+                    const pStart = timeToMinutes(pInfo.startTime);
+                    const pEnd   = timeToMinutes(pInfo.endTime);
+                    if (currentTime >= pStart && currentTime <= pEnd && !slot.isBreak && slot.subject) {
+                        currentClass.subject  = slot.subject;
+                        currentClass.period   = slot.period || (i + 1);
+                        currentClass.room     = slot.room;
+                        currentClass.startTime = pInfo.startTime;
+                        currentClass.endTime   = pInfo.endTime;
+                        break;
+                    }
+                }
+                matchedTimetable = manualTT;
+            }
+            console.log(`📌 Manual override: viewing ${overrideBranch} Sem ${overrideSemester}`);
+        } else {
+        // Find current period from timetable
 
         for (const tt of timetables) {
             const daySchedule = tt.timetable[currentDay];
@@ -1732,6 +1922,8 @@ app.get('/api/teacher/current-class-students/:teacherId', async (req, res) => {
             }
             if (currentClass) break;
         }
+
+        } // end else (timetable lookup)
 
         // If no current class found
         if (!currentClass) {
