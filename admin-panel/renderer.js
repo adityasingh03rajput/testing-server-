@@ -15744,6 +15744,8 @@ async function _resolveAnyTeacherForBranchSem(branch, semester) {
 }
 
 async function fetchCurrentStatusData(reset = false) {
+    // Ensure we are connected to the socket room for live timer updates
+    _subscribeAttendanceLiveUpdates();
     if (isCurrentStatusFetching) return;
     isCurrentStatusFetching = true;
 
@@ -15925,7 +15927,7 @@ function renderCurrentStatusStudentList() {
         }
 
         html += `
-            <tr id="row-${student._id}">
+            <tr id="row-${student.enrollmentNo}">
                 <td>
                     <div class="student-cell">
                         <div class="avatar">${initial}</div>
