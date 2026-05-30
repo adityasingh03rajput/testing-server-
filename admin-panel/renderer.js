@@ -15629,6 +15629,7 @@ var currentStatusTotalPages = 1;
 var isCurrentStatusFetching = false;
 
 var currentStatusLoadedStudents = [];
+var currentStatusActiveLecture = null;
 
 async function loadCurrentStatusConfigDropdowns() {
     try {
@@ -15832,6 +15833,7 @@ async function fetchCurrentStatusData(reset = false) {
             document.getElementById('statAbsent').textContent = data.absentStudents || allStudents.filter(s => s.status === 'absent').length;
 
             currentStatusTotalPages = 1;
+            currentStatusActiveLecture = data.currentClass || null;
             currentStatusLoadedStudents = filteredStudents;
 
             // Show "no active class" info banner if manual override and no current period
@@ -15852,6 +15854,7 @@ async function fetchCurrentStatusData(reset = false) {
                 _attendanceSocket.emit('join_class_room', { semester: semVal, branch: branchVal });
             }
         } else if (data.success && !data.hasActiveClass) {
+            currentStatusActiveLecture = null;
             currentStatusLoadedStudents = [];
             renderCurrentStatusStudentList();
             _clearStatusStats();
@@ -15882,7 +15885,7 @@ function renderCurrentStatusStudentList() {
     
     let html = '';
     currentStatusLoadedStudents.forEach(student => {
-        const initial = student.name ? student.name.charAt(0).toUpperCase() : 'S';
+        const photoUrl = student.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(student.name || 'Student')}&background=00d9ff&color=fff&size=128`;
         
         let statusClass = 'status-absent';
         let statusLabel = 'Absent';
@@ -15900,11 +15903,14 @@ function renderCurrentStatusStudentList() {
         let lectureHtml = `
             <div style="color: var(--text-secondary); font-size: 13px;">No Class Scheduled</div>
         `;
-        if (student.currentSubject && student.currentSubject !== 'No Class') {
+        const activeLecture = currentStatusActiveLecture;
+        if (activeLecture && activeLecture.subject && activeLecture.subject !== 'Manual Selection' && activeLecture.subject !== 'No Class') {
+            const periodStr = activeLecture.period ? `Period ${activeLecture.period}` : 'Active Period';
+            const teacherStr = activeLecture.teacherName || activeLecture.teacher || 'Assigned Teacher';
             lectureHtml = `
-                <div class="class-badge">${student.period || 'Active Period'}</div>
-                <div class="lecture-subject">${student.currentSubject}</div>
-                <div class="lecture-details">📍 Room: ${student.room} | 👨‍🏫 ${student.teacherName}</div>
+                <div class="class-badge">${periodStr}</div>
+                <div class="lecture-subject">${activeLecture.subject}</div>
+                <div class="lecture-details">📍 Room: ${activeLecture.room || 'N/A'} | 👨‍🏫 ${teacherStr}</div>
             `;
         }
 
@@ -15929,11 +15935,10 @@ function renderCurrentStatusStudentList() {
         html += `
             <tr id="row-${student.enrollmentNo}" class="${student.status === 'active' ? 'active-student-row' : ''}">
                 <td>
-                    <div class="student-cell">
-                        <div class="avatar">${initial}</div>
+                    <div class="student-cell" style="display: flex; align-items: center; gap: 12px;">
+                        <img src="${photoUrl}" alt="${student.name}" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 1.5px solid rgba(255,255,255,0.15);" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(student.name || 'Student')}&background=00d9ff&color=fff&size=128'">
                         <div class="student-details">
-                            <span class="student-name">${student.name}</span>
-                            <span class="student-roll">${student.enrollmentNo}</span>
+                            <span class="student-name" style="font-weight: 600; color: var(--text-primary); font-size: 14px;">${student.name}</span>
                         </div>
                     </div>
                 </td>
