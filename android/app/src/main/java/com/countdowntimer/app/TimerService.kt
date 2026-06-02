@@ -290,7 +290,17 @@ class TimerService : Service() {
             val locationManager = applicationContext
                 .getSystemService(Context.LOCATION_SERVICE) as LocationManager
             val isLocationEnabled = try {
-                locationManager.isLocationEnabled
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    locationManager.isLocationEnabled
+                } else {
+                    @Suppress("DEPRECATION")
+                    val mode = android.provider.Settings.Secure.getInt(
+                        applicationContext.contentResolver,
+                        android.provider.Settings.Secure.LOCATION_MODE,
+                        android.provider.Settings.Secure.LOCATION_MODE_OFF
+                    )
+                    mode != android.provider.Settings.Secure.LOCATION_MODE_OFF
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "BSSID check: could not read location state — ${e.message}")
                 true
@@ -317,22 +327,28 @@ class TimerService : Service() {
             val currentBSSID = wm.connectionInfo?.bssid
 
             // ── 5. Treat null/fake BSSID as "not connected to authorized WiFi" ─
-            // Previously these were skipped to work around OEM screen-off behaviour
-            // where Android returns "02:00:00:00:00:00" instead of the real BSSID.
-            // That loophole allowed students to leave the classroom with the screen
-            // off and keep the timer running.
-            //
-            // Fix: a null/fake BSSID means we cannot confirm the student is still
-            // on the authorized network, so we treat it as unauthorized.
-            // We use a consecutive-null streak counter (NULL_BSSID_STOP_THRESHOLD)
-            // to absorb a single transient API glitch without falsely stopping the
-            // timer, while still catching sustained disconnection (student left).
+            // ── 5. Treat null/fake BSSID as "not connected to authorized WiFi" ─
+            // However, Android Doze Mode hides the BSSID (returns 02:00:00:00:00:00 or null)
+            // when the screen is turned off for a long time (15-20 mins) to save battery.
+            // If the screen is off, we pause BSSID checks instead of penalizing the student.
+            // If they walk away with the screen off, the moment they turn it on to use their phone,
+            // the check resumes and stops the timer immediately.
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val isScreenOn = pm.isInteractive
+
             val isBssidInvalid = currentBSSID == null ||
                 currentBSSID == "02:00:00:00:00:00" ||
                 currentBSSID.equals("null", ignoreCase = true) ||
                 currentBSSID.isBlank()
 
             if (isBssidInvalid) {
+                if (!isScreenOn) {
+                    Log.d(TAG, "BSSID hidden by Doze Mode (screen off). Pausing BSSID checks.")
+                    // Reset streak so they aren't unfairly penalized when they wake the screen
+                    nullBssidStreak = 0 
+                    return
+                }
+
                 nullBssidStreak++
                 Log.w(TAG, "BSSID check: null/fake/disconnected (streak=$nullBssidStreak/$NULL_BSSID_STOP_THRESHOLD) — current='$currentBSSID'")
                 

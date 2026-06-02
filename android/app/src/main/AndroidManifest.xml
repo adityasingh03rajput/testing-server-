@@ -8,6 +8,7 @@
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
   <uses-permission android:name="android.permission.WAKE_LOCK"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
   <!-- Battery optimization exemption — prevents Android from killing the timer service -->
@@ -70,7 +71,7 @@
     <activity android:name="com.facebook.react.devsupport.DevSettingsActivity" android:exported="false"/>
     <activity android:name="com.letsbunk.faceverification.FaceVerificationActivity" android:exported="false" android:theme="@style/AppTheme"/>
     <service android:name="com.countdowntimer.app.TimerService"
-        android:foregroundServiceType="dataSync"
+        android:foregroundServiceType="dataSync|location"
         android:exported="false"
         android:stopWithTask="false"
         android:persistent="false"/>

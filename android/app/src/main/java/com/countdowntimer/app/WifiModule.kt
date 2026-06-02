@@ -535,14 +535,19 @@ class WifiModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaMo
                hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
     }
 
-    /**
-     * Check if Location Services (GPS) is enabled
-     * This is CRITICAL for Android 10+ BSSID access
-     */
     private fun isLocationEnabled(): Boolean {
         return try {
-            // Checks if the GPS/Network location provider is actually on
-            locationManager.isLocationEnabled
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                locationManager.isLocationEnabled
+            } else {
+                @Suppress("DEPRECATION")
+                val mode = Settings.Secure.getInt(
+                    context.contentResolver,
+                    Settings.Secure.LOCATION_MODE,
+                    Settings.Secure.LOCATION_MODE_OFF
+                )
+                mode != Settings.Secure.LOCATION_MODE_OFF
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Error checking location services: ${e.message}")
             false
