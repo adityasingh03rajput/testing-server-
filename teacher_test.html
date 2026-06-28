@@ -743,6 +743,78 @@
             display: flex;
         }
 
+        .phone-modal-overlay.centered {
+            align-items: center;
+        }
+
+        .phone-center-modal {
+            width: 90%;
+            background-color: var(--card-bg);
+            border-radius: 28px;
+            border: 1.5px solid var(--border-color);
+            padding: 24px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            position: relative;
+            animation: fadeInScale 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes fadeInScale {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .ring-option-card {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 16px;
+            background-color: var(--phone-bg);
+            border: 1.5px solid var(--border-color);
+            border-radius: 18px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .ring-option-card.selected {
+            border: 2px solid var(--text-color);
+        }
+
+        .ring-option-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background-color: var(--pill-inactive);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+        }
+
+        .ring-option-card.selected .ring-option-icon {
+            background-color: var(--primary-dark);
+            color: var(--phone-bg);
+        }
+
+        .ring-option-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .ring-option-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-color);
+        }
+
+        .ring-option-desc {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
         .phone-bottom-sheet {
             width: 100%;
             background-color: var(--card-bg);
@@ -1354,6 +1426,50 @@
                     <div style="display: flex; flex-direction: column; gap: 12px;">
                         <button class="sheet-btn" onclick="toggleTheme()">Toggle Dark/Light Mode</button>
                         <button class="sheet-btn danger" onclick="performLogout()">Logout Profile</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Random Ring Central Modal -->
+            <div class="phone-modal-overlay centered" id="randomRingModal" onclick="closeAllSheets()">
+                <div class="phone-center-modal" onclick="event.stopPropagation()">
+                    <div class="sheet-header" style="border-bottom: none; padding-bottom: 0;">
+                        <span class="sheet-title">🔔 Random Ring</span>
+                        <span class="sheet-close" onclick="closeAllSheets()">✕</span>
+                    </div>
+                    <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.4; margin-top: -6px;">
+                        Choose how many students to randomly select for attendance check.
+                    </p>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <!-- Option 1: All Students -->
+                        <div class="ring-option-card" id="ringOptAll" onclick="selectRingModalOption('all')">
+                            <div class="ring-option-icon">👥</div>
+                            <div class="ring-option-info">
+                                <span class="ring-option-title">All Students</span>
+                                <span class="ring-option-desc">Ring all students in the class</span>
+                            </div>
+                        </div>
+
+                        <!-- Option 2: Select Number -->
+                        <div class="ring-option-card" id="ringOptSelect" onclick="selectRingModalOption('select')">
+                            <div class="ring-option-icon">#️⃣</div>
+                            <div class="ring-option-info">
+                                <span class="ring-option-title">Select Number</span>
+                                <span class="ring-option-desc">Choose specific number of students</span>
+                            </div>
+                        </div>
+
+                        <!-- Student Count Input (only visible when Select Number is active) -->
+                        <div id="modalRingCountContainer" style="display: none; flex-direction: column; gap: 6px; margin-top: 4px;">
+                            <label style="font-size: 12px; color: var(--text-secondary); font-weight: 600;">Number of students</label>
+                            <input type="number" id="modalRingCountInput" class="sheet-input" placeholder="Enter number (e.g., 5)" oninput="validateRingInput()">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px;">
+                        <button class="sheet-btn" style="background-color: transparent; border: 1.5px solid var(--border-color); color: var(--text-color);" onclick="closeAllSheets()">Cancel</button>
+                        <button class="sheet-btn" style="background-color: #736e65; color: white; opacity: 0.5;" id="modalStartRingBtn" onclick="submitRandomRingSelection()" disabled>Start Random Ring</button>
                     </div>
                 </div>
             </div>
@@ -2000,7 +2116,7 @@
     }
 
     // Trigger DB Random Ring
-    async function triggerDbRandomRing(type) {
+    async function triggerDbRandomRing(type, customCount) {
         const url = document.getElementById('serverUrl').value.trim();
         const semester = document.getElementById('selectSemester').value;
         const branch = document.getElementById('selectBranch').value;
@@ -2010,7 +2126,7 @@
             return;
         }
 
-        terminalLog(`Dispatching DB Random Ring query (${type})...`);
+        terminalLog(`Dispatching DB Random Ring query (${type}, count=${customCount || 'all'})...`);
 
         try {
             const response = await fetch(`${url}/api/random-ring`, {
@@ -2018,7 +2134,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     type,
-                    count: type === 'select' ? 3 : null,
+                    count: type === 'select' ? (customCount || 5) : null,
                     teacherId: teacherProfile.employeeId,
                     teacherName: teacherProfile.name,
                     semester: semester.toString(),
@@ -2080,10 +2196,77 @@
 
     function triggerFabAction() {
         if (!socket || !socket.connected) {
-            alert('Signal connection inactive!');
+            alert('Signal connection inactive! Please connect & login first.');
             return;
         }
-        triggerDbRandomRing('all');
+        
+        // Reset selections first
+        selectedRingModalOptionVal = null;
+        document.getElementById('ringOptAll').classList.remove('selected');
+        document.getElementById('ringOptSelect').classList.remove('selected');
+        document.getElementById('modalRingCountContainer').style.display = 'none';
+        document.getElementById('modalRingCountInput').value = '';
+        validateRingInput();
+
+        openBottomSheet('randomRingModal');
+    }
+
+    let selectedRingModalOptionVal = null;
+
+    function selectRingModalOption(opt) {
+        selectedRingModalOptionVal = opt;
+        
+        document.getElementById('ringOptAll').classList.remove('selected');
+        document.getElementById('ringOptSelect').classList.remove('selected');
+        
+        if (opt === 'all') {
+            document.getElementById('ringOptAll').classList.add('selected');
+            document.getElementById('modalRingCountContainer').style.display = 'none';
+        } else if (opt === 'select') {
+            document.getElementById('ringOptSelect').classList.add('selected');
+            document.getElementById('modalRingCountContainer').style.display = 'flex';
+        }
+        
+        validateRingInput();
+    }
+
+    function validateRingInput() {
+        const startBtn = document.getElementById('modalStartRingBtn');
+        if (!selectedRingModalOptionVal) {
+            startBtn.disabled = true;
+            startBtn.style.opacity = '0.5';
+            return;
+        }
+        
+        if (selectedRingModalOptionVal === 'all') {
+            startBtn.disabled = false;
+            startBtn.style.opacity = '1';
+        } else {
+            const countVal = document.getElementById('modalRingCountInput').value;
+            if (countVal && parseInt(countVal) > 0) {
+                startBtn.disabled = false;
+                startBtn.style.opacity = '1';
+            } else {
+                startBtn.disabled = true;
+                startBtn.style.opacity = '0.5';
+            }
+        }
+    }
+
+    function submitRandomRingSelection() {
+        if (!selectedRingModalOptionVal) return;
+        
+        let count = null;
+        if (selectedRingModalOptionVal === 'select') {
+            count = parseInt(document.getElementById('modalRingCountInput').value);
+            if (isNaN(count) || count <= 0) {
+                alert('Please enter a valid student count.');
+                return;
+            }
+        }
+        
+        closeAllSheets();
+        triggerDbRandomRing(selectedRingModalOptionVal, count);
     }
 
     // Class selection updates
