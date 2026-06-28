@@ -1498,6 +1498,7 @@
     };
     const rtcConnections = {};
     const dataChannels = {};
+    const enrollmentToSocketMap = {};
 
     // Auto-detect server endpoint URL if loaded from a web server
     if (window.location.protocol.startsWith('http')) {
@@ -1707,6 +1708,9 @@
         socket.on('live_state_snapshot', (data) => {
             terminalLog(`Live snapshot: ${data.students.length} student(s) currently online in classroom.`, 'info');
             data.students.forEach(student => {
+                if (student.studentId) {
+                    enrollmentToSocketMap[student.studentId] = student.socketId;
+                }
                 if (!rtcConnections[student.socketId] && student.socketId !== socket.id) {
                     establishP2P(student.socketId, student.studentId, student.name);
                 }
@@ -1731,6 +1735,9 @@
 
     // WebRTC P2P Direct setup
     async function establishP2P(studentSocketId, studentId, studentName) {
+        if (studentId) {
+            enrollmentToSocketMap[studentId] = studentSocketId;
+        }
         terminalLog(`Initiating WebRTC P2P link with ${studentName || studentId}...`);
         const pc = new RTCPeerConnection(rtcConfig);
         rtcConnections[studentSocketId] = pc;
@@ -1986,8 +1993,9 @@
                             ${student.ringSelected && !student.ringResponded ? `<span style="font-size: 10px; color: var(--warning-text);">🔔 Ring Sent</span>` : ''}
                         </div>
                     </div>
-                    <div class="student-card-right">
+                    <div class="student-card-right" style="display: flex; align-items: center; gap: 10px;">
                         <span class="student-card-timer" id="time-lbl-${student.enrollmentNo}">${formatDuration(student.timerValue || 0)}</span>
+                        <button class="student-ring-btn" onclick="sendIndividualP2PRing(event, '${student.enrollmentNo}')" style="width: 36px; height: 36px; border-radius: 50%; background-color: var(--primary-dark); border: none; display: flex; justify-content: center; align-items: center; cursor: pointer; color: #fbbf24; font-size: 16px; box-shadow: var(--shadow-subtle);">🔔</button>
                     </div>
                 </div>
                 ${actionOverlayHtml}
@@ -2192,6 +2200,32 @@
         });
 
         terminalLog(`P2P instant ring broadcasted to ${count} peer(s).`, 'success');
+    }
+
+    function sendIndividualP2PRing(event, enrollmentNo) {
+        if (event) event.stopPropagation(); // Avoid opening manual override sheet!
+        
+        const targetSocketId = enrollmentToSocketMap[enrollmentNo];
+        if (!targetSocketId) {
+            terminalLog(`P2P Ring failed: Student ${enrollmentNo} is not connected via socket.`, 'error');
+            alert(`Student ${enrollmentNo} is not online/connected via socket.`);
+            return;
+        }
+        
+        const dc = dataChannels[targetSocketId];
+        if (!dc || dc.readyState !== 'open') {
+            terminalLog(`P2P Ring failed: WebRTC data channel with student ${enrollmentNo} is not open.`, 'error');
+            alert(`WebRTC data channel with student ${enrollmentNo} is not open.`);
+            return;
+        }
+        
+        const payload = JSON.stringify({
+            type: 'RANDOM_RING_TRIGGER'
+        });
+        
+        dc.send(payload);
+        terminalLog(`⚡ Direct P2P Ring dispatched to student ${enrollmentNo}.`, 'success');
+        alert(`Direct P2P Ring sent to student ${enrollmentNo}!`);
     }
 
     function triggerFabAction() {
