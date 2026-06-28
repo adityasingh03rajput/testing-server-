@@ -9011,6 +9011,431 @@ app.delete('/api/teachers/:id', async (req, res) => {
 // ATTENDANCE QUERY ENDPOINTS (Teacher Views)
 // ============================================
 
+// Calculate working days (exclude weekends and holidays)
+async function getWorkingDays(startDate, endDate) {
+    const start = getISTMidnight(startDate);
+    const end = getISTMidnight(endDate);
+    
+    const holidays = await Holiday.find({
+        date: { $gte: start, $lte: end }
+    });
+    
+    const holidayTimes = new Set(holidays.map(h => getISTMidnight(h.date).getTime()));
+    
+    let workingDays = 0;
+    let currentDate = new Date(start);
+    
+    while (currentDate <= end) {
+        const dayOfWeek = currentDate.getDay();
+        const currentTime = getISTMidnight(currentDate).getTime();
+        
+        // Skip weekends (0=Sunday, 6=Saturday) and holidays
+        if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidayTimes.has(currentTime)) {
+            workingDays++;
+        }
+        
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    return workingDays;
+}
+
+// Get last working day till today
+async function getLastWorkingDay() {
+    let currentDate = getISTMidnight(new Date());
+    
+    const holidays = await Holiday.find({
+        date: { $lte: currentDate }
+    });
+    
+    const holidayTimes = new Set(holidays.map(h => getISTMidnight(h.date).getTime()));
+    const minDate = new Date('2025-01-01');
+    
+    while (currentDate >= minDate) {
+        const dayOfWeek = currentDate.getDay();
+        const currentTime = getISTMidnight(currentDate).getTime();
+        
+        if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidayTimes.has(currentTime)) {
+            return currentDate;
+        }
+        
+        currentDate.setDate(currentDate.getDate() - 1);
+    }
+    
+    return getISTMidnight(new Date());
+}
+
+// GET /api/attendance/student/:enrollmentNo/overall-percentage
+app.get('/api/attendance/student/:enrollmentNo/overall-percentage', async (req, res) => {
+    try {
+        const { enrollmentNo } = req.params;
+        let { tillDate } = req.query; // YYYY-MM-DD format
+        
+        let end;
+        if (tillDate) {
+            end = getISTMidnight(new Date(tillDate));
+        } else {
+            end = await getLastWorkingDay();
+        }
+        
+        const start = getISTMidnight(new Date('2025-01-01'));
+        
+        // Get all attendance records for this student within the date range
+        const records = await AttendanceRecord.find({
+            $or: [{ enrollmentNo }, { studentId: enrollmentNo }],
+            date: { $gte: start, $lte: end }
+        }).lean();
+        
+        // Deduplicate records by date (using midnight timestamp)
+        const dateMap = new Map();
+        for (const r of records) {
+            const key = getISTMidnight(r.date).toISOString();
+            const existing = dateMap.get(key);
+            if (!existing || r.status === 'present' || (r.status === 'active' && existing.status === 'absent')) {
+                dateMap.set(key, r);
+            }
+        }
+        
+        // Count present/active days
+        let presentDays = 0;
+        for (const r of dateMap.values()) {
+            if (r.status === 'present' || r.status === 'active' || r.status === 'leave') {
+                presentDays++;
+            }
+        }
+        
+        const workingDays = await getWorkingDays(start, end);
+        const percentage = workingDays > 0 ? (presentDays / workingDays) * 100 : 0;
+        
+        res.json({
+            success: true,
+            percentage: Math.round(percentage * 100) / 100,
+            presentDays,
+            totalWorkingDays: workingDays,
+            lastDate: end
+        });
+    } catch (error) {
+        console.error('Error calculating overall percentage:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// GET /api/attendance/student/:enrollmentNo/date/:date/summary
+app.get('/api/attendance/student/:enrollmentNo/date/:date/summary', async (req, res) => {
+    try {
+        const { enrollmentNo, date } = req.params;
+        const targetDate = getISTMidnight(new Date(date));
+        
+        const record = await AttendanceRecord.findOne({
+            $or: [{ enrollmentNo }, { studentId: enrollmentNo }],
+            date: targetDate
+        }).lean();
+        
+        if (!record) {
+            return res.json({
+                success: true,
+                periods: [],
+                dailyPercentage: 0,
+                totalPeriods: 0,
+                presentPeriods: 0,
+                status: 'absent'
+            });
+        }
+        
+        const periods = (record.lectures || []).map(l => ({
+            period: l.period,
+            subject: l.subject,
+            teacher: l.teacherName || l.teacher,
+            room: l.room || 'N/A',
+            status: l.status || (l.present ? 'present' : 'absent'),
+            attended: l.attended || 0,
+            total: l.total || 0,
+            percentage: l.percentage || 0
+        }));
+        
+        const presentPeriods = periods.filter(p => p.status === 'present').length;
+        const totalPeriods = periods.length;
+        const dailyPercentage = totalPeriods > 0 ? Math.round((presentPeriods / totalPeriods) * 100) : 0;
+        
+        res.json({
+            success: true,
+            periods,
+            dailyPercentage,
+            totalPeriods,
+            presentPeriods,
+            status: record.status
+        });
+    } catch (error) {
+        console.error('Error fetching date summary:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// GET /api/attendance/student/:enrollmentNo/subject/:subject/stats
+app.get('/api/attendance/student/:enrollmentNo/subject/:subject/stats', async (req, res) => {
+    try {
+        const { enrollmentNo, subject } = req.params;
+        
+        const periodRecords = await PeriodAttendance.find({
+            enrollmentNo,
+            subject: { $regex: new RegExp(`^${subject}$`, 'i') }
+        }).lean();
+        
+        const presentPeriods = periodRecords.filter(p => p.status === 'present').length;
+        const totalPeriods = periodRecords.length;
+        const percentage = totalPeriods > 0 ? (presentPeriods / totalPeriods) * 100 : 0;
+        
+        const dates = periodRecords.map(p => ({
+            date: p.date,
+            status: p.status,
+            period: p.period
+        })).sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        res.json({
+            success: true,
+            percentage: Math.round(percentage * 100) / 100,
+            presentPeriods,
+            totalPeriods,
+            dates
+        });
+    } catch (error) {
+        console.error('Error fetching subject stats:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// GET /api/attendance/subject/:subject/dates
+app.get('/api/attendance/subject/:subject/dates', async (req, res) => {
+    try {
+        const { subject } = req.params;
+        const { semester, branch } = req.query;
+        
+        const filter = {
+            subject: { $regex: new RegExp(`^${subject}$`, 'i') }
+        };
+        if (semester) filter.semester = semester;
+        if (branch) filter.branch = branch;
+        
+        const dates = await PeriodAttendance.aggregate([
+            { $match: filter },
+            { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } } } },
+            { $sort: { _id: -1 } }
+        ]);
+        
+        const dateList = dates.map(d => d._id);
+        
+        res.json({
+            success: true,
+            dates: dateList,
+            totalClasses: dateList.length,
+            semester,
+            branch
+        });
+    } catch (error) {
+        console.error('Error fetching subject dates:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// GET /api/attendance/teacher/:teacherId/class-allocation
+app.get('/api/attendance/teacher/:teacherId/class-allocation', async (req, res) => {
+    try {
+        const { teacherId } = req.params;
+        
+        const timetables = await Timetable.find({}).lean();
+        const allocations = [];
+        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        
+        for (const t of timetables) {
+            const periodMap = new Map((t.periods || []).map(p => [p.number, p]));
+            
+            for (const day of days) {
+                const slots = t.timetable?.[day] || [];
+                for (const slot of slots) {
+                    if (slot.teacher && slot.teacher.toLowerCase() === teacherId.toLowerCase()) {
+                        const pInfo = periodMap.get(slot.period);
+                        allocations.push({
+                            semester: t.semester,
+                            branch: t.branch,
+                            day,
+                            period: `P${slot.period}`,
+                            subject: slot.subject,
+                            room: slot.room || 'N/A',
+                            startTime: pInfo?.startTime || 'N/A',
+                            endTime: pInfo?.endTime || 'N/A'
+                        });
+                    }
+                }
+            }
+        }
+        
+        res.json({
+            success: true,
+            allocations
+        });
+    } catch (error) {
+        console.error('Error fetching teacher allocations:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// GET /api/attendance/teacher/:teacherId/class/:semester/:branch/attendance
+app.get('/api/attendance/teacher/:teacherId/class/:semester/:branch/attendance', async (req, res) => {
+    try {
+        const { teacherId, semester, branch } = req.params;
+        const { startDate, endDate } = req.query;
+        
+        let dateFilter = {};
+        if (startDate && endDate) {
+            dateFilter = { date: { $gte: getISTMidnight(new Date(startDate)), $lte: getISTMidnight(new Date(endDate)) } };
+        }
+        
+        const periodRecords = await PeriodAttendance.find({
+            teacher: { $regex: new RegExp(`^${teacherId}$`, 'i') },
+            semester,
+            branch,
+            ...dateFilter
+        }).lean();
+        
+        const lectureGroups = {};
+        for (const record of periodRecords) {
+            const dateStr = getISTMidnight(record.date).toISOString().split('T')[0];
+            const key = `${dateStr}_${record.period}`;
+            if (!lectureGroups[key]) {
+                lectureGroups[key] = {
+                    date: dateStr,
+                    period: record.period,
+                    subject: record.subject,
+                    room: record.room || 'N/A',
+                    students: []
+                };
+            }
+            lectureGroups[key].students.push(record);
+        }
+        
+        const lectures = Object.values(lectureGroups).map(group => {
+            const totalStudents = group.students.length;
+            const presentCount = group.students.filter(s => s.status === 'present').length;
+            const absentCount = totalStudents - presentCount;
+            const percentage = totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
+            
+            return {
+                date: group.date,
+                period: group.period,
+                subject: group.subject,
+                room: group.room,
+                totalStudents,
+                presentCount,
+                absentCount,
+                percentage
+            };
+        }).sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        const totalLectures = lectures.length;
+        const totalPresentSum = lectures.reduce((sum, l) => sum + l.presentCount, 0);
+        const totalStudentsSum = lectures.reduce((sum, l) => sum + l.totalStudents, 0);
+        const overallPercentage = totalStudentsSum > 0 ? Math.round((totalPresentSum / totalStudentsSum) * 100) : 0;
+        
+        res.json({
+            success: true,
+            stats: {
+                totalLectures,
+                overallPercentage,
+                totalStudents: totalStudentsSum,
+                totalPresent: totalPresentSum
+            },
+            lectures
+        });
+    } catch (error) {
+        console.error('Error fetching teacher class attendance:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// GET /api/attendance/teacher/:teacherId/lecture/:date/:period/attendance
+app.get('/api/attendance/teacher/:teacherId/lecture/:date/:period/attendance', async (req, res) => {
+    try {
+        const { teacherId, date, period } = req.params;
+        const targetDate = getISTMidnight(new Date(date));
+        
+        const records = await PeriodAttendance.find({
+            teacher: { $regex: new RegExp(`^${teacherId}$`, 'i') },
+            date: targetDate,
+            period
+        }).lean();
+        
+        let semester = '';
+        let branch = '';
+        
+        if (records.length > 0) {
+            semester = records[0].semester;
+            branch = records[0].branch;
+        } else {
+            const dayOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][targetDate.getDay()];
+            const timetableEntry = await Timetable.findOne({
+                [`timetable.${dayOfWeek}`]: {
+                    $elemMatch: {
+                        period: parseInt(period.replace('P', '')),
+                        teacher: { $regex: new RegExp(`^${teacherId}$`, 'i') }
+                    }
+                }
+            }).lean();
+            
+            if (timetableEntry) {
+                semester = timetableEntry.semester;
+                branch = timetableEntry.branch;
+            }
+        }
+        
+        let students = [];
+        
+        if (semester && branch) {
+            const allStudents = await StudentManagement.find({ semester, branch, isActive: true }).lean();
+            const recordMap = new Map(records.map(r => [r.enrollmentNo, r]));
+            
+            students = allStudents.map(s => {
+                const r = recordMap.get(s.enrollmentNo);
+                return {
+                    enrollmentNo: s.enrollmentNo,
+                    name: s.name,
+                    status: r ? r.status : 'absent',
+                    wifiVerified: r ? r.wifiVerified : false,
+                    faceVerified: r ? r.faceVerified : false,
+                    wifiBSSID: r ? r.wifiBSSID : null,
+                    checkInTime: r ? r.checkInTime : null,
+                    timerSeconds: r ? r.timerSeconds : 0
+                };
+            });
+        } else {
+            students = records.map(r => ({
+                enrollmentNo: r.enrollmentNo,
+                name: r.studentName,
+                status: r.status,
+                wifiVerified: r.wifiVerified,
+                faceVerified: r.faceVerified,
+                wifiBSSID: r.wifiBSSID,
+                checkInTime: r.checkInTime,
+                timerSeconds: r.timerSeconds
+            }));
+        }
+        
+        const totalStudents = students.length;
+        const presentCount = students.filter(s => s.status === 'present').length;
+        const percentage = totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
+        
+        res.json({
+            success: true,
+            students,
+            totalStudents,
+            presentCount,
+            percentage
+        });
+    } catch (error) {
+        console.error('Error fetching lecture attendance:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Helper: format seconds to "Xh Ym Zs" string
 function formatSecondsToTimeStr(seconds) {
     const s = Math.floor(Number(seconds) || 0);

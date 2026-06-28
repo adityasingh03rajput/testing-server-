@@ -14017,9 +14017,12 @@ function setupShowcaseViewSwitcher() {
         btn.addEventListener('click', (e) => {
             document.querySelectorAll('.showcase-view-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.showcase-view').forEach(v => v.style.display = 'none');
-            e.target.classList.add('active');
-            const view = e.target.dataset.view;
-            document.getElementById(view + 'View').style.display = 'block';
+            btn.classList.add('active');
+            const view = btn.dataset.view;
+            const viewEl = document.getElementById(view + 'View');
+            if (viewEl) {
+                viewEl.style.display = 'block';
+            }
             _saveShowcaseSel('activeView', view);
         });
     });
@@ -14411,7 +14414,7 @@ async function loadShowcaseSubject() {
         </div>`;
 
     try {
-        const response = await fetch(GET_ATTENDANCE_PERIOD_REPORT);
+        const response = await fetch(`${GET_ATTENDANCE_PERIOD_REPORT}?branch=${encodeURIComponent(branch)}&semester=${encodeURIComponent(semester)}&limit=1000000`);
         const data = await response.json();
 
         if (!data.success || !data.records) {
@@ -14540,7 +14543,7 @@ async function showSubjectDateAttendance(date, subject, branch, semester) {
         // Fetch students + all period records in parallel
         const [studentsRes, periodsRes] = await Promise.all([
             fetch(GET_STUDENTS),
-            fetch(GET_ATTENDANCE_PERIOD_REPORT)
+            fetch(`${GET_ATTENDANCE_PERIOD_REPORT}?branch=${encodeURIComponent(branch)}&semester=${encodeURIComponent(semester)}&limit=1000000`)
         ]);
         const studentsData = await studentsRes.json();
         const periodsData  = await periodsRes.json();
@@ -14570,21 +14573,67 @@ async function showSubjectDateAttendance(date, subject, branch, semester) {
         const subjectRecords = allRecords.filter(r =>
             r.subject === subject && r.semester === semester && r.branch === branch
         );
-        const totByStudent = {};
-        const preByStudent = {};
+
+        // Map key is `${r.enrollmentNo}__${date_string}` to ensure unique dates
+        const uniqueDayStatus = new Map();
         subjectRecords.forEach(r => {
-            // Count unique dates per student (not periods)
             const dt = new Date(r.date);
             if (isNaN(dt.getTime())) return;
             const dk = dt.toISOString().split('T')[0];
-            const key = `${r.enrollmentNo}__${dk}`;
-            if (!totByStudent[key]) {
-                totByStudent[r.enrollmentNo] = (totByStudent[r.enrollmentNo] || 0) + 1;
-                if (r.status === 'present') {
-                    preByStudent[r.enrollmentNo] = (preByStudent[r.enrollmentNo] || 0) + 1;
-                }
+            const mapKey = `${r.enrollmentNo}__${dk}`;
+            const existingStatus = uniqueDayStatus.get(mapKey);
+            // Present wins over absent
+            if (!existingStatus || r.status === 'present') {
+                uniqueDayStatus.set(mapKey, r.status);
             }
         });
+
+        const totByStudent = {};
+        const preByStudent = {};
+        for (const [mapKey, status] of uniqueDayStatus.entries()) {
+            const enroll = mapKey.split('__')[0];
+            totByStudent[enroll] = (totByStudent[enroll] || 0) + 1;
+            if (status === 'present') {
+                preByStudent[enroll] = (preByStudent[enroll] || 0) + 1;
+            }
+        }
+
+        const filteredStudents = allStudents.filter(s => s.branch === branch && String(s.semester) === String(semester));
+        _subjectDateAllRows = filteredStudents.map(student => {
+            const isPresent = presentOnDay.has(student.enrollmentNo);
+            const subjectTot = totByStudent[student.enrollmentNo] || 0;
+            const subjectPre = preByStudent[student.enrollmentNo] || 0;
+            const subjectPct = subjectTot > 0 ? Math.round((subjectPre / subjectTot) * 100) : 0;
+            return {
+                name: student.name,
+                enrollmentNo: student.enrollmentNo,
+                status: isPresent ? 'present' : 'absent',
+                subjectTot,
+                subjectPre,
+                subjectPct
+            };
+        });
+
+        const presentCount = _subjectDateAllRows.filter(r => r.status === 'present').length;
+        const totalCount = _subjectDateAllRows.length;
+        const pct = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
+
+        // Populate switcher
+        const switcher = document.getElementById('modalSubjectSwitcher');
+        if (switcher) {
+            // Get all unique subjects for this branch and semester
+            const branchSemSubjects = [...new Set(allRecords
+                .filter(r => r.branch === branch && String(r.semester) === String(semester))
+                .map(r => r.subject)
+            )].sort();
+            switcher.innerHTML = branchSemSubjects.map(sub => 
+                `<option value="${sub}" ${sub === subject ? 'selected' : ''}>${sub}</option>`
+            ).join('');
+        }
+
+        _subjectDatePage = 1;
+        _subjectDateContext = { date, subject, branch, semester, formattedDate: new Date(date).toLocaleDateString() };
+        renderSubjectDatePage(presentCount, totalCount, pct, branch, semester);
     } catch (error) {
         console.error('Error loading subject date data:', error);
         document.getElementById('subjectDateContent').innerHTML = '<p style="padding:20px;color:red;">Error loading data.</p>';
@@ -14696,6 +14745,9 @@ async function switchSubjectDate(newSubject) {
     await showSubjectDateAttendance(date, newSubject, branch, semester);
 }
 
+window.showSubjectDateAttendance = showSubjectDateAttendance;
+window.switchSubjectDate = switchSubjectDate;
+
 // ========== TEACHER VIEW ==========
 async function loadShowcaseTeacher() {
     const teacherId = document.getElementById('teacherViewSelect').value;
@@ -14711,60 +14763,98 @@ async function loadShowcaseTeacher() {
         const container = document.getElementById('teacherClassesContainer');
         container.innerHTML = '<div style="text-align: center; padding: 20px;">Loading teacher classes...</div>';
 
-        const response = await fetch(GET_ATTENDANCE_PERIOD_REPORT);
-        const data = await response.json();
+        // Fetch allocated classes from the timetable
+        const allocResponse = await fetch(`${SERVER_URL}/api/attendance/teacher/${encodeURIComponent(teacherId)}/class-allocation`);
+        const allocData = await allocResponse.json();
 
-        if (data.success && data.records) {
-            let teacherRecords = data.records.filter(r => r.teacher === teacherId);
-
-            // Apply optional branch / semester filters
-            if (filterBranch)   teacherRecords = teacherRecords.filter(r => r.branch   === filterBranch);
-            if (filterSemester) teacherRecords = teacherRecords.filter(r => r.semester === filterSemester);
-
-            const classesMap = {};
-            teacherRecords.forEach(record => {
-                const key = `${record.semester}||${record.branch}`;
-                if (!classesMap[key]) {
-                    classesMap[key] = { semester: record.semester, branch: record.branch, records: [] };
-                }
-                classesMap[key].records.push(record);
-            });
-
-            renderTeacherClasses(teacherId, classesMap);
+        if (!allocData.success) {
+            container.innerHTML = '<div style="text-align: center; padding: 40px; color: red;">Failed to load class allocations</div>';
+            return;
         }
+
+        // Get unique allocated classes
+        let classes = [];
+        const seenClasses = new Set();
+        (allocData.allocations || []).forEach(alloc => {
+            const key = `${alloc.semester}||${alloc.branch}`;
+            if (!seenClasses.has(key)) {
+                seenClasses.add(key);
+                classes.push({
+                    semester: alloc.semester,
+                    branch: alloc.branch
+                });
+            }
+        });
+
+        // Apply filters
+        if (filterBranch) {
+            classes = classes.filter(c => c.branch === filterBranch);
+        }
+        if (filterSemester) {
+            classes = classes.filter(c => c.semester === filterSemester);
+        }
+
+        if (classes.length === 0) {
+            container.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No classes found matching selections</div>';
+            return;
+        }
+
+        // Fetch attendance stats for each class
+        const classStatsPromises = classes.map(async (cls) => {
+            try {
+                const attRes = await fetch(`${SERVER_URL}/api/attendance/teacher/${encodeURIComponent(teacherId)}/class/${encodeURIComponent(cls.semester)}/${encodeURIComponent(cls.branch)}/attendance`);
+                const attData = await attRes.json();
+                return {
+                    ...cls,
+                    stats: attData.success ? attData.stats : { totalLectures: 0, overallPercentage: 0, totalStudents: 0, totalPresent: 0 },
+                    lectures: attData.success ? attData.lectures : []
+                };
+            } catch (err) {
+                console.error(`Error loading stats for ${cls.branch} Sem ${cls.semester}:`, err);
+                return {
+                    ...cls,
+                    stats: { totalLectures: 0, overallPercentage: 0, totalStudents: 0, totalPresent: 0 },
+                    lectures: []
+                };
+            }
+        });
+
+        const classesWithStats = await Promise.all(classStatsPromises);
+        renderTeacherClasses(teacherId, classesWithStats);
     } catch (error) {
         console.error('Error loading teacher:', error);
         alert('Error loading teacher data');
     }
 }
 
-function renderTeacherClasses(teacherName, classesMap) {
+function renderTeacherClasses(teacherName, classesList) {
     const container = document.getElementById('teacherClassesContainer');
     
-    let html = `<div style="margin-bottom: 20px;"><h3>${teacherName} - Classes</h3></div>`;
+    let html = `<div style="margin-bottom: 20px;"><h3>${teacherName} - Allocated Classes</h3></div>`;
     
-    if (Object.keys(classesMap).length === 0) {
+    if (classesList.length === 0) {
         html += '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No classes found</div>';
     } else {
         html += '<div class="showcase-student-grid">';
-        Object.entries(classesMap).forEach(([key, classData]) => {
-            const presentCount = classData.records.filter(r => r.status === 'present').length;
-            const totalCount = classData.records.length;
-            const percentage = Math.round((presentCount / totalCount) * 100);
+        classesList.forEach(cls => {
+            const { semester, branch, stats } = cls;
+            const percentage = stats.overallPercentage || 0;
+            const lecturesCount = stats.totalLectures || 0;
             
             html += `
                 <div class="showcase-student-card">
                     <div class="student-card-header">
                         <div class="student-info">
-                            <h4>${classData.branch}</h4>
-                            <p>Semester ${classData.semester}</p>
+                            <h4>${branch}</h4>
+                            <p>Semester ${semester}</p>
+                            <p style="margin-top: 5px; font-size: 12px; color: var(--text-secondary); font-weight: 500;">${lecturesCount} Lectures Conducted</p>
                         </div>
-                        <div class="student-percentage" style="color: #007bff; font-size: 24px; font-weight: bold;">
-                            ${percentage}%
+                        <div class="student-percentage" style="color: var(--primary); font-size: 24px; font-weight: bold;">
+                            ${lecturesCount > 0 ? percentage + '%' : 'N/A'}
                         </div>
                     </div>
                     <div class="student-card-actions">
-                        <button class="btn btn-small btn-primary" onclick="showTeacherClassDetails('${teacherName}', '${classData.semester}', '${classData.branch}')">
+                        <button class="btn btn-small btn-primary" onclick="showTeacherClassDetails('${teacherName}', '${semester}', '${branch}')" ${lecturesCount === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
                              View Details
                         </button>
                     </div>
@@ -14779,52 +14869,131 @@ function renderTeacherClasses(teacherName, classesMap) {
 
 async function showTeacherClassDetails(teacherId, semester, branch) {
     try {
-        const response = await fetch(GET_ATTENDANCE_PERIOD_REPORT);
+        const container = document.getElementById('teacherClassContent');
+        container.innerHTML = '<div style="text-align: center; padding: 20px;">Loading class details...</div>';
+        
+        document.getElementById('teacherClassTitle').textContent = `${branch} - Semester ${semester}`;
+        document.getElementById('teacherClassModal').style.display = 'block';
+
+        const response = await fetch(`${SERVER_URL}/api/attendance/teacher/${encodeURIComponent(teacherId)}/class/${encodeURIComponent(semester)}/${encodeURIComponent(branch)}/attendance`);
         const data = await response.json();
         
-        if (data.success && data.records) {
-            const classRecords = data.records.filter(r => 
-                r.teacher === teacherId && 
-                r.semester === semester && 
-                r.branch === branch
-            );
-            
-            const presentCount = classRecords.filter(r => r.status === 'present').length;
-            const totalCount = classRecords.length;
-            const percentage = Math.round((presentCount / totalCount) * 100);
+        if (data.success && data.lectures) {
+            const { stats, lectures } = data;
             
             let html = `
-                <div style="margin-bottom: 20px; padding: 15px; background: var(--bg-hover); border-radius: 8px; color: var(--text-primary);">
-                    <strong>Total Lectures: ${totalCount} | Present: ${presentCount} | Percentage: ${percentage}%</strong>
+                <div style="margin-bottom: 20px; padding: 15px; background: var(--bg-hover); border-radius: 8px; color: var(--text-primary); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                    <div><strong>Total Lectures: ${stats.totalLectures}</strong></div>
+                    <div><strong>Total Present: ${stats.totalPresent} / ${stats.totalStudents}</strong></div>
+                    <div><strong>Overall Attendance: <span style="color: var(--primary); font-weight: bold;">${stats.overallPercentage}%</span></strong></div>
                 </div>
                 <div class="period-breakdown">
             `;
             
-            classRecords.forEach(record => {
-                const status = record.status === 'present' ? '' : '';
-                const statusColor = record.status === 'present' ? '#28a745' : '#dc3545';
+            lectures.forEach(l => {
+                const statusColor = l.percentage >= 75 ? '#28a745' : l.percentage >= 50 ? '#ffc107' : '#dc3545';
                 html += `
-                    <div class="period-item" style="border-left: 4px solid ${statusColor};">
+                    <div class="period-item" style="border-left: 4px solid ${statusColor}; display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 12px 15px;" onclick="showTeacherLectureAttendance('${teacherId}', '${l.date}', '${l.period}', '${branch}', '${semester}')">
                         <div class="period-info">
-                            <h5>${new Date(record.date).toLocaleDateString()} - ${record.period}</h5>
-                            <p>${record.subject}</p>
+                            <h5 style="margin: 0; color: var(--text-primary);">${new Date(l.date).toLocaleDateString()} - Period ${l.period}</h5>
+                            <p style="margin: 3px 0 0 0; color: var(--text-secondary); font-size: 12px;">Subject: ${l.subject} | Room: ${l.room}</p>
                         </div>
-                        <div class="period-status" style="color: ${statusColor};">${status}</div>
+                        <div style="text-align: right;">
+                            <span style="font-weight: 700; color: ${statusColor}; font-size: 15px;">${l.percentage}%</span>
+                            <span style="display: block; font-size: 11px; color: var(--text-secondary);">${l.presentCount}/${l.totalStudents} Present</span>
+                        </div>
                     </div>
                 `;
             });
             
             html += '</div>';
-            
-            document.getElementById('teacherClassTitle').textContent = `${branch} - Semester ${semester}`;
-            document.getElementById('teacherClassContent').innerHTML = html;
-            document.getElementById('teacherClassModal').style.display = 'block';
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">No lectures found for this class.</div>';
         }
     } catch (error) {
         console.error('Error loading class details:', error);
-        alert('Error loading class details');
+        container.innerHTML = '<div style="text-align: center; padding: 20px; color: red;">Error loading class details</div>';
     }
 }
+
+async function showTeacherLectureAttendance(teacherId, date, period, branch, semester) {
+    try {
+        const container = document.getElementById('teacherClassContent');
+        container.innerHTML = '<div style="text-align: center; padding: 20px;">Loading lecture attendance...</div>';
+
+        const response = await fetch(`${SERVER_URL}/api/attendance/teacher/${encodeURIComponent(teacherId)}/lecture/${encodeURIComponent(date)}/${encodeURIComponent(period)}/attendance`);
+        const data = await response.json();
+
+        if (data.success && data.students) {
+            let html = `
+                <div style="margin-bottom: 15px;">
+                    <button class="btn btn-small" style="background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border); cursor: pointer;" onclick="showTeacherClassDetails('${teacherId}', '${semester}', '${branch}')">
+                        ← Back to Lectures
+                    </button>
+                </div>
+                <div style="margin-bottom: 15px; padding: 12px; background: var(--bg-hover); border-radius: 8px; display: flex; justify-content: space-between; font-size: 13px;">
+                    <span><strong>Date:</strong> ${new Date(date).toLocaleDateString()}</span>
+                    <span><strong>Period:</strong> ${period}</span>
+                    <span><strong>Attendance:</strong> ${data.presentCount} / ${data.totalStudents} (${data.percentage}%)</span>
+                </div>
+                <table class="data-table" style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th style="width: 36px;">#</th>
+                            <th>Student Name</th>
+                            <th>Enrollment No</th>
+                            <th style="text-align: center;">Status</th>
+                            <th style="text-align: center;">Verification</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            data.students.forEach((student, index) => {
+                const isP = student.status === 'present';
+                const statusColor = isP ? '#28a745' : '#dc3545';
+                const bg = isP ? 'rgba(40,167,69,0.04)' : 'rgba(220,53,69,0.04)';
+                
+                let verificationText = 'None';
+                if (student.wifiVerified && student.faceVerified) {
+                    verificationText = '🔒 Face & Wi-Fi';
+                } else if (student.wifiVerified) {
+                    verificationText = '📡 Wi-Fi Only';
+                } else if (student.faceVerified) {
+                    verificationText = '👤 Face Only';
+                }
+
+                html += `
+                    <tr style="background: ${bg};">
+                        <td>${index + 1}</td>
+                        <td style="font-weight: 500;">${student.name}</td>
+                        <td>${student.enrollmentNo}</td>
+                        <td style="text-align: center; font-weight: bold; color: ${statusColor};">${student.status.toUpperCase()}</td>
+                        <td style="text-align: center; font-size: 11px; color: var(--text-secondary);">${verificationText}</td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                    </tbody>
+                </table>
+            `;
+
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">No attendance details found.</div>';
+        }
+    } catch (error) {
+        console.error('Error loading lecture details:', error);
+        container.innerHTML = `<div style="text-align: center; padding: 20px; color: red;">Error loading details: ${error.message}</div>`;
+    }
+}
+
+// Bind to window explicitly for inline onclick attributes
+window.loadShowcaseTeacher = loadShowcaseTeacher;
+window.showTeacherClassDetails = showTeacherClassDetails;
+window.showTeacherLectureAttendance = showTeacherLectureAttendance;
 
 // ========== MODAL CLOSE FUNCTIONS ==========
 function closeCalendarModal() {
@@ -14882,7 +15051,7 @@ async function loadSubjectsForShowcase() {
     console.log(`Loading subjects for branch="${branch}" semester="${semester}"`);
 
     try {
-        const response = await fetch(GET_ATTENDANCE_SUBJECTS);
+        const response = await fetch(`${GET_ATTENDANCE_SUBJECTS}?branch=${encodeURIComponent(branch)}&semester=${encodeURIComponent(semester)}`);
         const data = await response.json();
         console.log('Subjects response:', data);
 

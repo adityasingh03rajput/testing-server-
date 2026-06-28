@@ -14,6 +14,7 @@ import android.net.wifi.WifiManager
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
@@ -55,7 +56,8 @@ class TimerService : Service() {
     }
 
     private val binder = LocalBinder()
-    private val handler = Handler(Looper.getMainLooper())
+    private var handlerThread: HandlerThread? = null
+    private var handler: Handler? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private val networkExecutor = Executors.newSingleThreadExecutor()
 
@@ -89,6 +91,10 @@ class TimerService : Service() {
         super.onCreate()
         createNotificationChannel()
         acquireWakeLock()
+        
+        handlerThread = HandlerThread("TimerServiceWorker", android.os.Process.THREAD_PRIORITY_BACKGROUND)
+        handlerThread?.start()
+        handler = Handler(handlerThread!!.looper)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -129,7 +135,7 @@ class TimerService : Service() {
         Log.d(TAG, "Timer started: subject=$subject resumeFrom=${resumeFrom}s studentId=$sid endTime=$endTime (${lectureEndMinutes}min) period=$period")
 
         updateNotification()
-        handler.post(tickRunnable)
+        handler?.post(tickRunnable)
     }
 
     /** Parse "HH:MM" → minutes since midnight, returns -1 if invalid */
@@ -163,7 +169,7 @@ class TimerService : Service() {
     fun stopTimer() {
         if (!isRunning) return
         isRunning = false
-        handler.removeCallbacks(tickRunnable)
+        handler?.removeCallbacks(tickRunnable)
         
         // Play an alert sound if it stopped because of WiFi mismatch/background timeout
         if (stoppedDueToWifiInvalid) {
@@ -183,6 +189,8 @@ class TimerService : Service() {
         lectureSubject = ""
         authorizedBSSID = ""
         periodId = ""
+        
+        handlerThread?.quitSafely()
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -225,7 +233,7 @@ class TimerService : Service() {
                 }
             }
 
-            handler.postDelayed(this, 1000L)
+            handler?.postDelayed(this, 1000L)
         }
     }
 
@@ -468,7 +476,7 @@ class TimerService : Service() {
 
     override fun onDestroy() {
         isRunning = false
-        handler.removeCallbacks(tickRunnable)
+        handler?.removeCallbacks(tickRunnable)
         networkExecutor.shutdown()
         wakeLock?.let { if (it.isHeld) it.release() }
         
