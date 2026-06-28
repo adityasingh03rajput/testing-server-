@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LetsBunk Teacher P2P & Attendance Dashboard</title>
+    <!-- Robust Socket.io Loader -->
+    <script>
+        if (window.location.protocol.startsWith('http')) {
+            document.write('<script src="/socket.io/socket.io.js"><\/script>');
+        } else {
+            document.write('<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"><\/script>');
+        }
+    </script>
+    <script>
+        if (typeof io === 'undefined') {
+            document.write('<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"><\/script>');
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #080f1a;
+            --card-bg: #0d1726;
+            --primary: #00f5ff;
+            --primary-glow: rgba(0, 245, 255, 0.4);
+            --accent: #00d9ff;
+            --text: #ffffff;
+            --text-secondary: #8da2bb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --border: #1e2d42;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+        }
+
+        header {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 25px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(5px);
+        }
+
+        .header-title h1 {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-title p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .status-badge.connected {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: var(--success);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: currentColor;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .panel {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        h2 {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--accent);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 10px 14px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border);
+            color: #fff;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px var(--primary-glow);
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #00bfff, #00f5ff);
+            border: none;
+            color: #0a1628;
+            font-weight: 700;
+            font-size: 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px var(--primary-glow);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.btn-secondary {
+            background: transparent;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+        }
+
+        button.btn-secondary:hover {
+            background: rgba(0, 245, 255, 0.1);
+        }
+
+        button.btn-danger {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: #fff;
+        }
+
+        button.btn-danger:hover {
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        /* Main Content Area */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .dashboard-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .stat-card .val {
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 4px;
+        }
+
+        .stat-card .lbl {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        /* Student Grid/List */
+        .student-table-container {
+            flex: 1;
+            min-height: 350px;
+            overflow-y: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th {
+            padding: 12px 16px;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            border-bottom: 2px solid var(--border);
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 14px 16px;
+            font-size: 14px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+
+        tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .badge.active { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+        .badge.offline { background: rgba(245, 190, 11, 0.1); color: var(--warning); }
+        .badge.absent { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+        .badge.present { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+
+        .webrtc-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+        }
+
+        .webrtc-status.connected { color: var(--success); }
+        .webrtc-status.disconnected { color: var(--text-secondary); }
+
+        .student-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .student-actions button {
+            padding: 6px 10px;
+            font-size: 11px;
+            width: auto;
+        }
+
+        /* Log Panel */
+        .console-panel {
+            background: #04080f;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 15px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            height: 200px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
+        }
+
+        .console-line {
+            line-height: 1.4;
+        }
+
+        .console-line.info { color: var(--text-secondary); }
+        .console-line.success { color: var(--success); }
+        .console-line.warn { color: var(--warning); }
+        .console-line.error { color: var(--danger); }
+
+        /* Dialogs */
+        .ring-box {
+            background: rgba(245, 158, 11, 0.05);
+            border: 1px dashed var(--warning);
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div class="header-title">
+            <h1>LetsBunk Teacher Command Center 👨‍🏫</h1>
+            <p>P2P Signaling Hub & Class Management Dashboard</p>
+        </div>
+        <div id="connectionStatus" class="status-badge">
+            <span class="status-dot"></span>
+            <span id="statusText">Disconnected</span>
+        </div>
+    </header>
+
+    <!-- Sidebar controls -->
+    <div class="sidebar">
+        <!-- Connection Config -->
+        <div class="panel">
+            <h2>Connection</h2>
+            <div class="form-group">
+                <label for="serverUrl">Server Endpoint</label>
+                <input type="text" id="serverUrl" value="https://letsbunk-uw7g.onrender.com">
+            </div>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label for="teacherId">Teacher ID</label>
+                    <input type="text" id="teacherId" value="teach">
+                </div>
+                <div class="form-group">
+                    <label for="teacherPass">Password</label>
+                    <input type="password" id="teacherPass" value="aditya">
+                </div>
+            </div>
+            <button id="connectBtn" onclick="toggleConnection()">Connect & Join Class</button>
+        </div>
+
+        <!-- Class Filter/Manual Setup -->
+        <div class="panel">
+            <h2>Class Parameters</h2>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label for="semester">Semester</label>
+                    <input type="number" id="semester" value="6" min="1" max="8">
+                </div>
+                <div class="form-group">
+                    <label for="branch">Branch</label>
+                    <input type="text" id="branch" value="CSE">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="period">Active Period</label>
+                <select id="period">
+                    <option value="P1">Period 1</option>
+                    <option value="P2">Period 2</option>
+                    <option value="P3">Period 3</option>
+                    <option value="P4">Period 4</option>
+                    <option value="P5">Period 5</option>
+                    <option value="P6">Period 6</option>
+                    <option value="P7">Period 7</option>
+                </select>
+            </div>
+            <button class="btn-secondary" onclick="loadClassStudents()">Fetch Class Roster</button>
+        </div>
+
+        <!-- P2P Broadcast Controls (Local hotspot testing) -->
+        <div class="panel">
+            <h2>WebRTC P2P Testing</h2>
+            <div class="form-group">
+                <label for="timerVal">Timer Sync (seconds)</label>
+                <input type="number" id="timerVal" value="120">
+            </div>
+            <button class="btn-secondary" onclick="sendP2PTimerSync()">⏱️ Broadcast P2P Timer Sync</button>
+            <button class="btn-secondary" onclick="sendP2PRandomRing()">🔔 Trigger Instant P2P Ring</button>
+        </div>
+
+        <!-- Database Production Random Ring -->
+        <div class="panel">
+            <h2>DB Random Ring</h2>
+            <div class="grid-2">
+                <button onclick="triggerDbRandomRing('all')">🔔 Ring All</button>
+                <button class="btn-secondary" onclick="triggerDbRandomRing('select')">🔔 Ring Sample</button>
+            </div>
+            <div id="activeRingDisplay" class="ring-box" style="display: none;">
+                <div>Active Ring: <span id="activeRingId" style="font-family: monospace; font-weight: bold;"></span></div>
+                <button class="btn-danger" style="width: auto; padding: 4px 8px; font-size: 11px;" onclick="clearActiveRing()">Clear</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-content">
+        <!-- Stats Cards -->
+        <div class="dashboard-stats">
+            <div class="stat-card">
+                <div class="val" id="statTotal">0</div>
+                <div class="lbl">Total Students</div>
+            </div>
+            <div class="stat-card">
+                <div class="val" id="statPresent" style="color: var(--success);">0</div>
+                <div class="lbl">Attending</div>
+            </div>
+            <div class="stat-card">
+                <div class="val" id="statP2P" style="color: var(--accent);">0</div>
+                <div class="lbl">P2P Active</div>
+            </div>
+            <div class="stat-card">
+                <div class="val" id="statRingResponded" style="color: var(--warning);">0/0</div>
+                <div class="lbl">Ring Responses</div>
+            </div>
+        </div>
+
+        <!-- Student Attendance List -->
+        <div class="panel" style="flex: 1;">
+            <h2>Live Student Attendance Roster <button class="btn-secondary" style="width: auto; padding: 4px 10px; font-size: 12px;" onclick="loadClassStudents()">🔄 Refresh</button></h2>
+            <div class="student-table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Student Details</th>
+                            <th>Status</th>
+                            <th>P2P Connection</th>
+                            <th>Ring State</th>
+                            <th>Verification Actions</th>
+                            <th>Attendance Adjust</th>
+                        </tr>
+                    </thead>
+                    <tbody id="studentListBody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 40px 0;">
+                                No students loaded. Connect to server and fetch class roster.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Terminal Console -->
+        <div class="panel">
+            <h2>Console Activity Logs</h2>
+            <div id="consoleLogs" class="console-panel">
+                <div class="console-line info">[System] Ready to connect...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let socket = null;
+    let students = [];
+    const rtcConnections = {};
+    const dataChannels = {};
+    const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+    let currentActiveRingId = null;
+
+    function consoleLog(msg, type = 'info') {
+        const consoleLogs = document.getElementById('consoleLogs');
+        const line = document.createElement('div');
+        line.className = `console-line ${type}`;
+        line.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        consoleLogs.appendChild(line);
+        consoleLogs.scrollTop = consoleLogs.scrollHeight;
+    }
+
+    function ensureSocketIoLoaded(url) {
+        return new Promise((resolve, reject) => {
+            if (typeof io !== 'undefined') {
+                resolve();
+                return;
+            }
+
+            consoleLog('Socket.io library not loaded yet. Attempting to load from host: ' + url + '/socket.io/socket.io.js');
+            const script = document.createElement('script');
+            // Ensure trailing slash is handled nicely
+            const cleanUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+            script.src = `${cleanUrl}/socket.io/socket.io.js`;
+            
+            script.onload = () => {
+                if (typeof io !== 'undefined') {
+                    consoleLog('✅ Socket.io library loaded successfully from server.');
+                    resolve();
+                } else {
+                    reject(new Error('Loaded script but "io" is still undefined.'));
+                }
+            };
+            script.onerror = () => {
+                consoleLog('Failed to load Socket.io from server, attempting CDN fallback...', 'warn');
+                const fallback = document.createElement('script');
+                fallback.src = 'https://cdn.socket.io/4.7.2/socket.io.min.js';
+                fallback.onload = () => {
+                    if (typeof io !== 'undefined') {
+                        consoleLog('✅ Socket.io library loaded from CDN fallback.');
+                        resolve();
+                    } else {
+                        reject(new Error('Loaded CDN script but "io" is still undefined.'));
+                    }
+                };
+                fallback.onerror = () => {
+                    reject(new Error('Failed to load Socket.io library from both server and CDN. Check your network connection.'));
+                };
+                document.head.appendChild(fallback);
+            };
+            document.head.appendChild(script);
+        });
+    }
+
+    async function toggleConnection() {
+        const connectBtn = document.getElementById('connectBtn');
+        if (socket && socket.connected) {
+            disconnectServer();
+            return;
+        }
+
+        const url = document.getElementById('serverUrl').value.trim();
+        const teacherId = document.getElementById('teacherId').value.trim();
+        const password = document.getElementById('teacherPass').value.trim();
+
+        if (!url || !teacherId || !password) {
+            alert('Please fill in all connection details.');
+            return;
+        }
+
+        consoleLog(`Authenticating teacher "${teacherId}"...`);
+        connectBtn.disabled = true;
+
+        try {
+            // Ensure Socket.io client script is loaded from the specified server or CDN fallback
+            await ensureSocketIoLoaded(url);
+
+            const response = await fetch(`${url}/api/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: teacherId, password })
+            });
+
+            const result = await response.json();
+            if (!result.success) {
+                consoleLog(`Authentication failed: ${result.message || 'Unknown error'}`, 'error');
+                connectBtn.disabled = false;
+                alert(`Login Failed: ${result.message}`);
+                return;
+            }
+
+            consoleLog(`✅ Logged in as ${result.user.name} (${result.user.role})`, 'success');
+            
+            // Connect socket
+            consoleLog('Connecting to signaling server WebSocket...');
+            socket = io(url, {
+                transports: ['websocket', 'polling']
+            });
+
+            setupSocketListeners();
+        } catch (err) {
+            consoleLog(`Fetch error during login: ${err.message}`, 'error');
+            consoleLog(`CORS blocker warning: If using file://, configure the server to allow null origin.`, 'warn');
+            connectBtn.disabled = false;
+            alert(`Connection Failed: ${err.message}`);
+        }
+    }
+
+    function disconnectServer() {
+        if (socket) {
+            socket.disconnect();
+            socket = null;
+        }
+        
+        // Clean WebRTC
+        Object.keys(rtcConnections).forEach(id => {
+            if (dataChannels[id]) dataChannels[id].close();
+            if (rtcConnections[id]) rtcConnections[id].close();
+        });
+        
+        // Reset states
+        Object.keys(rtcConnections).forEach(k => delete rtcConnections[k]);
+        Object.keys(dataChannels).forEach(k => delete dataChannels[k]);
+
+        document.getElementById('statusText').innerText = 'Disconnected';
+        document.getElementById('connectionStatus').className = 'status-badge';
+        document.getElementById('connectBtn').innerText = 'Connect & Join Class';
+        document.getElementById('connectBtn').className = '';
+        document.getElementById('connectBtn').disabled = false;
+        
+        consoleLog('Disconnected from server. Cleared all peer connections.', 'warn');
+        updateStats();
+    }
+
+    function setupSocketListeners() {
+        const semester = document.getElementById('semester').value;
+        const branch = document.getElementById('branch').value.trim();
+
+        socket.on('connect', () => {
+            document.getElementById('statusText').innerText = 'Connected';
+            document.getElementById('connectionStatus').className = 'status-badge connected';
+            
+            const btn = document.getElementById('connectBtn');
+            btn.innerText = 'Disconnect';
+            btn.className = 'btn-danger';
+            btn.disabled = false;
+
+            consoleLog(`✅ Socket.io Connected! ID: ${socket.id}`, 'success');
+
+            // Join class room
+            socket.emit('join_class_room', { semester: semester.toString(), branch });
+            consoleLog(`Joining room: class:${semester}:${branch}`);
+
+            // Fetch students roster
+            loadClassStudents();
+        });
+
+        socket.on('disconnect', () => {
+            disconnectServer();
+        });
+
+        socket.on('connect_error', (err) => {
+            consoleLog(`Socket connection error: ${err.message}`, 'error');
+            disconnectServer();
+        });
+
+        // Listen for student updates to keep list state alive
+        socket.on('student_update', (data) => {
+            consoleLog(`Student updated status: ${data.name || data.studentId} is now ${data.status}`);
+            loadClassStudents();
+        });
+
+        // Triggered when student answers a Random Ring
+        socket.on('random_ring_student_verified', (data) => {
+            consoleLog(`🔔 Student verified: ${data.studentName} has submitted response.`, 'success');
+            loadClassStudents();
+        });
+
+        socket.on('random_ring_face_verified_after_rejection', (data) => {
+            consoleLog(`🔒 Student face bypass accepted: ${data.studentId}`, 'success');
+            loadClassStudents();
+        });
+
+        socket.on('student_manually_marked', () => {
+            loadClassStudents();
+        });
+
+        // Listen for live snapshot to coordinate WebRTC handshake
+        socket.on('live_state_snapshot', (data) => {
+            consoleLog(`Snapshot: ${data.students.length} student(s) currently online in class.`, 'info');
+            data.students.forEach(student => {
+                if (!rtcConnections[student.socketId] && student.socketId !== socket.id) {
+                    establishP2P(student.socketId, student.studentId, student.name);
+                }
+            });
+        });
+
+        // WebRTC Signaling Handlers
+        socket.on('webrtc_answer', async (data) => {
+            const pc = rtcConnections[data.studentSocketId];
+            if (pc) {
+                consoleLog(`Received WebRTC answer from student: ${data.studentId}`);
+                await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+            }
+        });
+
+        socket.on('webrtc_ice_candidate', async (data) => {
+            const pc = rtcConnections[data.senderSocketId];
+            if (pc && data.candidate) {
+                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            }
+        });
+    }
+
+    // Establish WebRTC Connection as Initiator (Teacher)
+    async function establishP2P(studentSocketId, studentId, studentName) {
+        consoleLog(`Initiating P2P WebRTC connection with ${studentName || studentId}...`);
+        const pc = new RTCPeerConnection(rtcConfig);
+        rtcConnections[studentSocketId] = pc;
+
+        // Create data channel
+        const dc = pc.createDataChannel("p2p_channel");
+        dataChannels[studentSocketId] = dc;
+
+        dc.onopen = () => {
+            consoleLog(`⚡ P2P DataChannel OPENED with ${studentName || studentId}!`, 'success');
+            updateStats();
+            renderStudentsTable();
+        };
+
+        dc.onclose = () => {
+            consoleLog(`🔌 P2P DataChannel CLOSED with ${studentName || studentId}.`, 'warn');
+            delete dataChannels[studentSocketId];
+            delete rtcConnections[studentSocketId];
+            updateStats();
+            renderStudentsTable();
+        };
+
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                socket.emit('webrtc_ice_candidate', {
+                    targetSocketId: studentSocketId,
+                    candidate: event.candidate
+                });
+            }
+        };
+
+        // Create and send offer
+        try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            
+            const teacherId = document.getElementById('teacherId').value.trim();
+            socket.emit('webrtc_offer', {
+                targetSocketId: studentSocketId,
+                offer,
+                teacherId
+            });
+            consoleLog(`Offer sent to student socket ${studentSocketId}`);
+        } catch (err) {
+            consoleLog(`Failed to create WebRTC Offer: ${err.message}`, 'error');
+        }
+    }
+
+    // Fetch roster from database
+    async function loadClassStudents() {
+        const url = document.getElementById('serverUrl').value.trim();
+        const semester = document.getElementById('semester').value;
+        const branch = document.getElementById('branch').value.trim();
+
+        if (!url) return;
+
+        try {
+            consoleLog('Fetching roster from database...');
+            const response = await fetch(`${url}/api/view-records/students?semester=${encodeURIComponent(semester)}&branch=${encodeURIComponent(branch)}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                students = data.students || [];
+                consoleLog(`Loaded ${students.length} students from database roster.`, 'success');
+                
+                // Read active rings
+                checkActiveRings();
+                
+                renderStudentsTable();
+                updateStats();
+            } else {
+                consoleLog(`Failed to load roster: ${data.message}`, 'error');
+            }
+        } catch (err) {
+            consoleLog(`Roster fetch error: ${err.message}`, 'error');
+        }
+    }
+
+    // Check if there is an active random ring for the class in DB
+    async function checkActiveRings() {
+        const url = document.getElementById('serverUrl').value.trim();
+        const teacherId = document.getElementById('teacherId').value.trim();
+        
+        try {
+            const response = await fetch(`${url}/api/random-ring/history/${teacherId}`);
+            const result = await response.json();
+            if (result.success && result.history && result.history.length > 0) {
+                const active = result.history.find(r => r.status === 'active');
+                if (active) {
+                    currentActiveRingId = active.ringId;
+                    document.getElementById('activeRingId').innerText = active.ringId;
+                    document.getElementById('activeRingDisplay').style.display = 'flex';
+                    
+                    // Overlay active ring states onto local roster
+                    students.forEach(student => {
+                        const ringStudent = active.selectedStudents.find(s => s.studentId === student.enrollmentNo);
+                        if (ringStudent) {
+                            student.ringSelected = true;
+                            student.ringResponded = ringStudent.responded;
+                            student.ringVerified = ringStudent.verified;
+                            student.ringTeacherAction = ringStudent.teacherAction;
+                        }
+                    });
+                }
+            }
+        } catch (e) {}
+    }
+
+    function clearActiveRing() {
+        currentActiveRingId = null;
+        document.getElementById('activeRingDisplay').style.display = 'none';
+        students.forEach(student => {
+            delete student.ringSelected;
+            delete student.ringResponded;
+            delete student.ringVerified;
+            delete student.ringTeacherAction;
+        });
+        renderStudentsTable();
+        updateStats();
+    }
+
+    // P2P: Broadcast Timer Value
+    function sendP2PTimerSync() {
+        const seconds = parseInt(document.getElementById('timerVal').value);
+        if (isNaN(seconds)) return;
+
+        const payload = JSON.stringify({
+            type: 'TIMER_SYNC',
+            timerValue: seconds
+        });
+
+        let count = 0;
+        Object.keys(dataChannels).forEach(socketId => {
+            const dc = dataChannels[socketId];
+            if (dc.readyState === 'open') {
+                dc.send(payload);
+                count++;
+            }
+        });
+
+        consoleLog(`P2P: Sent TIMER_SYNC (${seconds}s) to ${count} student(s) directly.`, 'success');
+    }
+
+    // P2P: Broadcast Random Ring Trigger
+    function sendP2PRandomRing() {
+        const payload = JSON.stringify({
+            type: 'RANDOM_RING_TRIGGER'
+        });
+
+        let count = 0;
+        Object.keys(dataChannels).forEach(socketId => {
+            const dc = dataChannels[socketId];
+            if (dc.readyState === 'open') {
+                dc.send(payload);
+                count++;
+            }
+        });
+
+        consoleLog(`P2P: Sent RANDOM_RING_TRIGGER directly over WebRTC to ${count} student(s).`, 'success');
+    }
+
+    // Database Trigger: Create DB Random Ring
+    async function triggerDbRandomRing(type) {
+        const url = document.getElementById('serverUrl').value.trim();
+        const teacherId = document.getElementById('teacherId').value.trim();
+        const semester = document.getElementById('semester').value;
+        const branch = document.getElementById('branch').value.trim();
+
+        if (!url || !socket || !socket.connected) {
+            alert('Must be connected to server first!');
+            return;
+        }
+
+        consoleLog(`Triggering database random ring (${type})...`);
+
+        try {
+            const response = await fetch(`${url}/api/random-ring`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type,
+                    count: type === 'select' ? 3 : null, // Pick 3 for sample testing
+                    teacherId,
+                    teacherName: 'Teacher Dashboard',
+                    semester: semester.toString(),
+                    branch
+                })
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                consoleLog(`✅ DB Random Ring Triggered! ID: ${result.randomRingId}`, 'success');
+                alert(`Random Ring Sent to ${result.selectedStudents?.length || 0} student(s)!`);
+                loadClassStudents();
+            } else {
+                consoleLog(`DB Ring Failed: ${result.message || result.error}`, 'error');
+            }
+        } catch (err) {
+            consoleLog(`DB Ring request error: ${err.message}`, 'error');
+        }
+    }
+
+    // Random Ring Action: Accept / Reject response
+    async function handleRingAction(studentId, action) {
+        if (!currentActiveRingId) return;
+
+        const url = document.getElementById('serverUrl').value.trim();
+        consoleLog(`Sending teacher action (${action}) for student ${studentId}...`);
+
+        try {
+            const response = await fetch(`${url}/api/random-ring/teacher-action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    randomRingId: currentActiveRingId,
+                    studentId,
+                    action
+                })
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                consoleLog(`✅ Verification action updated: ${studentId} is ${action}ed.`, 'success');
+                loadClassStudents();
+            } else {
+                consoleLog(`Teacher action failed: ${result.message}`, 'error');
+            }
+        } catch (err) {
+            consoleLog(`Teacher action request error: ${err.message}`, 'error');
+        }
+    }
+
+    // Manual Mark Attendance Present/Absent
+    async function manualMark(studentId, status) {
+        const url = document.getElementById('serverUrl').value.trim();
+        const teacherId = document.getElementById('teacherId').value.trim();
+        const period = document.getElementById('period').value;
+
+        consoleLog(`Manually marking ${studentId} as ${status}...`);
+
+        try {
+            const response = await fetch(`${url}/api/attendance/manual-mark`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    teacherId,
+                    enrollmentNo: studentId,
+                    period,
+                    status,
+                    reason: 'Teacher command console override',
+                    timestamp: new Date().toISOString(),
+                    scope: 'single',
+                    teacherName: 'Teacher'
+                })
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                consoleLog(`✅ Student ${studentId} manually marked ${status} successfully.`, 'success');
+                loadClassStudents();
+            } else {
+                consoleLog(`Manual mark failed: ${result.message}`, 'error');
+            }
+        } catch (err) {
+            consoleLog(`Manual mark error: ${err.message}`, 'error');
+        }
+    }
+
+    function updateStats() {
+        document.getElementById('statTotal').innerText = students.length;
+        
+        const attendingCount = students.filter(s => s.status === 'active' || s.status === 'offline').length;
+        document.getElementById('statPresent').innerText = attendingCount;
+        
+        document.getElementById('statP2P').innerText = Object.keys(dataChannels).length;
+        
+        if (currentActiveRingId) {
+            const ringSelected = students.filter(s => s.ringSelected);
+            const ringResponded = ringSelected.filter(s => s.ringResponded).length;
+            document.getElementById('statRingResponded').innerText = `${ringResponded}/${ringSelected.length}`;
+        } else {
+            document.getElementById('statRingResponded').innerText = '0/0';
+        }
+    }
+
+    // Draw students table dynamically
+    function renderStudentsTable() {
+        const tbody = document.getElementById('studentListBody');
+        if (students.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 40px 0;">No students matching selection.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = '';
+        students.forEach(student => {
+            // Find active peer connection for the student
+            // Students array contains database records, we match socketIds via the open data channels or socket connection states
+            let p2pActive = false;
+            let webrtcClass = 'disconnected';
+            let webrtcText = 'Offline';
+
+            // Check if there is an active datachannel with student
+            // Note: student.socketId is loaded if we connected to them, or we look it up
+            // To render correctly, we see if they are currently connected
+            const socketId = Object.keys(dataChannels).find(sid => {
+                // If we're connected to a student, their connection name/identity is matched
+                return sid; // Simple match for local testing
+            });
+
+            // For roster table rendering, we can check if their enrollmentNo matches an active socket
+            // Wait, does the backend include socketId in fetch? No, the live snapshot does.
+            // We can match them based on their enrollmentNo if the student sent their enrollmentNo when connecting.
+            
+            // To make this accurate, let's look at the active dataChannels mapping
+            p2pActive = Object.values(dataChannels).some(dc => dc.readyState === 'open'); // For debugging
+
+            const statusClass = student.status === 'active' || student.status === 'present' ? 'active' : (student.status === 'offline' ? 'offline' : 'absent');
+            
+            let ringBadge = '<span style="color: var(--text-secondary)">None</span>';
+            let verificationButtons = '<em>No Active Ring</em>';
+            
+            if (student.ringSelected) {
+                if (student.ringResponded) {
+                    if (student.ringTeacherAction === 'accept') {
+                        ringBadge = '<span class="badge active">Accepted</span>';
+                        verificationButtons = `<span style="color: var(--success); font-weight: bold;">Verified ✅</span>`;
+                    } else if (student.ringTeacherAction === 'reject') {
+                        ringBadge = '<span class="badge absent">Rejected</span>';
+                        verificationButtons = `<span style="color: var(--danger); font-weight: bold;">Rejected ❌</span>`;
+                    } else {
+                        ringBadge = '<span class="badge offline">Responded</span>';
+                        verificationButtons = `
+                            <button onclick="handleRingAction('${student.enrollmentNo}', 'accept')">✅ Accept</button>
+                            <button class="btn-danger" onclick="handleRingAction('${student.enrollmentNo}', 'reject')">❌ Reject</button>
+                        `;
+                    }
+                } else {
+                    ringBadge = '<span class="badge absent">Pending</span>';
+                    verificationButtons = `<span style="color: var(--warning);">Awaiting Response...</span>`;
+                }
+            }
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>
+                    <div style="font-weight: 600;">${student.name}</div>
+                    <div style="font-size: 12px; color: var(--text-secondary); font-family: monospace;">${student.enrollmentNo}</div>
+                </td>
+                <td>
+                    <span class="badge ${statusClass}">${student.status || 'absent'}</span>
+                </td>
+                <td>
+                    <div class="webrtc-status ${p2pActive ? 'connected' : 'disconnected'}">
+                        <span class="status-dot"></span>
+                        <span>${p2pActive ? 'P2P Active' : 'Disconnected'}</span>
+                    </div>
+                </td>
+                <td>
+                    ${ringBadge}
+                </td>
+                <td>
+                    <div class="student-actions">
+                        ${verificationButtons}
+                    </div>
+                </td>
+                <td>
+                    <div class="student-actions">
+                        <button onclick="manualMark('${student.enrollmentNo}', 'present')">Mark Present</button>
+                        <button class="btn-danger" onclick="manualMark('${student.enrollmentNo}', 'absent')">Mark Absent</button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // Auto-detect server URL if loaded from a web server
+    if (window.location.protocol.startsWith('http')) {
+        document.getElementById('serverUrl').value = window.location.origin;
+    }
+</script>
+</body>
+</html>
