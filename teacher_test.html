@@ -1714,13 +1714,39 @@
         socket.on('live_state_snapshot', (data) => {
             terminalLog(`Live snapshot: ${data.students.length} student(s) currently online in classroom.`, 'info');
             data.students.forEach(student => {
-                if (student.studentId) {
-                    enrollmentToSocketMap[student.studentId] = student.socketId;
+                const enrollmentKey = student.enrollmentNo || student.studentId;
+                const socketIdFromServer = student.socketId;
+                if (enrollmentKey && socketIdFromServer) {
+                    enrollmentToSocketMap[enrollmentKey] = socketIdFromServer;
+                    terminalLog(`📍 Mapped student ${enrollmentKey} → ${socketIdFromServer}`, 'info');
                 }
-                if (!rtcConnections[student.socketId] && student.socketId !== socket.id) {
-                    establishP2P(student.socketId, student.studentId, student.name);
+                if (!rtcConnections[student.socketId] && student.socketId && student.socketId !== socket.id) {
+                    establishP2P(student.socketId, enrollmentKey, student.name);
                 }
             });
+            // Also update the student list timer displays from snapshot data
+            data.students.forEach(student => {
+                const enrollmentKey = student.enrollmentNo || student.studentId;
+                const timerEl = document.getElementById(`time-lbl-${enrollmentKey}`);
+                if (timerEl && (student.attendedSeconds || 0) > 0) {
+                    timerEl.innerText = formatDuration(student.attendedSeconds || 0);
+                }
+            });
+        });
+
+        socket.on('timer_broadcast', (data) => {
+            const enrollmentKey = data.enrollmentNo || data.studentId;
+            const socketIdFromServer = data.socketId;
+            // Always update the enrollment→socket map when we get a broadcast
+            if (enrollmentKey && socketIdFromServer) {
+                enrollmentToSocketMap[enrollmentKey] = socketIdFromServer;
+            }
+            // Update the student card timer using the element ID
+            const timerEl = document.getElementById(`time-lbl-${enrollmentKey}`);
+            if (timerEl) {
+                const secs = data.attendedSeconds || data.timerValue || 0;
+                timerEl.innerText = formatDuration(secs);
+            }
         });
 
         socket.on('webrtc_answer', async (data) => {
@@ -1966,6 +1992,7 @@
             }
 
             card.className = `student-item-card ${statusClass}`;
+            card.setAttribute('data-enrollment', student.enrollmentNo || '');
             
             // Set student click handler to open override sheet
             card.onclick = () => openManualOverrideSheet(student.enrollmentNo, student.name);
