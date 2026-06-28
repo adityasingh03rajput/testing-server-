@@ -8,6 +8,7 @@ import { Audio } from 'expo-av';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import io from 'socket.io-client';
+import { RTCPeerConnection, RTCIceCandidate, RTCSessionDescription } from 'react-native-webrtc';
 import OfflineTimerService from './OfflineTimerService';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import BottomNavigation from './BottomNavigation';
@@ -2073,6 +2074,65 @@ export default function App() {
 
     socketRef.current.on('reconnect_failed', () => {
       console.log('❌ Socket reconnect failed - giving up');
+    });
+
+    // --- WebRTC P2P (Student Side) ---
+    socketRef.current.on('webrtc_offer', async (data) => {
+      if (selectedRoleRef.current !== 'student') return;
+      console.log('📶 WebRTC P2P Offer received from Teacher:', data.teacherId);
+      
+      const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      socketRef.current.rtcPC = pc;
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socketRef.current.emit('webrtc_ice_candidate', {
+            targetSocketId: data.teacherSocketId,
+            candidate: event.candidate
+          });
+        }
+      };
+
+      pc.ondatachannel = (event) => {
+        const dc = event.channel;
+        socketRef.current.rtcDC = dc;
+        console.log('⚡ P2P DataChannel connected!');
+        
+        dc.onmessage = (msgEvent) => {
+          try {
+            const msg = JSON.parse(msgEvent.data);
+            if (msg.type === 'RANDOM_RING_TRIGGER') {
+              console.log('🚨 P2P RANDOM RING TRIGGERED INSTANTLY!');
+              // Trigger the existing random ring UI flow
+              const ringPauseTime = Date.now();
+              OfflineTimerService.pauseTimer('random_ring');
+              setRandomRingData({
+                randomRingId: 'p2p_ring_' + Date.now(),
+                teacherId: data.teacherId,
+                timestamp: Date.now(),
+                expiresAt: Date.now() + 60000,
+                ringPauseTime,
+              });
+            }
+          } catch(e) {}
+        };
+      };
+
+      await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      socketRef.current.emit('webrtc_answer', {
+        targetSocketId: data.teacherSocketId,
+        answer: pc.localDescription,
+        studentId: studentIdRef.current
+      });
+    });
+
+    socketRef.current.on('webrtc_ice_candidate', (data) => {
+      if (socketRef.current.rtcPC && data.candidate) {
+        socketRef.current.rtcPC.addIceCandidate(new RTCIceCandidate(data.candidate));
+      }
     });
 
     // Test socket communication with ping/pong

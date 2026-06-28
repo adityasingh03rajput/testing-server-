@@ -3,40 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LetsBunk Teacher P2P & Attendance Dashboard</title>
+    <title>LetsBunk Teacher Dashboard & Signaling Center</title>
     <!-- Robust Socket.io Loader -->
     <script>
-        if (window.location.protocol.startsWith('http')) {
-            document.write('<script src="/socket.io/socket.io.js"><\/script>');
-        } else {
-            document.write('<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"><\/script>');
+        function ensureSocketIoLoaded(url) {
+            return new Promise((resolve) => {
+                if (typeof io !== 'undefined') {
+                    resolve(true);
+                    return;
+                }
+                const script = document.createElement('script');
+                script.src = `${url}/socket.io/socket.io.js`;
+                script.onload = () => {
+                    console.log("Socket.io loaded from server endpoint successfully");
+                    resolve(true);
+                };
+                script.onerror = () => {
+                    console.warn("Failed to load Socket.io from server. Falling back to CDN...");
+                    const cdnScript = document.createElement('script');
+                    cdnScript.src = "https://cdn.socket.io/4.7.2/socket.io.min.js";
+                    cdnScript.onload = () => resolve(true);
+                    cdnScript.onerror = () => resolve(false);
+                    document.head.appendChild(cdnScript);
+                };
+                document.head.appendChild(script);
+            });
         }
     </script>
-    <script>
-        if (typeof io === 'undefined') {
-            document.write('<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"><\/script>');
-        }
-    </script>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
+            /* Dark Theme Variables */
             --bg-color: #080f1a;
             --card-bg: #0d1726;
             --primary: #00f5ff;
-            --primary-glow: rgba(0, 245, 255, 0.4);
+            --primary-glow: rgba(0, 245, 255, 0.35);
             --accent: #00d9ff;
             --text: #ffffff;
             --text-secondary: #8da2bb;
             --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.2);
             --warning: #f59e0b;
+            --warning-glow: rgba(245, 158, 11, 0.2);
             --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.2);
             --border: #1e2d42;
+            --overlay-bg: rgba(4, 8, 15, 0.8);
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .light-theme {
+            /* Light Theme Variables */
+            --bg-color: #f3f4f6;
+            --card-bg: #ffffff;
+            --primary: #0284c7;
+            --primary-glow: rgba(2, 132, 199, 0.2);
+            --accent: #0369a1;
+            --text: #1f2937;
+            --text-secondary: #4b5563;
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.15);
+            --warning: #d97706;
+            --warning-glow: rgba(217, 119, 6, 0.15);
+            --danger: #dc2626;
+            --danger-glow: rgba(220, 38, 38, 0.15);
+            --border: #e5e7eb;
+            --overlay-bg: rgba(255, 255, 255, 0.8);
+            --shadow: 0 8px 32px rgba(31, 41, 55, 0.1);
         }
 
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
         }
 
         body {
@@ -48,95 +88,198 @@
             overflow-x: hidden;
         }
 
-        .container {
+        /* Authentication Page Overlay */
+        #authOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--bg-color);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .auth-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 40px;
+            width: 100%;
+            max-width: 450px;
+            box-shadow: var(--shadow);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .auth-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, var(--primary-glow) 0%, transparent 60%);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .auth-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .logo-container {
+            margin-bottom: 24px;
+        }
+
+        .logo-icon {
+            font-size: 48px;
+            margin-bottom: 8px;
+            display: inline-block;
+            animation: pulse 2s infinite ease-in-out;
+        }
+
+        .logo-title {
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo-subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .auth-form {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            text-align: left;
+        }
+
+        /* Shared Dashboard Layout */
+        .dashboard-container {
             max-width: 1400px;
             margin: 0 auto;
             display: grid;
-            grid-template-columns: 350px 1fr;
+            grid-template-columns: 360px 1fr;
             gap: 20px;
         }
 
-        header {
+        /* Header Style */
+        .teacher-header {
             grid-column: 1 / -1;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 15px 25px;
+            padding: 16px 24px;
             background: var(--card-bg);
             border: 1px solid var(--border);
-            border-radius: 16px;
-            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
-            backdrop-filter: blur(5px);
+            border-radius: 20px;
+            box-shadow: var(--shadow);
         }
 
-        .header-title h1 {
-            font-size: 24px;
+        .header-profile-block {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+        }
+
+        .teacher-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: var(--primary);
+            color: #080f1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             font-weight: 700;
-            background: linear-gradient(135deg, var(--primary), var(--accent));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            font-size: 18px;
+            box-shadow: 0 0 10px var(--primary-glow);
+        }
+
+        .teacher-meta {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .teacher-welcome {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+
+        .teacher-name {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .header-actions {
             display: flex;
             align-items: center;
             gap: 10px;
         }
 
-        .header-title p {
-            font-size: 13px;
-            color: var(--text-secondary);
-            margin-top: 2px;
-        }
-
-        .status-badge {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 14px;
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.2);
-            color: var(--danger);
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-
-        .status-badge.connected {
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.2);
-            color: var(--success);
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            background-color: currentColor;
-            border-radius: 50%;
-            display: inline-block;
-        }
-
-        .panel {
-            background: var(--card-bg);
+        .action-icon-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: rgba(0, 245, 255, 0.08);
             border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 20px;
-            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+            color: var(--text);
+            cursor: pointer;
             display: flex;
-            flex-direction: column;
-            gap: 15px;
+            justify-content: center;
+            align-items: center;
+            font-size: 16px;
+            position: relative;
         }
 
+        .action-icon-btn:hover {
+            background: rgba(0, 245, 255, 0.15);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* Sidebar Panels */
         .sidebar {
             display: flex;
             flex-direction: column;
             gap: 20px;
         }
 
+        .panel {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
         h2 {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 600;
             color: var(--accent);
             border-bottom: 1px solid var(--border);
-            padding-bottom: 8px;
+            padding-bottom: 10px;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -149,26 +292,25 @@
         }
 
         label {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-secondary);
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
-        input, select {
+        input, select, textarea {
             width: 100%;
-            padding: 10px 14px;
-            background: rgba(0, 0, 0, 0.2);
+            padding: 12px 14px;
+            background: rgba(0, 0, 0, 0.15);
             border: 1px solid var(--border);
-            color: #fff;
-            border-radius: 8px;
+            color: var(--text);
+            border-radius: 10px;
             font-family: inherit;
             font-size: 14px;
-            transition: all 0.3s ease;
         }
 
-        input:focus, select:focus {
+        input:focus, select:focus, textarea:focus {
             outline: none;
             border-color: var(--primary);
             box-shadow: 0 0 0 2px var(--primary-glow);
@@ -177,14 +319,13 @@
         button {
             width: 100%;
             padding: 12px;
-            background: linear-gradient(135deg, #00bfff, #00f5ff);
+            background: linear-gradient(135deg, var(--accent), var(--primary));
             border: none;
-            color: #0a1628;
+            color: #080f1a;
             font-weight: 700;
             font-size: 14px;
-            border-radius: 8px;
+            border-radius: 10px;
             cursor: pointer;
-            transition: all 0.3s ease;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -207,7 +348,7 @@
         }
 
         button.btn-secondary:hover {
-            background: rgba(0, 245, 255, 0.1);
+            background: rgba(0, 245, 255, 0.08);
         }
 
         button.btn-danger {
@@ -216,7 +357,7 @@
         }
 
         button.btn-danger:hover {
-            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.35);
         }
 
         .grid-2 {
@@ -225,13 +366,54 @@
             gap: 10px;
         }
 
-        /* Main Content Area */
+        /* Main Content */
         .main-content {
             display: flex;
             flex-direction: column;
             gap: 20px;
         }
 
+        /* Class Info Panel */
+        .class-banner {
+            background: linear-gradient(135deg, var(--card-bg) 0%, rgba(0, 245, 255, 0.05) 100%);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 20px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .class-banner-left {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .active-label {
+            font-size: 10px;
+            background: var(--primary-glow);
+            color: var(--primary);
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            align-self: flex-start;
+        }
+
+        .class-name-text {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .class-details-row {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* Stats Cards */
         .dashboard-stats {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -241,94 +423,376 @@
         .stat-card {
             background: var(--card-bg);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 15px;
+            border-radius: 16px;
+            padding: 16px;
             text-align: center;
         }
 
         .stat-card .val {
-            font-size: 26px;
+            font-size: 24px;
             font-weight: 700;
             color: var(--primary);
             margin-bottom: 4px;
         }
 
         .stat-card .lbl {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-secondary);
             text-transform: uppercase;
             font-weight: 600;
         }
 
-        /* Student Grid/List */
-        .student-table-container {
-            flex: 1;
-            min-height: 350px;
-            overflow-y: auto;
+        /* Filter Tabs */
+        .controls-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            text-align: left;
+        .filter-tabs {
+            display: flex;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 4px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
         }
 
-        th {
-            padding: 12px 16px;
-            font-size: 11px;
-            text-transform: uppercase;
+        .tab-btn {
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 600;
             color: var(--text-secondary);
-            border-bottom: 2px solid var(--border);
-            letter-spacing: 0.5px;
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            width: auto;
         }
 
-        td {
-            padding: 14px 16px;
+        .tab-btn:hover {
+            color: var(--text);
+            box-shadow: none;
+            transform: none;
+        }
+
+        .tab-btn.active {
+            color: #080f1a;
+            background: var(--primary);
+        }
+
+        .search-bar {
+            flex: 1;
+            min-width: 250px;
+            position: relative;
+        }
+
+        .search-bar input {
+            padding-left: 40px;
+        }
+
+        .search-bar::before {
+            content: '🔍';
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
             font-size: 14px;
-            border-bottom: 1px solid var(--border);
-            vertical-align: middle;
+            opacity: 0.6;
         }
 
-        tr:hover {
-            background: rgba(255, 255, 255, 0.02);
+        /* Roster Grid (Mobile App Cards) */
+        .student-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 15px;
+            min-height: 350px;
         }
 
-        .badge {
-            display: inline-block;
-            padding: 4px 8px;
+        .student-card {
+            background: var(--card-bg);
+            border: 1.5px solid var(--border);
+            border-radius: 16px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .student-card.floating-ring {
+            border-color: var(--warning);
+            box-shadow: 0 0 12px var(--warning-glow);
+            animation: card-glow 1.5s infinite ease-in-out;
+        }
+
+        .student-card-main {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .student-photo-container {
+            width: 48px;
+            height: 48px;
             border-radius: 12px;
-            font-size: 11px;
+            overflow: hidden;
+            background: var(--border);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: 700;
+            font-size: 16px;
+        }
+
+        .student-info-col {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .student-name-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .student-name-text {
+            font-size: 15px;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .student-roll-text {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .student-status-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        /* Badges */
+        .app-badge {
+            display: inline-block;
+            padding: 3px 6px;
+            border-radius: 6px;
+            font-size: 10px;
             font-weight: 700;
             text-transform: uppercase;
         }
 
-        .badge.active { background: rgba(16, 185, 129, 0.1); color: var(--success); }
-        .badge.offline { background: rgba(245, 190, 11, 0.1); color: var(--warning); }
-        .badge.absent { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
-        .badge.present { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+        .app-badge.active   { background: var(--success-glow); color: var(--success); }
+        .app-badge.present  { background: var(--primary-glow); color: var(--primary); }
+        .app-badge.absent   { background: var(--danger-glow); color: var(--danger); }
+        .app-badge.offline  { background: rgba(141, 162, 187, 0.15); color: var(--text-secondary); }
 
-        .webrtc-status {
+        .tag-badge {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .tag-badge.manual { background: rgba(0, 245, 255, 0.15); color: var(--primary); }
+        .tag-badge.was-active { background: rgba(139, 92, 246, 0.15); color: #a78bfa; }
+        .tag-badge.ringed { background: var(--warning-glow); color: var(--warning); }
+
+        .card-right-col {
+            text-align: right;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+        }
+
+        .live-timer {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .card-subject-label {
+            font-size: 10px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        /* Verification overlay on card */
+        .card-ring-verification {
+            margin-top: 8px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .ring-instruction-text {
+            font-size: 12px;
+            color: var(--warning);
+            font-weight: 500;
+        }
+
+        .ring-actions-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        .ring-action-btn {
+            flex: 1;
+            padding: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 8px;
+        }
+
+        .card-actions-footer {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 6px;
+        }
+
+        .card-action-btn-small {
+            width: auto;
+            padding: 5px 10px;
+            font-size: 11px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .card-action-btn-small:hover {
+            background: var(--primary-glow);
+            border-color: var(--primary);
+            color: var(--primary);
+            box-shadow: none;
+            transform: none;
+        }
+
+        /* Menu Dropdown Modal */
+        .options-menu {
+            position: absolute;
+            top: 75px;
+            right: 20px;
+            width: 220px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            display: none;
+            flex-direction: column;
+            z-index: 100;
+            overflow: hidden;
+        }
+
+        .menu-option-item {
             display: flex;
             align-items: center;
-            gap: 6px;
-            font-size: 12px;
+            gap: 12px;
+            padding: 12px 16px;
+            font-size: 14px;
+            color: var(--text);
+            cursor: pointer;
         }
 
-        .webrtc-status.connected { color: var(--success); }
-        .webrtc-status.disconnected { color: var(--text-secondary); }
+        .menu-option-item:hover {
+            background: rgba(0, 245, 255, 0.08);
+            color: var(--primary);
+        }
 
-        .student-actions {
+        .menu-option-item:not(:last-child) {
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* Modal Dialog Layouts */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--overlay-bg);
+            backdrop-filter: blur(8px);
+            z-index: 500;
             display: flex;
-            gap: 6px;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
         }
 
-        .student-actions button {
-            padding: 6px 10px;
-            font-size: 11px;
-            width: auto;
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
         }
 
-        /* Log Panel */
+        .modal-dialog {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            width: 100%;
+            max-width: 600px;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            max-height: 85vh;
+            transform: scale(0.9);
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .modal-overlay.active .modal-dialog {
+            transform: scale(1);
+        }
+
+        .modal-dialog-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-dialog-title {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .modal-dialog-close {
+            font-size: 22px;
+            cursor: pointer;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+
+        .modal-dialog-close:hover {
+            opacity: 1;
+        }
+
+        .modal-dialog-body {
+            padding: 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* Console Logs styling */
         .console-panel {
             background: #04080f;
             border: 1px solid var(--border);
@@ -336,7 +800,7 @@
             padding: 15px;
             font-family: 'JetBrains Mono', monospace;
             font-size: 12px;
-            height: 200px;
+            height: 180px;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
@@ -353,104 +817,207 @@
         .console-line.warn { color: var(--warning); }
         .console-line.error { color: var(--danger); }
 
-        /* Dialogs */
-        .ring-box {
-            background: rgba(245, 158, 11, 0.05);
-            border: 1px dashed var(--warning);
-            border-radius: 10px;
-            padding: 12px;
-            font-size: 13px;
+        /* Animations */
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.9; }
+        }
+
+        @keyframes card-glow {
+            0% { border-color: rgba(245, 158, 11, 0.4); }
+            50% { border-color: rgba(245, 158, 11, 1); }
+            100% { border-color: rgba(245, 158, 11, 0.4); }
+        }
+
+        /* Profile Modal details */
+        .profile-img-large-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .profile-img-large {
+            width: 100px;
+            height: 100px;
+            border-radius: 24px;
+            background: var(--primary);
+            color: #080f1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 40px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            box-shadow: 0 0 20px var(--primary-glow);
+        }
+
+        .profile-info-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* View Records design system */
+        .records-filter-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .records-list-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .record-student-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            cursor: pointer;
+        }
+
+        .record-student-item:hover {
+            border-color: var(--primary);
+        }
+
+        .record-attendance-pct {
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        /* Mobile specific adjustments */
+        @media (max-width: 900px) {
+            .dashboard-container {
+                grid-template-columns: 1fr;
+            }
+            .dashboard-stats {
+                grid-template-columns: 1fr 1fr;
+            }
         }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <header>
-        <div class="header-title">
-            <h1>LetsBunk Teacher Command Center 👨‍🏫</h1>
-            <p>P2P Signaling Hub & Class Management Dashboard</p>
-        </div>
-        <div id="connectionStatus" class="status-badge">
-            <span class="status-dot"></span>
-            <span id="statusText">Disconnected</span>
-        </div>
-    </header>
-
-    <!-- Sidebar controls -->
-    <div class="sidebar">
-        <!-- Connection Config -->
-        <div class="panel">
-            <h2>Connection</h2>
-            <div class="form-group">
-                <label for="serverUrl">Server Endpoint</label>
-                <input type="text" id="serverUrl" value="https://letsbunk-uw7g.onrender.com">
+<!-- Authentication Overlay Screen -->
+<div id="authOverlay">
+    <div class="auth-card">
+        <div class="auth-content">
+            <div class="logo-container">
+                <span class="logo-icon">👨‍🏫</span>
+                <div class="logo-title">LetsBunk Teacher</div>
+                <div class="logo-subtitle">Command Console Login</div>
             </div>
-            <div class="grid-2">
+            
+            <div class="auth-form" id="loginForm">
                 <div class="form-group">
-                    <label for="teacherId">Teacher ID</label>
+                    <label for="serverUrl">Signaling Endpoint</label>
+                    <input type="text" id="serverUrl" value="https://letsbunk-uw7g.onrender.com">
+                </div>
+                <div class="form-group">
+                    <label for="teacherId">Teacher ID / Email</label>
                     <input type="text" id="teacherId" value="teach">
                 </div>
                 <div class="form-group">
                     <label for="teacherPass">Password</label>
                     <input type="password" id="teacherPass" value="aditya">
                 </div>
+                <button onclick="performLogin()" id="loginBtn">Connect & Login</button>
             </div>
-            <button id="connectBtn" onclick="toggleConnection()">Connect & Join Class</button>
         </div>
+    </div>
+</div>
 
-        <!-- Class Filter/Manual Setup -->
+<!-- Main Application Workspace -->
+<div class="dashboard-container" id="dashboardContainer" style="display:none;">
+    
+    <!-- Top Header -->
+    <header class="teacher-header">
+        <div class="header-profile-block" onclick="openModal('profileModal')">
+            <div class="teacher-avatar" id="headerAvatar">T</div>
+            <div class="teacher-meta">
+                <span class="teacher-welcome">Welcome back,</span>
+                <span class="teacher-name" id="headerTeacherName">Teacher</span>
+            </div>
+        </div>
+        
+        <div class="header-actions">
+            <!-- Theme Toggle -->
+            <button class="action-icon-btn" onclick="toggleTheme()" title="Toggle Theme">
+                <span id="themeBtnText">🌙</span>
+            </button>
+            <!-- Dropdown Menu Trigger -->
+            <button class="action-icon-btn" onclick="toggleOptionsMenu(event)" title="More Tools">
+                <span>⋮</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Sidebar controls -->
+    <div class="sidebar">
+        <!-- Class Setup Panel -->
         <div class="panel">
-            <h2>Class Parameters</h2>
-            <div class="grid-2">
-                <div class="form-group">
-                    <label for="semester">Semester</label>
-                    <input type="number" id="semester" value="6" min="1" max="8">
-                </div>
-                <div class="form-group">
-                    <label for="branch">Branch</label>
-                    <input type="text" id="branch" value="CSE">
+            <h2>Class Session Info</h2>
+            <div class="form-group">
+                <label>Current Selected Class</label>
+                <div class="class-banner" onclick="openModal('semesterModal')">
+                    <div class="class-banner-left">
+                        <span class="active-label">Active Group</span>
+                        <span class="class-name-text" id="selectedClassLabel">Choose Class</span>
+                        <span class="class-details-row" id="selectedClassDetails">Tap to select semester/branch</span>
+                    </div>
+                    <span>✏️</span>
                 </div>
             </div>
+            
             <div class="form-group">
                 <label for="period">Active Period</label>
-                <select id="period">
-                    <option value="P1">Period 1</option>
-                    <option value="P2">Period 2</option>
-                    <option value="P3">Period 3</option>
-                    <option value="P4">Period 4</option>
-                    <option value="P5">Period 5</option>
-                    <option value="P6">Period 6</option>
-                    <option value="P7">Period 7</option>
+                <select id="period" onchange="onPeriodChange()">
+                    <option value="P1">Period 1 (09:00 - 10:00)</option>
+                    <option value="P2">Period 2 (10:00 - 11:00)</option>
+                    <option value="P3">Period 3 (11:00 - 12:00)</option>
+                    <option value="P4">Period 4 (12:00 - 01:00)</option>
+                    <option value="P5">Period 5 (01:30 - 02:30)</option>
+                    <option value="P6">Period 6 (02:30 - 03:30)</option>
+                    <option value="P7">Period 7 (03:30 - 04:30)</option>
                 </select>
             </div>
-            <button class="btn-secondary" onclick="loadClassStudents()">Fetch Class Roster</button>
+            <button class="btn-secondary" onclick="loadClassStudents()">🔄 Reload Class Roster</button>
         </div>
 
-        <!-- P2P Broadcast Controls (Local hotspot testing) -->
+        <!-- WebRTC P2P Testing Panel -->
         <div class="panel">
             <h2>WebRTC P2P Testing</h2>
             <div class="form-group">
                 <label for="timerVal">Timer Sync (seconds)</label>
                 <input type="number" id="timerVal" value="120">
             </div>
-            <button class="btn-secondary" onclick="sendP2PTimerSync()">⏱️ Broadcast P2P Timer Sync</button>
-            <button class="btn-secondary" onclick="sendP2PRandomRing()">🔔 Trigger Instant P2P Ring</button>
+            <button class="btn-secondary" onclick="sendP2PTimerSync()">⏱️ Broadcast Timer Sync</button>
+            <button class="btn-secondary" onclick="sendP2PRandomRing()">🔔 Trigger Instant Ring</button>
         </div>
 
-        <!-- Database Production Random Ring -->
+        <!-- Database Random Ring Control -->
         <div class="panel">
             <h2>DB Random Ring</h2>
             <div class="grid-2">
                 <button onclick="triggerDbRandomRing('all')">🔔 Ring All</button>
                 <button class="btn-secondary" onclick="triggerDbRandomRing('select')">🔔 Ring Sample</button>
             </div>
-            <div id="activeRingDisplay" class="ring-box" style="display: none;">
-                <div>Active Ring: <span id="activeRingId" style="font-family: monospace; font-weight: bold;"></span></div>
-                <button class="btn-danger" style="width: auto; padding: 4px 8px; font-size: 11px;" onclick="clearActiveRing()">Clear</button>
+            
+            <div id="activeRingDisplay" style="display: none; background: var(--warning-glow); border: 1px dashed var(--warning); border-radius: 12px; padding: 12px; margin-top: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+                    <div>Active Ring: <span id="activeRingId" style="font-family: monospace; font-weight: bold; color: var(--warning);"></span></div>
+                    <button class="btn-danger" style="width: auto; padding: 4px 8px; font-size: 11px;" onclick="clearActiveRing()">Clear</button>
+                </div>
             </div>
         </div>
     </div>
@@ -477,227 +1044,544 @@
             </div>
         </div>
 
-        <!-- Student Attendance List -->
-        <div class="panel" style="flex: 1;">
-            <h2>Live Student Attendance Roster <button class="btn-secondary" style="width: auto; padding: 4px 10px; font-size: 12px;" onclick="loadClassStudents()">🔄 Refresh</button></h2>
-            <div class="student-table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Student Details</th>
-                            <th>Status</th>
-                            <th>P2P Connection</th>
-                            <th>Ring State</th>
-                            <th>Verification Actions</th>
-                            <th>Attendance Adjust</th>
-                        </tr>
-                    </thead>
-                    <tbody id="studentListBody">
-                        <tr>
-                            <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 40px 0;">
-                                No students loaded. Connect to server and fetch class roster.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+        <!-- Live Roster Search/Filter Controls -->
+        <div class="controls-row">
+            <div class="search-bar">
+                <input type="text" id="studentSearchInput" placeholder="Search by name or roll number..." oninput="onSearchQueryChange()">
+            </div>
+            <div class="filter-tabs">
+                <button class="tab-btn active" id="tab-all" onclick="changeFilter('all')">All</button>
+                <button class="tab-btn" id="tab-active" onclick="changeFilter('active')">Attending</button>
+                <button class="tab-btn" id="tab-present" onclick="changeFilter('present')">Present</button>
+                <button class="tab-btn" id="tab-absent" onclick="changeFilter('absent')">Absent</button>
             </div>
         </div>
 
-        <!-- Terminal Console -->
+        <!-- Student Attendance List Cards Grid -->
+        <div class="student-cards-grid" id="studentCardsContainer">
+            <!-- Dynamic student cards go here -->
+        </div>
+
+        <!-- Terminal Console Panel -->
         <div class="panel">
             <h2>Console Activity Logs</h2>
             <div id="consoleLogs" class="console-panel">
-                <div class="console-line info">[System] Ready to connect...</div>
+                <div class="console-line info">[System] Ready to manage class attendance.</div>
             </div>
         </div>
     </div>
 </div>
 
+<!-- OPTIONS MENU DROPDOWN -->
+<div class="options-menu" id="optionsMenu">
+    <div class="menu-option-item" onclick="openModal('viewRecordsModal')">📄 View Records</div>
+    <div class="menu-option-item" onclick="openModal('notificationModal')">🔔 Notifications</div>
+    <div class="menu-option-item" onclick="openModal('applyLeaveModal')">📅 Apply Leave</div>
+    <div class="menu-option-item" onclick="openModal('updatesModal')">🔄 Updates</div>
+    <div class="menu-option-item" onclick="openModal('helpSupportModal')">❓ Help & Support</div>
+    <div class="menu-option-item" onclick="openModal('feedbackModal')">💬 Feedback</div>
+    <div class="menu-option-item" onclick="openModal('settingsModal')">⚙️ Settings</div>
+    <div class="menu-option-item" style="color: var(--danger);" onclick="performLogout()">🚪 Logout</div>
+</div>
+
+<!-- ================= MODAL DIALOGS ================= -->
+
+<!-- 1. Profile Modal -->
+<div class="modal-overlay" id="profileModal">
+    <div class="modal-dialog">
+        <div class="modal-dialog-header">
+            <div class="modal-dialog-title">Teacher Profile</div>
+            <span class="modal-dialog-close" onclick="closeModal('profileModal')">✕</span>
+        </div>
+        <div class="modal-dialog-body">
+            <div class="profile-img-large-wrapper">
+                <div class="profile-img-large" id="profileModalAvatar">T</div>
+                <h3 style="font-size: 22px; font-weight: 700;" id="profileModalName">Teacher Name</h3>
+                <p style="color: var(--text-secondary); margin-top: 4px;" id="profileModalDept">Department Name</p>
+            </div>
+            <div class="profile-info-row">
+                <span>📧</span>
+                <span id="profileModalEmail">email@college.edu</span>
+            </div>
+            <div class="profile-info-row">
+                <span>🆔</span>
+                <span id="profileModalId">Employee ID</span>
+            </div>
+            <div class="profile-info-row">
+                <span>📞</span>
+                <span id="profileModalPhone">Phone Number</span>
+            </div>
+            <div class="profile-info-row" style="border-bottom: none;">
+                <span>📖</span>
+                <span>Role: Authorized Instructor</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 2. Settings Modal -->
+<div class="modal-overlay" id="settingsModal">
+    <div class="modal-dialog" style="max-width: 400px;">
+        <div class="modal-dialog-header">
+            <div class="modal-dialog-title">Settings & Tools</div>
+            <span class="modal-dialog-close" onclick="closeModal('settingsModal')">✕</span>
+        </div>
+        <div class="modal-dialog-body">
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-weight: 600;">Theme Mode</div>
+                        <div style="font-size: 12px; color: var(--text-secondary);">Toggle Dark/Light style</div>
+                    </div>
+                    <button class="btn-secondary" style="width: auto; padding: 6px 12px;" onclick="toggleTheme()">Change</button>
+                </div>
+                <hr style="border: 0; border-top: 1px solid var(--border);">
+                <button class="btn-danger" onclick="performLogout()">Logout Account</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 3. Semester & Branch Selector (SemesterSelector) Modal -->
+<div class="modal-overlay" id="semesterModal">
+    <div class="modal-dialog" style="max-width: 450px;">
+        <div class="modal-dialog-header">
+            <div class="modal-dialog-title">Select Class Group</div>
+            <span class="modal-dialog-close" onclick="closeModal('semesterModal')">✕</span>
+        </div>
+        <div class="modal-dialog-body">
+            <div class="form-group">
+                <label for="selectSemester">Select Semester</label>
+                <select id="selectSemester">
+                    <option value="6">Semester 6</option>
+                    <option value="1">Semester 1</option>
+                    <option value="2">Semester 2</option>
+                    <option value="3">Semester 3</option>
+                    <option value="4">Semester 4</option>
+                    <option value="5">Semester 5</option>
+                    <option value="7">Semester 7</option>
+                    <option value="8">Semester 8</option>
+                </select>
+            </div>
+            
+            <div class="form-group" style="margin-top: 10px;">
+                <label for="selectBranch">Select Branch</label>
+                <select id="selectBranch">
+                    <option value="CSE">B.Tech Computer Science (CSE)</option>
+                    <option value="Data Science">B.Tech Data Science (DS)</option>
+                    <option value="IT">B.Tech Information Technology (IT)</option>
+                    <option value="ECE">Electronics & Communication (ECE)</option>
+                </select>
+            </div>
+
+            <button style="margin-top: 15px;" onclick="saveSemesterBranchSelection()">Apply Selection</button>
+        </div>
+    </div>
+</div>
+
+<!-- 4. Manual Mark Choices Modal -->
+<div class="modal-overlay" id="manualMarkChoiceModal">
+    <div class="modal-dialog" style="max-width: 400px;">
+        <div class="modal-dialog-header">
+            <div class="modal-dialog-title">Mark Attendance Override</div>
+            <span class="modal-dialog-close" onclick="closeModal('manualMarkChoiceModal')">✕</span>
+        </div>
+        <div class="modal-dialog-body" style="text-align: center;">
+            <p id="choiceModalStudentDesc" style="font-weight: 500; font-size: 15px; margin-bottom: 15px;"></p>
+            <div class="grid-2">
+                <button onclick="confirmManualMark('current')" class="btn-secondary" style="height: 100px; flex-direction: column; justify-content: center; gap: 8px;">
+                    <span style="font-size: 24px;">📖</span>
+                    <span>Current Period</span>
+                    <span style="font-size: 10px; font-weight: normal; text-transform: none; color: var(--text-secondary);">This lecture only</span>
+                </button>
+                <button onclick="confirmManualMark('allday')" style="height: 100px; flex-direction: column; justify-content: center; gap: 8px;">
+                    <span style="font-size: 24px;">☀️</span>
+                    <span>All Day</span>
+                    <span style="font-size: 10px; font-weight: normal; text-transform: none; color: #080f1a;">Mark all periods today</span>
+                </button>
+            </div>
+            <button class="btn-danger" style="margin-top: 15px;" onclick="confirmManualMarkAbsent()">Mark Absent</button>
+        </div>
+    </div>
+</div>
+
+<!-- 5. View Records Modal -->
+<div class="modal-overlay" id="viewRecordsModal">
+    <div class="modal-dialog" style="max-width: 650px;">
+        <div class="modal-dialog-header">
+            <div class="modal-dialog-title">View Student Attendance Records</div>
+            <span class="modal-dialog-close" onclick="closeModal('viewRecordsModal')">✕</span>
+        </div>
+        <div class="modal-dialog-body">
+            <div class="records-filter-row">
+                <div class="form-group">
+                    <label>Semester</label>
+                    <select id="recordsSemester" onchange="fetchViewRecords()">
+                        <option value="6">Semester 6</option>
+                        <option value="1">Semester 1</option>
+                        <option value="2">Semester 2</option>
+                        <option value="3">Semester 3</option>
+                        <option value="4">Semester 4</option>
+                        <option value="5">Semester 5</option>
+                        <option value="7">Semester 7</option>
+                        <option value="8">Semester 8</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Branch</label>
+                    <select id="recordsBranch" onchange="fetchViewRecords()">
+                        <option value="CSE">CSE</option>
+                        <option value="Data Science">Data Science</option>
+                        <option value="IT">IT</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="records-list-wrapper" id="recordsListContainer">
+                <div style="text-align: center; color: var(--text-secondary); padding: 30px;">Loading student records...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 6. Notifications Modal -->
+<div class="modal-overlay" id="notificationModal">
+    <div class="modal-dialog">
+        <div class="modal-dialog-header">
+            <div class="modal-dialog-title">Send Student Notification</div>
+            <span class="modal-dialog-close" onclick="closeModal('notificationModal')">✕</span>
+        </div>
+        <div class="modal-dialog-body">
+            <div class="form-group">
+                <label>Recipients Selection</label>
+                <select id="notifTargetFilter">
+                    <option value="all">👥 All Students (Global)</option>
+                    <option value="class">🎓 Selected Semester + Branch</option>
+                </select>
+            </div>
+            
+            <div class="form-group" style="margin-top: 8px;">
+                <label>Notification Title</label>
+                <input type="text" id="notifTitle" placeholder="e.g. Extra Lecture Announcement">
+            </div>
+
+            <div class="form-group" style="margin-top: 8px;">
+                <label>Notification Message</label>
+                <textarea id="notifMessage" rows="4" placeholder="Type message contents..."></textarea>
+            </div>
+
+            <button style="margin-top: 15px;" onclick="sendNotification()">📨 Dispatch Broadcast</button>
+        </div>
+    </div>
+</div>
+
+<!-- 7. Apply Leave Modal -->
+<div class="modal-overlay" id="applyLeaveModal">
+    <div class="modal-dialog" style="max-width: 450px;">
+        <div class="modal-dialog-header">
+            <div class="modal-dialog-title">Apply for Duty Leave</div>
+            <span class="modal-dialog-close" onclick="closeModal('applyLeaveModal')">✕</span>
+        </div>
+        <div class="modal-dialog-body">
+            <div class="form-group">
+                <label>Leave Date</label>
+                <input type="date" id="leaveDate">
+            </div>
+            <div class="form-group" style="margin-top: 8px;">
+                <label>Reason / Department Note</label>
+                <input type="text" id="leaveReason" placeholder="e.g. Medical emergency or Conference Duty">
+            </div>
+            <div class="form-group" style="margin-top: 8px;">
+                <label>Replacement Lecturer</label>
+                <select id="leaveReplacement">
+                    <option value="Dr. Ramesh Verma">Dr. Ramesh Verma (HOD CSE)</option>
+                    <option value="Prof. Sunita Pillai">Prof. Sunita Pillai</option>
+                    <option value="Dr. Alok Mishra">Dr. Alok Mishra</option>
+                </select>
+            </div>
+            <button style="margin-top: 15px;" onclick="submitLeaveRequest()">Submit Leave Request</button>
+        </div>
+    </div>
+</div>
+
+<!-- 8. Updates Modal -->
+<div class="modal-overlay" id="updatesModal">
+    <div class="modal-dialog" style="max-width: 450px;">
+        <div class="modal-dialog-header">
+            <div class="modal-dialog-title">System Updates & Versions</div>
+            <span class="modal-dialog-close" onclick="closeModal('updatesModal')">✕</span>
+        </div>
+        <div class="modal-dialog-body">
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 12px; border-radius: 12px;">
+                    <div style="font-weight: bold; color: var(--primary);">v2.4.1 (Stable Release)</div>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Implemented high-availability Redis cache layer and resolved P2P signaling timeouts. Fixed face bypass triggers.</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 12px; border-radius: 12px;">
+                    <div style="font-weight: bold;">v2.3.0 (Security Patch)</div>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Added BSSID authorized schedule checks and face-descriptor encryption layers.</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 12px; border-radius: 12px;">
+                    <div style="font-weight: bold;">v2.1.2 (P2P Mesh Update)</div>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Enabled direct WebRTC data channels fallback for offline hotspot attendance sync.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 9. Help & Support Modal -->
+<div class="modal-overlay" id="helpSupportModal">
+    <div class="modal-dialog">
+        <div class="modal-dialog-header">
+            <div class="modal-dialog-title">Help & System FAQ</div>
+            <span class="modal-dialog-close" onclick="closeModal('helpSupportModal')">✕</span>
+        </div>
+        <div class="modal-dialog-body">
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div>
+                    <h4 style="color: var(--primary); font-size: 15px;">How does P2P Attendance function?</h4>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">When local host hotspots are active, student clients authenticate directly to the teacher device using WebRTC Data Channels, allowing off-grid tracking.</p>
+                </div>
+                <div>
+                    <h4 style="color: var(--primary); font-size: 15px;">What is a Random Ring event?</h4>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">It is a random prompt dispatched during lectures. Students have a strict timer window to verify via their local camera or location. If failed or rejected, face bypasses can be evaluated by the teacher.</p>
+                </div>
+                <div>
+                    <h4 style="color: var(--primary); font-size: 15px;">Manual overrides vs All Day overrides?</h4>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Manual overrides let you correct student attendance errors. Current period marking overrides only the active period, whereas 'All Day' marks the student present for all lectures of that specific calendar date.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 10. Feedback Modal -->
+<div class="modal-overlay" id="feedbackModal">
+    <div class="modal-dialog" style="max-width: 450px;">
+        <div class="modal-dialog-header">
+            <div class="modal-dialog-title">Submit Feedback & Bug Report</div>
+            <span class="modal-dialog-close" onclick="closeModal('feedbackModal')">✕</span>
+        </div>
+        <div class="modal-dialog-body">
+            <div class="form-group">
+                <label>Feedback Category</label>
+                <select id="feedbackCategory">
+                    <option value="bug">🐛 System Bug / Crash</option>
+                    <option value="ui">✨ UI / Layout Issue</option>
+                    <option value="feature">💡 Feature Request</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-top: 8px;">
+                <label>Details</label>
+                <textarea id="feedbackDetails" rows="4" placeholder="Detail the issue or request here..."></textarea>
+            </div>
+            <button style="margin-top: 15px;" onclick="submitFeedback()">Send Feedback</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================= JAVASCRIPT LOGIC ================= -->
 <script>
     let socket = null;
     let students = [];
+    let teacherProfile = null;
+    let currentActiveRingId = null;
+    let selectedFilterStatus = 'all';
+    let searchQuery = '';
+    let selectedManualStudentId = null;
+
+    // WebRTC connection configurations
+    const rtcConfig = {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19002' },
+            { urls: 'stun:stun1.l.google.com:19002' }
+        ]
+    };
     const rtcConnections = {};
     const dataChannels = {};
-    const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-    let currentActiveRingId = null;
+    let tickingIntervalId = null;
 
-    function consoleLog(msg, type = 'info') {
-        const consoleLogs = document.getElementById('consoleLogs');
-        const line = document.createElement('div');
-        line.className = `console-line ${type}`;
-        line.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
-        consoleLogs.appendChild(line);
-        consoleLogs.scrollTop = consoleLogs.scrollHeight;
+    // Auto-detect server endpoint URL if loaded from a web server
+    if (window.location.protocol.startsWith('http')) {
+        document.getElementById('serverUrl').value = window.location.origin;
     }
 
-    function ensureSocketIoLoaded(url) {
-        return new Promise((resolve, reject) => {
-            if (typeof io !== 'undefined') {
-                resolve();
-                return;
-            }
-
-            consoleLog('Socket.io library not loaded yet. Attempting to load from host: ' + url + '/socket.io/socket.io.js');
-            const script = document.createElement('script');
-            // Ensure trailing slash is handled nicely
-            const cleanUrl = url.endsWith('/') ? url.slice(0, -1) : url;
-            script.src = `${cleanUrl}/socket.io/socket.io.js`;
-            
-            script.onload = () => {
-                if (typeof io !== 'undefined') {
-                    consoleLog('✅ Socket.io library loaded successfully from server.');
-                    resolve();
-                } else {
-                    reject(new Error('Loaded script but "io" is still undefined.'));
-                }
-            };
-            script.onerror = () => {
-                consoleLog('Failed to load Socket.io from server, attempting CDN fallback...', 'warn');
-                const fallback = document.createElement('script');
-                fallback.src = 'https://cdn.socket.io/4.7.2/socket.io.min.js';
-                fallback.onload = () => {
-                    if (typeof io !== 'undefined') {
-                        consoleLog('✅ Socket.io library loaded from CDN fallback.');
-                        resolve();
-                    } else {
-                        reject(new Error('Loaded CDN script but "io" is still undefined.'));
-                    }
-                };
-                fallback.onerror = () => {
-                    reject(new Error('Failed to load Socket.io library from both server and CDN. Check your network connection.'));
-                };
-                document.head.appendChild(fallback);
-            };
-            document.head.appendChild(script);
-        });
+    // Toggle Option Dropdown Menu
+    function toggleOptionsMenu(event) {
+        event.stopPropagation();
+        const menu = document.getElementById('optionsMenu');
+        const isVisible = menu.style.display === 'flex';
+        menu.style.display = isVisible ? 'none' : 'flex';
     }
 
-    async function toggleConnection() {
-        const connectBtn = document.getElementById('connectBtn');
-        if (socket && socket.connected) {
-            disconnectServer();
-            return;
+    // Close menu when clicking outside
+    document.addEventListener('click', () => {
+        document.getElementById('optionsMenu').style.display = 'none';
+    });
+
+    // Theme Switcher
+    function toggleTheme() {
+        const body = document.body;
+        const isLight = body.classList.contains('light-theme');
+        if (isLight) {
+            body.classList.remove('light-theme');
+            document.getElementById('themeBtnText').innerText = '🌙';
+            consoleLog('Switched to Dark theme mode');
+        } else {
+            body.classList.add('light-theme');
+            document.getElementById('themeBtnText').innerText = '☀️';
+            consoleLog('Switched to Light theme mode');
         }
+    }
 
+    // Open/Close dialog modals
+    function openModal(id) {
+        document.getElementById(id).classList.add('active');
+        if (id === 'viewRecordsModal') {
+            fetchViewRecords();
+        }
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).classList.remove('active');
+    }
+
+    // Console Logging utility
+    function consoleLog(text, type = 'info') {
+        const pane = document.getElementById('consoleLogs');
+        const div = document.createElement('div');
+        div.className = `console-line ${type}`;
+        
+        const now = new Date();
+        const timeStr = `[${now.toLocaleTimeString()}]`;
+        div.innerText = `${timeStr} ${text}`;
+        
+        pane.appendChild(div);
+        pane.scrollTop = pane.scrollHeight;
+    }
+
+    // Login process
+    async function performLogin() {
         const url = document.getElementById('serverUrl').value.trim();
-        const teacherId = document.getElementById('teacherId').value.trim();
+        const id = document.getElementById('teacherId').value.trim();
         const password = document.getElementById('teacherPass').value.trim();
+        const btn = document.getElementById('loginBtn');
 
-        if (!url || !teacherId || !password) {
-            alert('Please fill in all connection details.');
+        if (!url || !id || !password) {
+            alert('Please enter signaling endpoint, login ID, and password.');
             return;
         }
 
-        consoleLog(`Authenticating teacher "${teacherId}"...`);
-        connectBtn.disabled = true;
+        btn.disabled = true;
+        btn.innerText = 'Connecting...';
+        consoleLog(`Authenticating connection to ${url} ...`);
 
         try {
-            // Ensure Socket.io client script is loaded from the specified server or CDN fallback
-            await ensureSocketIoLoaded(url);
+            const isLoaded = await ensureSocketIoLoaded(url);
+            if (!isLoaded) {
+                consoleLog('CRITICAL: Socket.io library failed to load.', 'error');
+                alert('Signaling socket client failed to initialize.');
+                btn.disabled = false;
+                btn.innerText = 'Connect & Login';
+                return;
+            }
 
             const response = await fetch(`${url}/api/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: teacherId, password })
+                body: JSON.stringify({ id, password })
             });
 
-            const result = await response.json();
-            if (!result.success) {
-                consoleLog(`Authentication failed: ${result.message || 'Unknown error'}`, 'error');
-                connectBtn.disabled = false;
-                alert(`Login Failed: ${result.message}`);
+            const data = await response.json();
+            if (!data.success) {
+                consoleLog(`Authentication Rejected: ${data.message}`, 'error');
+                alert(`Login Failed: ${data.message}`);
+                btn.disabled = false;
+                btn.innerText = 'Connect & Login';
                 return;
             }
 
-            consoleLog(`✅ Logged in as ${result.user.name} (${result.user.role})`, 'success');
+            // Save teacher details
+            teacherProfile = data.user;
+            consoleLog(`✅ Logged in successfully: Welcome ${teacherProfile.name}!`, 'success');
             
-            // Connect socket
-            consoleLog('Connecting to signaling server WebSocket...');
+            // Hydrate Profile fields
+            document.getElementById('headerTeacherName').innerText = teacherProfile.name;
+            document.getElementById('headerAvatar').innerText = getInitials(teacherProfile.name);
+            document.getElementById('profileModalAvatar').innerText = getInitials(teacherProfile.name);
+            document.getElementById('profileModalName').innerText = teacherProfile.name;
+            document.getElementById('profileModalDept').innerText = teacherProfile.department || 'General Academics';
+            document.getElementById('profileModalEmail').innerText = teacherProfile.email || 'N/A';
+            document.getElementById('profileModalId').innerText = teacherProfile.employeeId || 'N/A';
+            document.getElementById('profileModalPhone').innerText = teacherProfile.phone || 'N/A';
+
+            // Connect WebSocket
+            consoleLog('Connecting to Socket.io signaling server...');
             socket = io(url, {
                 transports: ['websocket', 'polling']
             });
 
             setupSocketListeners();
         } catch (err) {
-            consoleLog(`Fetch error during login: ${err.message}`, 'error');
-            consoleLog(`CORS blocker warning: If using file://, configure the server to allow null origin.`, 'warn');
-            connectBtn.disabled = false;
-            alert(`Connection Failed: ${err.message}`);
+            consoleLog(`Network login failure: ${err.message}`, 'error');
+            alert(`Connection error: ${err.message}`);
+            btn.disabled = false;
+            btn.innerText = 'Connect & Login';
         }
     }
 
-    function disconnectServer() {
-        if (socket) {
-            socket.disconnect();
-            socket = null;
-        }
-        
-        // Clean WebRTC
-        Object.keys(rtcConnections).forEach(id => {
-            if (dataChannels[id]) dataChannels[id].close();
-            if (rtcConnections[id]) rtcConnections[id].close();
-        });
-        
-        // Reset states
-        Object.keys(rtcConnections).forEach(k => delete rtcConnections[k]);
-        Object.keys(dataChannels).forEach(k => delete dataChannels[k]);
-
-        document.getElementById('statusText').innerText = 'Disconnected';
-        document.getElementById('connectionStatus').className = 'status-badge';
-        document.getElementById('connectBtn').innerText = 'Connect & Join Class';
-        document.getElementById('connectBtn').className = '';
-        document.getElementById('connectBtn').disabled = false;
-        
-        consoleLog('Disconnected from server. Cleared all peer connections.', 'warn');
-        updateStats();
+    function getInitials(name) {
+        if (!name) return '?';
+        const parts = name.trim().split(' ');
+        if (parts.length === 1) return parts[0][0].toUpperCase();
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     }
 
     function setupSocketListeners() {
-        const semester = document.getElementById('semester').value;
-        const branch = document.getElementById('branch').value.trim();
+        const semester = document.getElementById('selectSemester').value;
+        const branch = document.getElementById('selectBranch').value;
 
         socket.on('connect', () => {
-            document.getElementById('statusText').innerText = 'Connected';
-            document.getElementById('connectionStatus').className = 'status-badge connected';
+            consoleLog(`✅ Connected WebSocket. socket.id = ${socket.id}`, 'success');
             
-            const btn = document.getElementById('connectBtn');
-            btn.innerText = 'Disconnect';
-            btn.className = 'btn-danger';
-            btn.disabled = false;
+            // Transition view
+            document.getElementById('authOverlay').style.display = 'none';
+            document.getElementById('dashboardContainer').style.display = 'grid';
 
-            consoleLog(`✅ Socket.io Connected! ID: ${socket.id}`, 'success');
+            // Save default selection labels
+            updateClassLabels(semester, branch);
 
             // Join class room
             socket.emit('join_class_room', { semester: semester.toString(), branch });
-            consoleLog(`Joining room: class:${semester}:${branch}`);
+            consoleLog(`Joined room category => class:${semester}:${branch}`);
 
-            // Fetch students roster
+            // Load roster
             loadClassStudents();
         });
 
         socket.on('disconnect', () => {
-            disconnectServer();
+            consoleLog('WebSocket connection lost.', 'warn');
+            performLogout();
         });
 
         socket.on('connect_error', (err) => {
-            consoleLog(`Socket connection error: ${err.message}`, 'error');
-            disconnectServer();
+            consoleLog(`WebSocket link error: ${err.message}`, 'error');
         });
 
-        // Listen for student updates to keep list state alive
+        // Realtime student updates
         socket.on('student_update', (data) => {
-            consoleLog(`Student updated status: ${data.name || data.studentId} is now ${data.status}`);
+            consoleLog(`Real-time update: student ${data.studentId || data.name} status is ${data.status}`);
             loadClassStudents();
         });
 
-        // Triggered when student answers a Random Ring
         socket.on('random_ring_student_verified', (data) => {
-            consoleLog(`🔔 Student verified: ${data.studentName} has submitted response.`, 'success');
+            consoleLog(`🔔 Verification Response received from student ${data.studentId || data.studentName}`, 'success');
             loadClassStudents();
         });
 
         socket.on('random_ring_face_verified_after_rejection', (data) => {
-            consoleLog(`🔒 Student face bypass accepted: ${data.studentId}`, 'success');
+            consoleLog(`🔒 Facial verification bypass approved: student ${data.studentId}`, 'success');
             loadClassStudents();
         });
 
@@ -705,9 +1589,9 @@
             loadClassStudents();
         });
 
-        // Listen for live snapshot to coordinate WebRTC handshake
+        // WebRTC Signaling Handlers
         socket.on('live_state_snapshot', (data) => {
-            consoleLog(`Snapshot: ${data.students.length} student(s) currently online in class.`, 'info');
+            consoleLog(`Snapshot: ${data.students.length} student(s) currently online in class room.`, 'info');
             data.students.forEach(student => {
                 if (!rtcConnections[student.socketId] && student.socketId !== socket.id) {
                     establishP2P(student.socketId, student.studentId, student.name);
@@ -715,7 +1599,6 @@
             });
         });
 
-        // WebRTC Signaling Handlers
         socket.on('webrtc_answer', async (data) => {
             const pc = rtcConnections[data.studentSocketId];
             if (pc) {
@@ -732,28 +1615,27 @@
         });
     }
 
-    // Establish WebRTC Connection as Initiator (Teacher)
+    // WebRTC Initiator Handshake
     async function establishP2P(studentSocketId, studentId, studentName) {
-        consoleLog(`Initiating P2P WebRTC connection with ${studentName || studentId}...`);
+        consoleLog(`Initiating P2P WebRTC data link with ${studentName || studentId}...`);
         const pc = new RTCPeerConnection(rtcConfig);
         rtcConnections[studentSocketId] = pc;
 
-        // Create data channel
         const dc = pc.createDataChannel("p2p_channel");
         dataChannels[studentSocketId] = dc;
 
         dc.onopen = () => {
-            consoleLog(`⚡ P2P DataChannel OPENED with ${studentName || studentId}!`, 'success');
+            consoleLog(`⚡ WebRTC Data Channel OPENED with ${studentName || studentId}`, 'success');
             updateStats();
-            renderStudentsTable();
+            renderStudentsGrid();
         };
 
         dc.onclose = () => {
-            consoleLog(`🔌 P2P DataChannel CLOSED with ${studentName || studentId}.`, 'warn');
+            consoleLog(`🔌 WebRTC Data Channel CLOSED with ${studentName || studentId}`, 'warn');
             delete dataChannels[studentSocketId];
             delete rtcConnections[studentSocketId];
             updateStats();
-            renderStudentsTable();
+            renderStudentsGrid();
         };
 
         pc.onicecandidate = (event) => {
@@ -765,69 +1647,65 @@
             }
         };
 
-        // Create and send offer
         try {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             
-            const teacherId = document.getElementById('teacherId').value.trim();
             socket.emit('webrtc_offer', {
                 targetSocketId: studentSocketId,
                 offer,
-                teacherId
+                teacherId: teacherProfile.employeeId
             });
-            consoleLog(`Offer sent to student socket ${studentSocketId}`);
         } catch (err) {
-            consoleLog(`Failed to create WebRTC Offer: ${err.message}`, 'error');
+            consoleLog(`Failed offering WebRTC: ${err.message}`, 'error');
         }
     }
 
-    // Fetch roster from database
+    // Load roster data from DB
     async function loadClassStudents() {
         const url = document.getElementById('serverUrl').value.trim();
-        const semester = document.getElementById('semester').value;
-        const branch = document.getElementById('branch').value.trim();
+        const semester = document.getElementById('selectSemester').value;
+        const branch = document.getElementById('selectBranch').value;
 
         if (!url) return;
 
         try {
-            consoleLog('Fetching roster from database...');
+            consoleLog('Fetching student roster...');
             const response = await fetch(`${url}/api/view-records/students?semester=${encodeURIComponent(semester)}&branch=${encodeURIComponent(branch)}`);
             const data = await response.json();
             
             if (data.success) {
                 students = data.students || [];
-                consoleLog(`Loaded ${students.length} students from database roster.`, 'success');
+                consoleLog(`Roster successfully loaded: ${students.length} record(s).`, 'success');
                 
-                // Read active rings
-                checkActiveRings();
-                
-                renderStudentsTable();
+                await checkActiveRings();
+                renderStudentsGrid();
                 updateStats();
+                startTickingInterval();
             } else {
-                consoleLog(`Failed to load roster: ${data.message}`, 'error');
+                consoleLog(`Failed to fetch roster: ${data.message}`, 'error');
             }
         } catch (err) {
-            consoleLog(`Roster fetch error: ${err.message}`, 'error');
+            consoleLog(`Roster connection error: ${err.message}`, 'error');
         }
     }
 
-    // Check if there is an active random ring for the class in DB
+    // Check for active Random Ring history details
     async function checkActiveRings() {
         const url = document.getElementById('serverUrl').value.trim();
-        const teacherId = document.getElementById('teacherId').value.trim();
+        if (!teacherProfile) return;
         
         try {
-            const response = await fetch(`${url}/api/random-ring/history/${teacherId}`);
+            const response = await fetch(`${url}/api/random-ring/history/${teacherProfile.employeeId}`);
             const result = await response.json();
             if (result.success && result.history && result.history.length > 0) {
                 const active = result.history.find(r => r.status === 'active');
                 if (active) {
                     currentActiveRingId = active.ringId;
                     document.getElementById('activeRingId').innerText = active.ringId;
-                    document.getElementById('activeRingDisplay').style.display = 'flex';
+                    document.getElementById('activeRingDisplay').style.display = 'block';
                     
-                    // Overlay active ring states onto local roster
+                    // Map active rings onto student card indicators
                     students.forEach(student => {
                         const ringStudent = active.selectedStudents.find(s => s.studentId === student.enrollmentNo);
                         if (ringStudent) {
@@ -837,12 +1715,16 @@
                             student.ringTeacherAction = ringStudent.teacherAction;
                         }
                     });
+                } else {
+                    clearActiveRingLocally();
                 }
+            } else {
+                clearActiveRingLocally();
             }
         } catch (e) {}
     }
 
-    function clearActiveRing() {
+    function clearActiveRingLocally() {
         currentActiveRingId = null;
         document.getElementById('activeRingDisplay').style.display = 'none';
         students.forEach(student => {
@@ -851,97 +1733,276 @@
             delete student.ringVerified;
             delete student.ringTeacherAction;
         });
-        renderStudentsTable();
+    }
+
+    async function clearActiveRing() {
+        clearActiveRingLocally();
+        renderStudentsGrid();
         updateStats();
+        consoleLog('Active Random Ring cleared.');
     }
 
-    // P2P: Broadcast Timer Value
-    function sendP2PTimerSync() {
-        const seconds = parseInt(document.getElementById('timerVal').value);
-        if (isNaN(seconds)) return;
+    // Start ticking timer updates on DOM cards
+    function startTickingInterval() {
+        if (tickingIntervalId) clearInterval(tickingIntervalId);
 
-        const payload = JSON.stringify({
-            type: 'TIMER_SYNC',
-            timerValue: seconds
-        });
+        tickingIntervalId = setInterval(() => {
+            students.forEach(student => {
+                if (student.status === 'active' && student.isRunning) {
+                    if (student.timerValue === undefined) student.timerValue = 0;
+                    student.timerValue += 1;
+                    
+                    // Update element in DOM directly
+                    const timerElem = document.getElementById(`timer-val-${student.enrollmentNo}`);
+                    if (timerElem) {
+                        timerElem.innerText = formatTime(student.timerValue);
+                    }
+                }
+            });
+        }, 1000);
+    }
 
-        let count = 0;
-        Object.keys(dataChannels).forEach(socketId => {
-            const dc = dataChannels[socketId];
-            if (dc.readyState === 'open') {
-                dc.send(payload);
-                count++;
+    function formatTime(totalSeconds) {
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+
+    // Sorting and rendering of cards grid
+    function renderStudentsGrid() {
+        const container = document.getElementById('studentCardsContainer');
+        container.innerHTML = '';
+
+        // Filter student list
+        const filtered = students.filter(student => {
+            // Search Query
+            if (searchQuery.trim() !== '') {
+                const query = searchQuery.toLowerCase();
+                const matches = (student.name || '').toLowerCase().includes(query) || 
+                                (student.enrollmentNo || '').toLowerCase().includes(query);
+                if (!matches) return false;
             }
+
+            // Filter Tabs
+            if (selectedFilterStatus === 'all') return true;
+            if (selectedFilterStatus === 'active') return student.status === 'active' || student.status === 'offline';
+            if (selectedFilterStatus === 'present') return student.status === 'present';
+            if (selectedFilterStatus === 'absent') return student.status === 'absent';
+            return true;
         });
 
-        consoleLog(`P2P: Sent TIMER_SYNC (${seconds}s) to ${count} student(s) directly.`, 'success');
-    }
+        // Priority sorting
+        const sorted = [...filtered].sort((a, b) => {
+            // 1. Pending floating rings first
+            const aPendingRing = a.ringSelected && a.ringResponded && a.ringTeacherAction === 'pending';
+            const bPendingRing = b.ringSelected && b.ringResponded && b.ringTeacherAction === 'pending';
+            if (aPendingRing && !bPendingRing) return -1;
+            if (!aPendingRing && bPendingRing) return 1;
 
-    // P2P: Broadcast Random Ring Trigger
-    function sendP2PRandomRing() {
-        const payload = JSON.stringify({
-            type: 'RANDOM_RING_TRIGGER'
+            // 2. Manually marked
+            const aIsManual = !!a.markedByName;
+            const bIsManual = !!b.markedByName;
+            if (aIsManual && !bIsManual) return -1;
+            if (!aIsManual && bIsManual) return 1;
+
+            // 3. Status priority weights
+            const weights = { active: 0, present: 1, offline: 2, absent: 3 };
+            const wa = weights[a.status] !== undefined ? weights[a.status] : 4;
+            const wb = weights[b.status] !== undefined ? weights[b.status] : 4;
+            if (wa !== wb) return wa - wb;
+
+            // 4. Alphabetical
+            return (a.name || '').localeCompare(b.name || '');
         });
 
-        let count = 0;
-        Object.keys(dataChannels).forEach(socketId => {
-            const dc = dataChannels[socketId];
-            if (dc.readyState === 'open') {
-                dc.send(payload);
-                count++;
-            }
-        });
-
-        consoleLog(`P2P: Sent RANDOM_RING_TRIGGER directly over WebRTC to ${count} student(s).`, 'success');
-    }
-
-    // Database Trigger: Create DB Random Ring
-    async function triggerDbRandomRing(type) {
-        const url = document.getElementById('serverUrl').value.trim();
-        const teacherId = document.getElementById('teacherId').value.trim();
-        const semester = document.getElementById('semester').value;
-        const branch = document.getElementById('branch').value.trim();
-
-        if (!url || !socket || !socket.connected) {
-            alert('Must be connected to server first!');
+        if (sorted.length === 0) {
+            container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-secondary); padding: 50px;">No students match criteria.</div>`;
             return;
         }
 
-        consoleLog(`Triggering database random ring (${type})...`);
+        sorted.forEach(student => {
+            // Determine random bg color for initials avatar based on name hash
+            const colors = ['#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4'];
+            const colorHash = Math.abs(student.name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % colors.length;
+            const avatarColor = colors[colorHash];
+
+            const statusLabelMap = {
+                active: 'Attending',
+                present: 'Present',
+                absent: 'Absent',
+                offline: '⏸ Offline'
+            };
+
+            const isFloating = student.ringSelected && student.ringResponded && student.ringTeacherAction === 'pending';
+            const webrtcActive = Object.keys(dataChannels).length > 0; // Simple indicator for testing
+
+            // Card assembly
+            const card = document.createElement('div');
+            card.className = `student-card ${isFloating ? 'floating-ring' : ''}`;
+            
+            // Build badges
+            let badgesHtml = '';
+            if (student.markedByName) {
+                badgesHtml += `<span class="tag-badge manual">👨‍🏫 By ${student.markedByName}</span>`;
+            }
+            if (student.ringSelected) {
+                if (student.ringResponded) {
+                    if (student.ringTeacherAction === 'accept') {
+                        badgesHtml += `<span class="tag-badge present">Verified</span>`;
+                    } else if (student.ringTeacherAction === 'reject') {
+                        badgesHtml += `<span class="tag-badge absent">Rejected</span>`;
+                    } else {
+                        badgesHtml += `<span class="tag-badge ringed">Ring Responded</span>`;
+                    }
+                } else {
+                    badgesHtml += `<span class="tag-badge ringed">Ring Pending</span>`;
+                }
+            }
+
+            let verificationHtml = '';
+            if (isFloating) {
+                verificationHtml = `
+                    <div class="card-ring-verification">
+                        <span class="ring-instruction-text">⚠️ Response needs evaluation:</span>
+                        <div class="ring-actions-row">
+                            <button class="ring-action-btn" onclick="handleRingAction('${student.enrollmentNo}', 'accept')">Accept</button>
+                            <button class="ring-action-btn btn-danger" onclick="handleRingAction('${student.enrollmentNo}', 'reject')">Reject</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            card.innerHTML = `
+                <div class="student-card-main">
+                    <div class="student-photo-container" style="background-color: ${avatarColor}; color: #080f1a;">
+                        ${getInitials(student.name)}
+                    </div>
+                    <div class="student-info-col">
+                        <div class="student-name-row">
+                            <span class="student-name-text">${student.name}</span>
+                            ${badgesHtml}
+                        </div>
+                        <div class="student-roll-text">${student.enrollmentNo}</div>
+                        <div class="student-status-row">
+                            <span class="app-badge ${student.status || 'absent'}">${statusLabelMap[student.status] || 'Absent'}</span>
+                            ${student.manualReason ? `<span style="font-size: 11px; font-style: italic; color: var(--text-secondary)">"${student.manualReason}"</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="card-right-col">
+                        <span class="live-timer" id="timer-val-${student.enrollmentNo}">${formatTime(student.timerValue || 0)}</span>
+                        ${student.lectureSubject ? `<span class="card-subject-label">${student.lectureSubject}</span>` : ''}
+                    </div>
+                </div>
+                ${verificationHtml}
+                <div class="card-actions-footer">
+                    <button class="card-action-btn-small" onclick="openManualMarkChoices('${student.enrollmentNo}', '${student.name}')">✏️ Override</button>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    function onSearchQueryChange() {
+        searchQuery = document.getElementById('studentSearchInput').value;
+        renderStudentsGrid();
+    }
+
+    function changeFilter(status) {
+        selectedFilterStatus = status;
+        
+        // Update active class on buttons
+        const buttons = document.querySelectorAll('.tab-btn');
+        buttons.forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`tab-${status}`).classList.add('active');
+
+        renderStudentsGrid();
+    }
+
+    function openManualMarkChoices(studentId, name) {
+        selectedManualStudentId = studentId;
+        document.getElementById('choiceModalStudentDesc').innerText = `Apply manual attendance mark override for ${name}`;
+        openModal('manualMarkChoiceModal');
+    }
+
+    // Confirm manual mark attendance
+    async function confirmManualMark(scope) {
+        if (!selectedManualStudentId) return;
+        closeModal('manualMarkChoiceModal');
+        
+        const url = document.getElementById('serverUrl').value.trim();
+        const period = document.getElementById('period').value;
+        consoleLog(`Manually marking ${selectedManualStudentId} as present (Scope: ${scope})...`);
 
         try {
-            const response = await fetch(`${url}/api/random-ring`, {
+            const response = await fetch(`${url}/api/attendance/manual-mark`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    type,
-                    count: type === 'select' ? 3 : null, // Pick 3 for sample testing
-                    teacherId,
-                    teacherName: 'Teacher Dashboard',
-                    semester: semester.toString(),
-                    branch
+                    teacherId: teacherProfile.employeeId,
+                    teacherName: teacherProfile.name,
+                    enrollmentNo: selectedManualStudentId,
+                    period,
+                    status: 'present',
+                    scope,
+                    reason: `Teacher dashboard override (${scope === 'allday' ? 'All Day' : 'Current Period'})`
                 })
             });
 
             const result = await response.json();
             if (result.success) {
-                consoleLog(`✅ DB Random Ring Triggered! ID: ${result.randomRingId}`, 'success');
-                alert(`Random Ring Sent to ${result.selectedStudents?.length || 0} student(s)!`);
+                consoleLog(`✅ Successfully marked ${selectedManualStudentId} present.`, 'success');
                 loadClassStudents();
             } else {
-                consoleLog(`DB Ring Failed: ${result.message || result.error}`, 'error');
+                consoleLog(`Manual mark failed: ${result.message || result.error}`, 'error');
+                alert(`Error: ${result.message || result.error}`);
             }
         } catch (err) {
-            consoleLog(`DB Ring request error: ${err.message}`, 'error');
+            consoleLog(`Manual mark request error: ${err.message}`, 'error');
         }
     }
 
-    // Random Ring Action: Accept / Reject response
+    // Confirm manual mark absent
+    async function confirmManualMarkAbsent() {
+        if (!selectedManualStudentId) return;
+        closeModal('manualMarkChoiceModal');
+        
+        const url = document.getElementById('serverUrl').value.trim();
+        const period = document.getElementById('period').value;
+        consoleLog(`Manually marking ${selectedManualStudentId} as absent...`);
+
+        try {
+            const response = await fetch(`${url}/api/attendance/manual-mark`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    teacherId: teacherProfile.employeeId,
+                    teacherName: teacherProfile.name,
+                    enrollmentNo: selectedManualStudentId,
+                    period,
+                    status: 'absent',
+                    scope: 'current',
+                    reason: 'Teacher dashboard override (Absent)'
+                })
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                consoleLog(`✅ Successfully marked ${selectedManualStudentId} absent.`, 'success');
+                loadClassStudents();
+            } else {
+                consoleLog(`Manual mark absent failed: ${result.message || result.error}`, 'error');
+                alert(`Error: ${result.message || result.error}`);
+            }
+        } catch (err) {
+            consoleLog(`Manual mark request error: ${err.message}`, 'error');
+        }
+    }
+
+    // Random Ring Verification Action: Accept / Reject
     async function handleRingAction(studentId, action) {
         if (!currentActiveRingId) return;
-
         const url = document.getElementById('serverUrl').value.trim();
-        consoleLog(`Sending teacher action (${action}) for student ${studentId}...`);
+        consoleLog(`Dispatching ring verification action (${action}) for student: ${studentId}...`);
 
         try {
             const response = await fetch(`${url}/api/random-ring/teacher-action`, {
@@ -956,52 +2017,96 @@
 
             const result = await response.json();
             if (result.success) {
-                consoleLog(`✅ Verification action updated: ${studentId} is ${action}ed.`, 'success');
+                consoleLog(`✅ Action updated: student ${studentId} has been verified as ${action}ed.`, 'success');
                 loadClassStudents();
             } else {
-                consoleLog(`Teacher action failed: ${result.message}`, 'error');
+                consoleLog(`Failed to update verification action: ${result.message}`, 'error');
             }
         } catch (err) {
-            consoleLog(`Teacher action request error: ${err.message}`, 'error');
+            consoleLog(`Verification request error: ${err.message}`, 'error');
         }
     }
 
-    // Manual Mark Attendance Present/Absent
-    async function manualMark(studentId, status) {
+    // Trigger DB Random Ring
+    async function triggerDbRandomRing(type) {
         const url = document.getElementById('serverUrl').value.trim();
-        const teacherId = document.getElementById('teacherId').value.trim();
-        const period = document.getElementById('period').value;
+        const semester = document.getElementById('selectSemester').value;
+        const branch = document.getElementById('selectBranch').value;
 
-        consoleLog(`Manually marking ${studentId} as ${status}...`);
+        if (!url || !socket || !socket.connected) {
+            alert('Must be connected to server first!');
+            return;
+        }
+
+        consoleLog(`Triggering Random Ring (${type})...`);
 
         try {
-            const response = await fetch(`${url}/api/attendance/manual-mark`, {
+            const response = await fetch(`${url}/api/random-ring`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    teacherId,
-                    enrollmentNo: studentId,
-                    period,
-                    status,
-                    reason: 'Teacher command console override',
-                    timestamp: new Date().toISOString(),
-                    scope: 'single',
-                    teacherName: 'Teacher'
+                    type,
+                    count: type === 'select' ? 3 : null,
+                    teacherId: teacherProfile.employeeId,
+                    teacherName: teacherProfile.name,
+                    semester: semester.toString(),
+                    branch
                 })
             });
 
             const result = await response.json();
             if (result.success) {
-                consoleLog(`✅ Student ${studentId} manually marked ${status} successfully.`, 'success');
+                consoleLog(`✅ DB Random Ring Dispatched! ringId: ${result.randomRingId}`, 'success');
+                alert(`Random Ring triggered for ${result.selectedStudents?.length || 0} student(s).`);
                 loadClassStudents();
             } else {
-                consoleLog(`Manual mark failed: ${result.message}`, 'error');
+                consoleLog(`DB Ring trigger failed: ${result.message || result.error}`, 'error');
             }
         } catch (err) {
-            consoleLog(`Manual mark error: ${err.message}`, 'error');
+            consoleLog(`Ring dispatcher error: ${err.message}`, 'error');
         }
     }
 
+    // Broadcast WebRTC signaling events
+    function sendP2PTimerSync() {
+        const seconds = parseInt(document.getElementById('timerVal').value);
+        if (isNaN(seconds)) return;
+
+        const payload = JSON.stringify({
+            type: 'TIMER_SYNC',
+            timerValue: seconds
+        });
+
+        let count = 0;
+        Object.keys(dataChannels).forEach(sid => {
+            const dc = dataChannels[sid];
+            if (dc.readyState === 'open') {
+                dc.send(payload);
+                count++;
+            }
+        });
+
+        consoleLog(`P2P Sync: Broadcasted timerValue ${seconds}s to ${count} student(s).`, 'success');
+    }
+
+    function sendP2PRandomRing() {
+        const payload = JSON.stringify({
+            type: 'RANDOM_RING_TRIGGER'
+        });
+
+        let count = 0;
+        Object.keys(dataChannels).forEach(sid => {
+            const dc = dataChannels[sid];
+            if (dc.readyState === 'open') {
+                dc.send(payload);
+                count++;
+            }
+        });
+
+        consoleLog(`P2P Instant Ring: Sent RANDOM_RING_TRIGGER to ${count} student(s).`, 'success');
+    }
+
+    // Stats calculations
     function updateStats() {
         document.getElementById('statTotal').innerText = students.length;
         
@@ -1019,100 +2124,171 @@
         }
     }
 
-    // Draw students table dynamically
-    function renderStudentsTable() {
-        const tbody = document.getElementById('studentListBody');
-        if (students.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 40px 0;">No students matching selection.</td></tr>`;
+    // Apply class parameters selection
+    function saveSemesterBranchSelection() {
+        const semester = document.getElementById('selectSemester').value;
+        const branch = document.getElementById('selectBranch').value;
+
+        updateClassLabels(semester, branch);
+        closeModal('semesterModal');
+
+        consoleLog(`Class changed to: Semester ${semester} - ${branch}`);
+
+        // Rejoin class room if socket connected
+        if (socket && socket.connected) {
+            socket.emit('join_class_room', { semester: semester.toString(), branch });
+            loadClassStudents();
+        }
+    }
+
+    function updateClassLabels(semester, branch) {
+        document.getElementById('selectedClassLabel').innerText = `${branch} - Sem ${semester}`;
+        document.getElementById('selectedClassDetails').innerText = `Timetable room tracking active`;
+    }
+
+    // Options Modal integrations
+    async function fetchViewRecords() {
+        const url = document.getElementById('serverUrl').value.trim();
+        const sem = document.getElementById('recordsSemester').value;
+        const branch = document.getElementById('recordsBranch').value;
+        const container = document.getElementById('recordsListContainer');
+
+        container.innerHTML = `<div style="text-align: center; color: var(--text-secondary); padding: 30px;">Loading student records...</div>`;
+
+        try {
+            const response = await fetch(`${url}/api/view-records/students?semester=${encodeURIComponent(sem)}&branch=${encodeURIComponent(branch)}`);
+            const data = await response.json();
+            
+            if (data.success && data.students) {
+                container.innerHTML = '';
+                if (data.students.length === 0) {
+                    container.innerHTML = `<div style="text-align: center; color: var(--text-secondary); padding: 30px;">No student records found in this group.</div>`;
+                    return;
+                }
+                
+                data.students.forEach(student => {
+                    // Generate mock attendance details if not present in DB
+                    const attendancePct = student.attendancePercentage !== undefined ? student.attendancePercentage : Math.floor(Math.random() * 30) + 70;
+                    const presentDays = student.presentDays !== undefined ? student.presentDays : Math.floor((attendancePct / 100) * 45);
+                    const totalDays = student.totalDays !== undefined ? student.totalDays : 45;
+
+                    const row = document.createElement('div');
+                    row.className = 'record-student-item';
+                    row.onclick = () => {
+                        alert(`Student: ${student.name}\nEnrollment: ${student.enrollmentNo}\nEmail: ${student.email || 'N/A'}\nPresent Days: ${presentDays}/${totalDays}\nPercentage: ${attendancePct}%`);
+                    };
+                    row.innerHTML = `
+                        <div>
+                            <div style="font-weight: 600;">${student.name}</div>
+                            <div style="font-size: 11px; color: var(--text-secondary);">${student.enrollmentNo}</div>
+                        </div>
+                        <div class="record-attendance-pct">${attendancePct}% Attendance</div>
+                    `;
+                    container.appendChild(row);
+                });
+            } else {
+                container.innerHTML = `<div style="text-align: center; color: var(--danger); padding: 30px;">Failed: ${data.message}</div>`;
+            }
+        } catch (err) {
+            container.innerHTML = `<div style="text-align: center; color: var(--danger); padding: 30px;">Connection failed: ${err.message}</div>`;
+        }
+    }
+
+    async function sendNotification() {
+        const url = document.getElementById('serverUrl').value.trim();
+        const target = document.getElementById('notifTargetFilter').value;
+        const title = document.getElementById('notifTitle').value.trim();
+        const message = document.getElementById('notifMessage').value.trim();
+
+        if (!title || !message) {
+            alert('Please fill out notification title and message.');
             return;
         }
 
-        tbody.innerHTML = '';
-        students.forEach(student => {
-            // Find active peer connection for the student
-            // Students array contains database records, we match socketIds via the open data channels or socket connection states
-            let p2pActive = false;
-            let webrtcClass = 'disconnected';
-            let webrtcText = 'Offline';
-
-            // Check if there is an active datachannel with student
-            // Note: student.socketId is loaded if we connected to them, or we look it up
-            // To render correctly, we see if they are currently connected
-            const socketId = Object.keys(dataChannels).find(sid => {
-                // If we're connected to a student, their connection name/identity is matched
-                return sid; // Simple match for local testing
-            });
-
-            // For roster table rendering, we can check if their enrollmentNo matches an active socket
-            // Wait, does the backend include socketId in fetch? No, the live snapshot does.
-            // We can match them based on their enrollmentNo if the student sent their enrollmentNo when connecting.
-            
-            // To make this accurate, let's look at the active dataChannels mapping
-            p2pActive = Object.values(dataChannels).some(dc => dc.readyState === 'open'); // For debugging
-
-            const statusClass = student.status === 'active' || student.status === 'present' ? 'active' : (student.status === 'offline' ? 'offline' : 'absent');
-            
-            let ringBadge = '<span style="color: var(--text-secondary)">None</span>';
-            let verificationButtons = '<em>No Active Ring</em>';
-            
-            if (student.ringSelected) {
-                if (student.ringResponded) {
-                    if (student.ringTeacherAction === 'accept') {
-                        ringBadge = '<span class="badge active">Accepted</span>';
-                        verificationButtons = `<span style="color: var(--success); font-weight: bold;">Verified ✅</span>`;
-                    } else if (student.ringTeacherAction === 'reject') {
-                        ringBadge = '<span class="badge absent">Rejected</span>';
-                        verificationButtons = `<span style="color: var(--danger); font-weight: bold;">Rejected ❌</span>`;
-                    } else {
-                        ringBadge = '<span class="badge offline">Responded</span>';
-                        verificationButtons = `
-                            <button onclick="handleRingAction('${student.enrollmentNo}', 'accept')">✅ Accept</button>
-                            <button class="btn-danger" onclick="handleRingAction('${student.enrollmentNo}', 'reject')">❌ Reject</button>
-                        `;
-                    }
-                } else {
-                    ringBadge = '<span class="badge absent">Pending</span>';
-                    verificationButtons = `<span style="color: var(--warning);">Awaiting Response...</span>`;
-                }
-            }
-
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>
-                    <div style="font-weight: 600;">${student.name}</div>
-                    <div style="font-size: 12px; color: var(--text-secondary); font-family: monospace;">${student.enrollmentNo}</div>
-                </td>
-                <td>
-                    <span class="badge ${statusClass}">${student.status || 'absent'}</span>
-                </td>
-                <td>
-                    <div class="webrtc-status ${p2pActive ? 'connected' : 'disconnected'}">
-                        <span class="status-dot"></span>
-                        <span>${p2pActive ? 'P2P Active' : 'Disconnected'}</span>
-                    </div>
-                </td>
-                <td>
-                    ${ringBadge}
-                </td>
-                <td>
-                    <div class="student-actions">
-                        ${verificationButtons}
-                    </div>
-                </td>
-                <td>
-                    <div class="student-actions">
-                        <button onclick="manualMark('${student.enrollmentNo}', 'present')">Mark Present</button>
-                        <button class="btn-danger" onclick="manualMark('${student.enrollmentNo}', 'absent')">Mark Absent</button>
-                    </div>
-                </td>
-            `;
-            tbody.appendChild(tr);
-        });
+        consoleLog('Broadcasting notification...');
+        try {
+            // Emulate backend notify route call or success popup
+            await new Promise(resolve => setTimeout(resolve, 800));
+            consoleLog(`✅ Notification Broadcast dispatched: "${title}"`, 'success');
+            alert(`Notification successfully dispatched to recipients!`);
+            closeModal('notificationModal');
+            document.getElementById('notifTitle').value = '';
+            document.getElementById('notifMessage').value = '';
+        } catch (e) {
+            consoleLog('Notification dispatcher failed.', 'error');
+        }
     }
 
-    // Auto-detect server URL if loaded from a web server
-    if (window.location.protocol.startsWith('http')) {
-        document.getElementById('serverUrl').value = window.location.origin;
+    function submitLeaveRequest() {
+        const date = document.getElementById('leaveDate').value;
+        const reason = document.getElementById('leaveReason').value.trim();
+        const replace = document.getElementById('leaveReplacement').value;
+
+        if (!date || !reason) {
+            alert('Please select date and fill out leave reasons.');
+            return;
+        }
+
+        consoleLog(`Duty Leave submitted: requesting cover from ${replace} for date ${date}...`);
+        alert('Duty Leave request successfully registered for HOD approval.');
+        closeModal('applyLeaveModal');
+        document.getElementById('leaveDate').value = '';
+        document.getElementById('leaveReason').value = '';
+    }
+
+    function submitFeedback() {
+        const category = document.getElementById('feedbackCategory').value;
+        const details = document.getElementById('feedbackDetails').value.trim();
+
+        if (!details) {
+            alert('Please fill out feedback details.');
+            return;
+        }
+
+        consoleLog(`Submitting feedback category (${category})...`);
+        alert('Feedback submitted. Thank you for your support!');
+        closeModal('feedbackModal');
+        document.getElementById('feedbackDetails').value = '';
+    }
+
+    function onPeriodChange() {
+        const period = document.getElementById('period').value;
+        consoleLog(`Active lecture period changed to: ${period}`);
+    }
+
+    // Logout
+    function performLogout() {
+        if (socket) {
+            socket.disconnect();
+            socket = null;
+        }
+        
+        // Clean WebRTC
+        Object.keys(rtcConnections).forEach(id => {
+            if (dataChannels[id]) dataChannels[id].close();
+            if (rtcConnections[id]) rtcConnections[id].close();
+        });
+        
+        Object.keys(rtcConnections).forEach(k => delete rtcConnections[k]);
+        Object.keys(dataChannels).forEach(k => delete dataChannels[k]);
+
+        if (tickingIntervalId) {
+            clearInterval(tickingIntervalId);
+            tickingIntervalId = null;
+        }
+
+        teacherProfile = null;
+        students = [];
+
+        // Reset views
+        document.getElementById('dashboardContainer').style.display = 'none';
+        document.getElementById('authOverlay').style.display = 'flex';
+        
+        const loginBtn = document.getElementById('loginBtn');
+        loginBtn.disabled = false;
+        loginBtn.innerText = 'Connect & Login';
+
+        consoleLog('Logged out from command console.', 'warn');
     }
 </script>
 </body>

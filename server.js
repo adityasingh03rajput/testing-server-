@@ -79,14 +79,18 @@ cloudinary.config({
 const app = express();
 const server = http.createServer(app);
 
-// CORS Configuration - Restrict in production
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',')
-    : ['http://localhost:3000', 'http://localhost:8081'];
+// CORS Configuration - Allow all origins for testing/local files
+const corsOptions = {
+    origin: (origin, callback) => {
+        // Echo back the requesting origin (including null for local file://)
+        callback(null, true);
+    },
+    credentials: true
+};
 
 const io = new Server(server, {
     cors: {
-        origin: process.env.NODE_ENV === 'production' ? ALLOWED_ORIGINS : "*",
+        origin: (origin, callback) => callback(null, true),
         methods: ["GET", "POST"],
         credentials: true
     },
@@ -96,10 +100,7 @@ const io = new Server(server, {
     transports: ['websocket', 'polling']
 });
 
-app.use(cors({
-    origin: process.env.NODE_ENV === 'production' ? ALLOWED_ORIGINS : "*",
-    credentials: true
-}));
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' })); // Reduced from 100mb for security
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
@@ -167,6 +168,11 @@ if (!fs.existsSync(uploadsDir)) {
 
 // Serve uploaded files
 app.use('/uploads', express.static(uploadsDir));
+
+// Serve teacher P2P & management console test page
+app.get('/teacher-test', (req, res) => {
+    res.sendFile(path.join(__dirname, 'teacher_test.html'));
+});
 
 // MongoDB Connection with proper pool configuration
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/attendance_app';
@@ -2726,6 +2732,39 @@ io.on('connection', (socket) => {
         const room = `class:${semester}:${branch}`;
         socket.leave(room);
         console.log(`👨‍🏫 Teacher left room: ${room}`);
+    });
+
+    // --- WebRTC P2P Signaling ---
+    socket.on('webrtc_offer', (data) => {
+        // Teacher sends offer to a specific student
+        if (data.targetSocketId) {
+            io.to(data.targetSocketId).emit('webrtc_offer', {
+                offer: data.offer,
+                teacherSocketId: socket.id,
+                teacherId: data.teacherId
+            });
+        }
+    });
+
+    socket.on('webrtc_answer', (data) => {
+        // Student sends answer back to teacher
+        if (data.targetSocketId) {
+            io.to(data.targetSocketId).emit('webrtc_answer', {
+                answer: data.answer,
+                studentSocketId: socket.id,
+                studentId: data.studentId
+            });
+        }
+    });
+
+    socket.on('webrtc_ice_candidate', (data) => {
+        // Exchange ICE candidates
+        if (data.targetSocketId) {
+            io.to(data.targetSocketId).emit('webrtc_ice_candidate', {
+                candidate: data.candidate,
+                senderSocketId: socket.id
+            });
+        }
     });
 
     socket.on('disconnect', () => {
