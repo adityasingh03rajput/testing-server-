@@ -1751,6 +1751,18 @@
             renderStudentsRoster();
         };
 
+        dc.onmessage = (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'RANDOM_RING_ACK') {
+                    terminalLog(`🔔 Student ${studentName || studentId} acknowledged direct P2P Ring!`, 'success');
+                    alert(`Direct P2P Ring received & acknowledged by Student ${studentName || studentId}!`);
+                }
+            } catch (e) {
+                terminalLog(`Received P2P data from ${studentName || studentId}: ${event.data}`);
+            }
+        };
+
         dc.onclose = () => {
             terminalLog(`🔌 WebRTC Data Channel CLOSED with ${studentName || studentId}`, 'warn');
             delete dataChannels[studentSocketId];
