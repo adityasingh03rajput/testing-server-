@@ -1623,6 +1623,12 @@
             teacherProfile = data.user;
             terminalLog(`✅ Logged in successfully: Welcome ${teacherProfile.name}!`, 'success');
             
+            // Persist credentials for auto-connection
+            localStorage.setItem('letsbunk_serverUrl', url);
+            localStorage.setItem('letsbunk_teacherId', id);
+            localStorage.setItem('letsbunk_teacherPass', password);
+            sessionStorage.removeItem('letsbunk_logged_out');
+            
             // Set header profile fields
             const initials = getInitials(teacherProfile.name);
             document.getElementById('avatarInitials').innerText = initials;
@@ -2482,12 +2488,41 @@
         teacherProfile = null;
         students = [];
 
+        sessionStorage.setItem('letsbunk_logged_out', 'true');
+
         document.getElementById('phoneAuthOverlay').style.display = 'flex';
         document.getElementById('connectBtn').innerText = 'Connect Link';
         document.getElementById('connectBtn').disabled = false;
 
         terminalLog('Teacher profile logged out.', 'warn');
     }
+
+    // Auto connect on load if not explicitly logged out
+    window.addEventListener('DOMContentLoaded', () => {
+        const savedUrl = localStorage.getItem('letsbunk_serverUrl');
+        const savedId = localStorage.getItem('letsbunk_teacherId');
+        const savedPass = localStorage.getItem('letsbunk_teacherPass');
+
+        if (savedUrl) {
+            document.getElementById('serverUrl').value = savedUrl;
+            document.getElementById('phoneInputUrl').value = savedUrl;
+        }
+        if (savedId) {
+            document.getElementById('teacherId').value = savedId;
+            document.getElementById('phoneInputId').value = savedId;
+        }
+        if (savedPass) {
+            document.getElementById('teacherPass').value = savedPass;
+            document.getElementById('phoneInputPass').value = savedPass;
+        }
+
+        if (!sessionStorage.getItem('letsbunk_logged_out')) {
+            setTimeout(() => {
+                terminalLog('Auto-connecting to signaling hub...', 'info');
+                performLogin();
+            }, 800);
+        }
+    });
 </script>
 
 </body>
