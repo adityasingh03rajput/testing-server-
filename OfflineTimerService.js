@@ -2488,7 +2488,12 @@ class OfflineTimerService {
   notifyListeners(event) {
     this.listeners.forEach(listener => {
       try {
-        listener(event);
+        // Defensive check: ensure listener is a function before calling
+        if (typeof listener === 'function') {
+          listener(event);
+        } else {
+          console.warn('⚠️ Timer listener is not a function:', typeof listener);
+        }
       } catch (error) {
         console.error('❌ Error in timer listener:', error);
       }

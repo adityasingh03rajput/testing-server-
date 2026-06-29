@@ -26,6 +26,8 @@
   
   <!-- Android 13+ (API 33+) WiFi permissions for BSSID access -->
   <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation"/>
+  <!-- LAN UDP multicast for classroom P2P -->
+  <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
   
   <!-- MIUI and OEM-specific permissions -->
   <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>

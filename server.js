@@ -2695,13 +2695,13 @@ io.on('connection', (socket) => {
     console.log('� Client connected:', socket.id);
 
     // Student identifies itself on connect so teacher can route P2P WebRTC offers
-    socket.on('student_identify', ({ enrollmentNo, semester, branch }) => {
+    socket.on('student_identify', ({ enrollmentNo, semester, branch, lanIp, role }) => {
         if (!enrollmentNo) return;
         studentSocketMap.set(enrollmentNo, socket.id);
         // Store/update socketId in liveTimerState if already tracking this student
         const existing = liveTimerState.get(enrollmentNo);
         if (existing) {
-            liveTimerState.set(enrollmentNo, { ...existing, socketId: socket.id });
+            liveTimerState.set(enrollmentNo, { ...existing, socketId: socket.id, lanIp: lanIp || existing.lanIp });
         } else if (semester && branch) {
             // Create a minimal entry so teacher can see the student is online
             liveTimerState.set(enrollmentNo, {
@@ -2710,6 +2710,7 @@ io.on('connection', (socket) => {
                 semester: semester.toString(),
                 branch,
                 socketId: socket.id,
+                lanIp: lanIp || null,
                 isRunning: false,
                 attendedSeconds: 0,
                 timerValue: 0,
@@ -2772,6 +2773,16 @@ io.on('connection', (socket) => {
     });
 
     // --- WebRTC P2P Signaling ---
+
+    // Teacher queries the live socket ID for a given student enrollment number
+    socket.on('get_student_socket', ({ enrollmentNo }, callback) => {
+        const socketId = studentSocketMap.get(enrollmentNo) || null;
+        console.log(`🔍 Teacher queried socket for ${enrollmentNo}: ${socketId}`);
+        if (typeof callback === 'function') {
+            callback({ socketId });
+        }
+    });
+
     socket.on('webrtc_offer', (data) => {
         // Teacher sends offer to a specific student
         if (data.targetSocketId) {
@@ -2795,12 +2806,81 @@ io.on('connection', (socket) => {
     });
 
     socket.on('webrtc_ice_candidate', (data) => {
-        // Exchange ICE candidates
+        // Exchange ICE candidates — include studentId so teacher can route to correct PC
         if (data.targetSocketId) {
+            // Resolve sender's studentId from studentSocketMap (for teacher routing)
+            let senderStudentId = null;
+            for (const [enrollmentNo, sockId] of studentSocketMap.entries()) {
+                if (sockId === socket.id) { senderStudentId = enrollmentNo; break; }
+            }
             io.to(data.targetSocketId).emit('webrtc_ice_candidate', {
                 candidate: data.candidate,
-                senderSocketId: socket.id
+                senderSocketId: socket.id,
+                studentId: senderStudentId  // null when sender is teacher (student doesn't need it)
             });
+        }
+    });
+
+    // ── Live timer sync from student (server fallback when LAN P2P fails) ──────
+    socket.on('timer_update', (data) => {
+        const enrollmentNo = data.studentId || data.enrollmentNo;
+        if (!enrollmentNo) return;
+
+        const semester = (data.semester || '').toString();
+        const branch = data.branch || '';
+        const timerValue = Math.floor(data.timerValue || 0);
+        const isRunning = Boolean(data.isRunning);
+        const status = data.status || (isRunning ? 'attending' : 'absent');
+
+        const broadcastData = {
+            studentId: enrollmentNo,
+            enrollmentNo,
+            name: data.studentName || '',
+            semester,
+            branch,
+            attendedSeconds: timerValue,
+            timerValue,
+            isRunning,
+            status,
+            lastSyncTime: new Date().toISOString(),
+            via: data.via || 'socket',
+        };
+
+        liveTimerState.set(enrollmentNo, {
+            ...broadcastData,
+            socketId: socket.id,
+            lastSeen: Date.now(),
+        });
+
+        if (semester && branch) {
+            const room = `class:${semester}:${branch}`;
+            io.to(room).emit('timer_broadcast', { ...broadcastData, socketId: socket.id });
+        }
+        console.log(`📡 [timer_update] ${enrollmentNo}: ${timerValue}s running=${isRunning} via=${data.via || 'socket'}`);
+    });
+
+    // ── P2P server relay fallback (when LAN/WebRTC delivery fails) ─────────────
+    socket.on('p2p_relay', ({ targetEnrollmentNo, message }) => {
+        if (!targetEnrollmentNo || !message) return;
+        const targetSocketId = studentSocketMap.get(targetEnrollmentNo);
+        if (targetSocketId) {
+            io.to(targetSocketId).emit('p2p_relay', { ...message, via: 'server' });
+            console.log(`📡 [p2p_relay] → ${targetEnrollmentNo} type=${message.type}`);
+        } else {
+            console.warn(`⚠️ [p2p_relay] Student ${targetEnrollmentNo} not online`);
+        }
+    });
+
+    socket.on('p2p_relay_broadcast', ({ semester, branch, message }) => {
+        if (!semester || !branch || !message) return;
+        const room = `class:${semester}:${branch}`;
+        io.to(room).emit('p2p_relay', { ...message, via: 'server' });
+        console.log(`📡 [p2p_relay_broadcast] room=${room} type=${message.type}`);
+    });
+
+    socket.on('p2p_ack_relay', ({ packetId, senderEnrollmentNo, teacherSocketId }) => {
+        if (teacherSocketId && packetId) {
+            io.to(teacherSocketId).emit('p2p_ack_relay', { packetId, sender: senderEnrollmentNo });
         }
     });
 

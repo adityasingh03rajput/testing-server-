@@ -31,6 +31,8 @@ class MainApplication : Application(), ReactApplication {
             packages.add(FaceVerificationPackage())
             // Add native timer foreground service
             packages.add(TimerPackage())
+            // LAN UDP P2P for offline classroom communication
+            packages.add(LanP2PPackage())
             return packages
           }
 

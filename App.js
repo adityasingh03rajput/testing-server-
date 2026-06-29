@@ -35,6 +35,7 @@ import Feedback from './Feedback';
 import SemesterSelector from './SemesterSelector';
 import WiFiManager from './WiFiManager';
 import NativeWiFiService from './NativeWiFiService';
+import LanP2PService from './services/LanP2PService';
 import TestBSSID from './TestBSSID';
 import SecurityStatusIndicator from './SecurityStatusIndicator';
 // WiFi BSSID Integration from LetsBunk
@@ -69,6 +70,14 @@ const HEARTBEAT_INTERVAL = 5 * 60 * 1000; // 5 minutes
 const INITIAL_HEARTBEAT_DELAY = 60 * 1000; // 1 minute
 const HEALTH_CHECK_TIMEOUT = 5000; // 5 seconds
 const WIFI_CHECK_INTERVAL = 30000; // 30 seconds
+
+// WebRTC config — empty iceServers forces host (LAN) candidates on same subnet.
+// STUN is not needed for classroom Wi-Fi and fails when internet is unavailable.
+const RTC_CONFIG = {
+  iceServers: [],
+  iceCandidatePoolSize: 4,
+  bundlePolicy: 'max-bundle',
+};
 const USER_DATA_KEY = '@user_data';
 const LOGIN_ID_KEY = '@login_id';
 const THEME_KEY = '@app_theme';
@@ -187,7 +196,6 @@ const getDefaultConfig = () => ({
 });
 
 export default function App() {
-  console.log('🚀🚀🚀 APP COMPONENT LOADED 🚀🚀🚀');
   const [config, setConfig] = useState(getDefaultConfig());
   const [selectedRole, setSelectedRole] = useState(null);
   const [studentName, setStudentName] = useState('');
@@ -637,6 +645,15 @@ export default function App() {
   const shownMissedRingIds = useRef(new Set()); // prevent duplicate "missed ring" alerts
   const periodicSyncRef = useRef(null); // periodic server sync interval
 
+  // Teacher-side WebRTC P2P state
+  const teacherRtcConnections = useRef({}); // enrollmentNo → RTCPeerConnection
+  const teacherDataChannels = useRef({});   // enrollmentNo → RTCDataChannel
+  const [teacherP2PStatus, setTeacherP2PStatus] = useState({}); // enrollmentNo → 'connecting'|'open'|'closed'
+  const [teacherIsOnWifi, setTeacherIsOnWifi] = useState(false); // true when teacher has WiFi
+  const lanInitializedRef = useRef(false);
+  const lanInitForRef = useRef(null);
+  const lanUnsubscribeRef = useRef(null);
+
   // Keep refs in sync with state so socket handlers always read current values
   useEffect(() => { studentIdRef.current = studentId; }, [studentId]);
   useEffect(() => { selectedRoleRef.current = selectedRole; }, [selectedRole]);
@@ -645,6 +662,76 @@ export default function App() {
   useEffect(() => { manualSelectionRef.current = manualSelection; }, [manualSelection]);
   useEffect(() => { currentClassInfoRef.current = currentClassInfo; }, [currentClassInfo]);
   useEffect(() => { offlinePeriodRef.current = offlinePeriod; }, [offlinePeriod]);
+
+  // ── P2P auto pre-warm when teacher gets on WiFi ───────────────────────────
+  // Fires when teacherIsOnWifi flips true (teacher connected to WiFi).
+  // Pre-warms while internet is still up so connections survive an internet drop.
+  useEffect(() => {
+    if (selectedRole !== 'teacher' || !teacherIsOnWifi) return;
+    const timer = setTimeout(() => {
+      if (typeof teacherPreWarmP2P === 'function') {
+        console.log('[P2P] Teacher on WiFi detected — pre-warming connections...');
+        teacherPreWarmP2P();
+      }
+    }, 1000); // 1s delay so students list is ready
+    return () => clearTimeout(timer);
+  }, [teacherIsOnWifi, selectedRole]);
+
+  // ── Periodic P2P health check (teacher side) ─────────────────────────────
+  // Every 30s: re-establish any DataChannel that dropped while WiFi is up.
+  useEffect(() => {
+    if (selectedRole !== 'teacher') return;
+    const interval = setInterval(() => {
+      if (!teacherIsOnWifi) return;
+      const activeStudents = students.filter(s => s.status === 'active' || s.isRunning);
+      const staleStudents = activeStudents.filter(s => {
+        const dc = teacherDataChannels.current[s.enrollmentNo];
+        return !dc || dc.readyState !== 'open';
+      });
+      if (staleStudents.length > 0) {
+        console.log(`[P2P] Health check: ${staleStudents.length} stale channel(s) — re-warming...`);
+        if (typeof teacherPreWarmP2P === 'function') teacherPreWarmP2P();
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [selectedRole, teacherIsOnWifi, students]);
+
+  // ── P2P fallback when internet drops but WiFi stays (teacher side) ────────
+  // When teacher loses internet but stays on authorized WiFi, check if P2P
+  // channels are open. If not, attempt to pre-warm (requires socket still up).
+  const prevHasInternetRef = useRef(true);
+  useEffect(() => {
+    if (selectedRole !== 'teacher') return;
+    const hasInternet = offlineTimerState.hasInternetConnection;
+    const hadInternet = prevHasInternetRef.current;
+    prevHasInternetRef.current = hasInternet;
+
+    // Internet just dropped and WiFi is still connected
+    if (hadInternet && !hasInternet && teacherIsOnWifi) {
+      console.log('[P2P] Internet dropped — checking if P2P channels are open...');
+      const activeStudents = students.filter(s => s.status === 'active' || s.isRunning);
+      const openChannels = activeStudents.filter(s => {
+        const dc = teacherDataChannels.current[s.enrollmentNo];
+        return dc && dc.readyState === 'open';
+      });
+      console.log(`[P2P] ${openChannels.length}/${activeStudents.length} channels open for offline fallback`);
+      // If any channels are missing, try to establish while socket may still work
+      if (openChannels.length < activeStudents.length && typeof teacherPreWarmP2P === 'function') {
+        console.log('[P2P] Attempting last-chance P2P pre-warm before full offline...');
+        teacherPreWarmP2P();
+      }
+    }
+  }, [offlineTimerState.hasInternetConnection]);
+
+  // ── Initialize LAN UDP when role is known ────────────────────────────────
+  useEffect(() => {
+    if (showLogin) return;
+    if (selectedRole === 'student' && studentId) {
+      initLanP2P('student', studentId);
+    } else if (selectedRole === 'teacher' && loginId && teacherIsOnWifi) {
+      initLanP2P('teacher', loginId);
+    }
+  }, [selectedRole, studentId, loginId, teacherIsOnWifi, showLogin]);
 
   // Animations
   const glowAnim = useRef(new Animated.Value(0)).current;
@@ -1393,12 +1480,38 @@ export default function App() {
             const unsubscribe = OfflineTimerService.addListener((event) => {
               console.log('🔔 OfflineTimer event:', event.type);
 
+              // Helper to broadcast state changes over LAN (primary) + WebRTC (secondary)
+              const broadcastP2PUpdate = (seconds, isRunning, status, isStateChange = false) => {
+                if (isStateChange) {
+                  LanP2PService.sendTimerStateChange(seconds, isRunning, status);
+                } else {
+                  LanP2PService.sendTimerUpdate(seconds, isRunning, status);
+                }
+                if (
+                  socketRef.current?.rtcDC &&
+                  socketRef.current.rtcDC.readyState === 'open'
+                ) {
+                  try {
+                    socketRef.current.rtcDC.send(JSON.stringify({
+                      type: 'TIMER_UPDATE',
+                      studentId: studentIdRef.current,
+                      timerValue: seconds,
+                      isRunning,
+                      status,
+                    }));
+                  } catch (err) {
+                    console.warn('[P2P] WebRTC timer update failed:', err.message);
+                  }
+                }
+              };
+
               switch (event.type) {
                 case 'timer_tick':
                   setOfflineTimerState(prev => ({
                     ...prev,
                     timerSeconds: event.timerSeconds
                   }));
+                  broadcastP2PUpdate(event.timerSeconds, true, 'attending');
                   break;
 
                 case 'timer_started':
@@ -1409,6 +1522,7 @@ export default function App() {
                     timerSeconds: event.timerSeconds,
                     currentLecture: event.lecture
                   }));
+                  broadcastP2PUpdate(event.timerSeconds, true, 'attending', true);
                   break;
 
                 case 'timer_stopped':
@@ -1435,6 +1549,12 @@ export default function App() {
                     playAlert();
                     Vibration.vibrate([0, 500, 200, 500]);
                   }
+                  broadcastP2PUpdate(
+                    event.finalSeconds !== undefined ? event.finalSeconds : 0,
+                    false,
+                    OfflineTimerService.attendanceStatus || 'absent',
+                    true
+                  );
                   break;
 
                 case 'timer_paused':
@@ -1442,6 +1562,7 @@ export default function App() {
                     ...prev,
                     isPaused: true
                   }));
+                  broadcastP2PUpdate(event.timerSeconds, false, 'paused', true);
                   break;
 
                 case 'timer_resumed':
@@ -1449,6 +1570,7 @@ export default function App() {
                     ...prev,
                     isPaused: false
                   }));
+                  broadcastP2PUpdate(event.timerSeconds, true, 'attending', true);
                   break;
 
                 case 'bssid_unauthorized':
@@ -1480,12 +1602,25 @@ export default function App() {
 
                 case 'timer_resumed_after_reconnection':
                   console.log('✅ Timer resumed after reconnection');
-                  // Silent resumption preferred for better UX
+                  setOfflineTimerState(prev => ({
+                    ...prev,
+                    isRunning: true,
+                    isPaused: false,
+                    timerSeconds: event.timerSeconds
+                  }));
+                  broadcastP2PUpdate(event.timerSeconds, true, 'attending', true);
                   break;
 
                 case 'timer_started_after_reconnection':
                   console.log('🆕 New lecture started after reconnection');
-                  // Silent start preferred for better UX
+                  setOfflineTimerState(prev => ({
+                    ...prev,
+                    isRunning: true,
+                    isPaused: false,
+                    timerSeconds: event.timerSeconds,
+                    currentLecture: event.lecture
+                  }));
+                  broadcastP2PUpdate(event.timerSeconds, true, 'attending', true);
                   break;
 
                 case 'connectivity_changed':
@@ -1872,6 +2007,105 @@ export default function App() {
     }
   };
 
+  /** Handle incoming LAN / server-relay P2P packets */
+  const handleLanPacket = (pkt) => {
+    const type = pkt.type;
+    const payload = pkt.payload || pkt;
+
+    if (selectedRoleRef.current === 'student') {
+      if (type === 'RANDOM_RING_TRIGGER') {
+        console.log(`[LAN] 🚨 RANDOM_RING_TRIGGER Packet ${pkt.packetId}`);
+        const currentPeriod = offlinePeriodRef.current;
+        const hasActivePeriod = currentPeriod && !currentPeriod.isBreak && currentPeriod.subject;
+        if (!hasActivePeriod) return;
+
+        const ringPauseTime = _appGetBootMs();
+        OfflineTimerService.pauseTimer('random_ring');
+        setRandomRingData({
+          randomRingId: payload.randomRingId || pkt.packetId || ('lan_ring_' + Date.now()),
+          teacherId: payload.teacherId || pkt.sender,
+          timestamp: Date.now(),
+          expiresAt: Date.now() + 60000,
+          ringPauseTime,
+        });
+      } else if (type === 'RANDOM_RING_ACCEPTED') {
+        console.log(`[LAN] ✅ RANDOM_RING_ACCEPTED Packet ${pkt.packetId}`);
+        setRandomRingData(prev => {
+          if (prev) {
+            const pausedSeconds = prev.ringPauseTime
+              ? (_appGetBootMs() - prev.ringPauseTime) / 1000
+              : 0;
+            OfflineTimerService.resumeTimer('random_ring_accepted', pausedSeconds);
+          }
+          return null;
+        });
+      } else if (type === 'SESSION_END') {
+        console.log(`[LAN] SESSION_END received`);
+        if (OfflineTimerService.isRunning) {
+          OfflineTimerService.stopTimer('session_end_lan');
+        }
+      }
+    } else if (selectedRoleRef.current === 'teacher') {
+      if (type === 'TIMER_UPDATE') {
+        const enrollmentNo = payload.studentId || pkt.sender;
+        console.log(`[LAN] ⏱️ TIMER_UPDATE from ${enrollmentNo}: ${payload.timerValue}s`);
+        setStudents(prev => prev.map(s => {
+          if (s.enrollmentNo === enrollmentNo) {
+            return {
+              ...s,
+              timerValue: payload.timerValue,
+              isRunning: payload.isRunning,
+              status: payload.status,
+              receivedViaP2P: true,
+              attendanceSession: {
+                ...(s.attendanceSession || {}),
+                isRunning: payload.isRunning,
+                status: payload.status,
+                attendedSeconds: payload.timerValue,
+              },
+            };
+          }
+          return s;
+        }));
+      } else if (type === 'ACK' || pkt.type === 'ACK') {
+        // Handled by LanP2PService pendingAcks
+      }
+    }
+  };
+
+  /** Initialize LAN UDP P2P — primary classroom channel */
+  const initLanP2P = async (role, enrollmentNo) => {
+    if (lanInitForRef.current === enrollmentNo && lanInitializedRef.current) return;
+    if (lanInitForRef.current && lanInitForRef.current !== enrollmentNo) {
+      await LanP2PService.shutdown();
+      lanInitializedRef.current = false;
+    }
+    const ok = await LanP2PService.initialize(role, enrollmentNo);
+    if (!ok) return;
+    lanInitializedRef.current = true;
+    lanInitForRef.current = enrollmentNo;
+
+    LanP2PService.setSocketRelay(async (type, payload, packetId, targets) => {
+      if (!socketRef.current?.connected) return;
+      const message = { type, payload, packetId, ts: Date.now() };
+      if (targets && targets.length > 0) {
+        for (const t of targets) {
+          socketRef.current.emit('p2p_relay', { targetEnrollmentNo: t, message });
+        }
+      } else if (semesterRef.current && branchRef.current) {
+        socketRef.current.emit('p2p_relay_broadcast', {
+          semester: semesterRef.current,
+          branch: branchRef.current,
+          message,
+        });
+      }
+    });
+
+    if (lanUnsubscribeRef.current) lanUnsubscribeRef.current();
+    lanUnsubscribeRef.current = LanP2PService.addListener(handleLanPacket);
+    console.log(`[LAN] P2P ready as ${role} (${LanP2PService.getLocalIp()})`);
+  };
+
   const setupSocket = () => {
     console.log('🔌🔌🔌 setupSocket() called - Initializing socket connection...');
     console.log('🔌 SOCKET_URL:', SOCKET_URL);
@@ -1881,6 +2115,27 @@ export default function App() {
     // Disconnect existing socket if any
     if (socketRef.current) {
       console.log('🔌 Disconnecting existing socket');
+      
+      // Clean up student-side WebRTC if any to prevent resource leaks
+      if (socketRef.current.rtcDC) {
+        try {
+          socketRef.current.rtcDC.onmessage = null;
+          socketRef.current.rtcDC.onopen = null;
+          socketRef.current.rtcDC.onclose = null;
+          socketRef.current.rtcDC.close();
+        } catch (e) {}
+        socketRef.current.rtcDC = null;
+      }
+      if (socketRef.current.rtcPC) {
+        try {
+          socketRef.current.rtcPC.onicecandidate = null;
+          socketRef.current.rtcPC.ondatachannel = null;
+          socketRef.current.rtcPC.onconnectionstatechange = null;
+          socketRef.current.rtcPC.close();
+        } catch (e) {}
+        socketRef.current.rtcPC = null;
+      }
+
       if (socketRef.current.pingInterval) {
         clearInterval(socketRef.current.pingInterval);
         socketRef.current.pingInterval = null;
@@ -1919,6 +2174,40 @@ export default function App() {
       console.log('✅ Socket ID:', socketRef.current.id);
       console.log('✅ Transport:', socketRef.current.io.engine.transport.name);
       console.log('✅ Connected at:', new Date().toISOString());
+
+      // Immediately identify this student to the server so teachers can route P2P offers
+      const identifyEnrollment = studentIdRef.current;
+      if (identifyEnrollment) {
+        initLanP2P('student', identifyEnrollment);
+        socketRef.current.emit('student_identify', {
+          enrollmentNo: identifyEnrollment,
+          semester: semesterRef.current?.toString(),
+          branch: branchRef.current,
+          lanIp: LanP2PService.getLocalIp(),
+        });
+      } else {
+        // Try to identify from AsyncStorage on cold start
+        try {
+          const storedUserData = await AsyncStorage.getItem('@user_data');
+          const storedRole = await AsyncStorage.getItem('@user_role');
+          const role = storedRole ? JSON.parse(storedRole) : null;
+          if (role === 'student' && storedUserData) {
+            const parsed = JSON.parse(storedUserData);
+            if (parsed.enrollmentNo) {
+              console.log('📡 Cold-start student_identify:', parsed.enrollmentNo);
+              initLanP2P('student', parsed.enrollmentNo);
+              socketRef.current.emit('student_identify', {
+                enrollmentNo: parsed.enrollmentNo,
+                semester: parsed.semester?.toString(),
+                branch: parsed.branch || parsed.course,
+                lanIp: LanP2PService.getLocalIp(),
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('⚠️ student_identify cold-start failed:', e.message);
+        }
+      }
 
       // Check for offline session and sync
       try {
@@ -2002,11 +2291,50 @@ export default function App() {
       // Re-send current status if student is active (period-based attendance)
       if (selectedRoleRef.current === 'student' && studentIdRef.current) {
         console.log('📡 Re-sending student status after reconnect');
-        // Rejoin class room so student keeps receiving random ring notifications
         const currentSem = semesterRef.current;
         const currentBranch = branchRef.current;
         if (currentSem && currentBranch) {
           joinClassRoom(currentSem?.toString(), currentBranch);
+        } else {
+          // React state not hydrated yet — fallback to AsyncStorage
+          try {
+            const storedUserData = await AsyncStorage.getItem('@user_data');
+            if (storedUserData) {
+              const parsed = JSON.parse(storedUserData);
+              const storedSem = parsed.semester?.toString();
+              const storedBranch = parsed.branch || parsed.course;
+              if (storedSem && storedBranch && socketRef.current?.connected) {
+                console.log('📡 Auto-joining class room from stored profile:', storedSem, storedBranch);
+                socketRef.current.emit('join_class_room', { semester: storedSem, branch: storedBranch });
+                currentClassRoomRef.current = { semester: storedSem, branch: storedBranch };
+              }
+            }
+          } catch (e) {
+            console.warn('⚠️ Could not load stored user data for auto-join:', e.message);
+          }
+        }
+      } else if (!selectedRoleRef.current || selectedRoleRef.current === 'student') {
+        // Socket connected but role not yet set — preemptively join from AsyncStorage
+        // This handles cold-start scenario where socket connects before React state loads
+        try {
+          const [storedUserData, storedRole] = await Promise.all([
+            AsyncStorage.getItem('@user_data'),
+            AsyncStorage.getItem('@user_role'),
+          ]);
+          const role = storedRole ? JSON.parse(storedRole) : null;
+          if (role === 'student' && storedUserData) {
+            const parsed = JSON.parse(storedUserData);
+            const storedSem = parsed.semester?.toString();
+            const storedBranch = parsed.branch || parsed.course;
+            const storedStudentId = parsed.enrollmentNo;
+            if (storedSem && storedBranch && storedStudentId && socketRef.current?.connected) {
+              console.log('🚀 Cold-start: Auto-joining class room for student:', storedStudentId, storedSem, storedBranch);
+              socketRef.current.emit('join_class_room', { semester: storedSem, branch: storedBranch });
+              currentClassRoomRef.current = { semester: storedSem, branch: storedBranch };
+            }
+          }
+        } catch (e) {
+          console.warn('⚠️ Cold-start auto-join failed:', e.message);
         }
       }
     });
@@ -2034,6 +2362,20 @@ export default function App() {
     socketRef.current.on('reconnect', async (attemptNumber) => {
       console.log(`✅ Socket reconnected after ${attemptNumber} attempts`);
 
+      // Re-identify student immediately — reconnect gives a new socket.id,
+      // so the server's studentSocketMap must be updated before teacher
+      // can route WebRTC P2P offers to us.
+      if (selectedRoleRef.current === 'student' && studentIdRef.current) {
+        initLanP2P('student', studentIdRef.current);
+        socketRef.current.emit('student_identify', {
+          enrollmentNo: studentIdRef.current,
+          semester: semesterRef.current?.toString(),
+          branch: branchRef.current,
+          lanIp: LanP2PService.getLocalIp(),
+        });
+        console.log(`📱 Re-identified student on reconnect: ${studentIdRef.current}`);
+      }
+
       if (selectedRoleRef.current === 'student') {
         console.log('🔄 Refreshing data after reconnection...');
 
@@ -2044,6 +2386,23 @@ export default function App() {
           await fetchTimetable(currentSem, currentBranch);
           // Rejoin class room on reconnect
           joinClassRoom(currentSem?.toString(), currentBranch);
+        } else {
+          // Fallback to AsyncStorage if React state not yet hydrated
+          try {
+            const storedUserData = await AsyncStorage.getItem('@user_data');
+            if (storedUserData) {
+              const parsed = JSON.parse(storedUserData);
+              const storedSem = parsed.semester?.toString();
+              const storedBranch = parsed.branch || parsed.course;
+              if (storedSem && storedBranch && socketRef.current?.connected) {
+                console.log('🔄 Reconnect: Auto-joining from stored profile:', storedSem, storedBranch);
+                socketRef.current.emit('join_class_room', { semester: storedSem, branch: storedBranch });
+                currentClassRoomRef.current = { semester: storedSem, branch: storedBranch };
+              }
+            }
+          } catch (e) {
+            console.warn('⚠️ Reconnect auto-join failed:', e.message);
+          }
         }
 
         // Refresh BSSID schedule - get enrollment number from storage
@@ -2063,8 +2422,16 @@ export default function App() {
         console.log('✅ Data refresh complete');
       } else if (selectedRoleRef.current === 'teacher') {
         // Teacher reconnect: refresh student list and rejoin class room if active
-        console.log('👨\u200d🏫 Teacher reconnecting - refreshing student list...');
+        console.log('\u{1F468}\u200d\u{1F3EB} Teacher reconnecting - refreshing student list...');
         await fetchStudents();
+        // Re-establish P2P connections to active students after reconnect.
+        // 2s delay so fetchStudents() result propagates to state first.
+        setTimeout(() => {
+          if (typeof teacherPreWarmP2P === 'function') {
+            console.log('[P2P] Re-warming connections after teacher reconnect...');
+            teacherPreWarmP2P();
+          }
+        }, 2000);
       }
     });
 
@@ -2076,12 +2443,38 @@ export default function App() {
       console.log('❌ Socket reconnect failed - giving up');
     });
 
+    // --- Server P2P relay fallback (when LAN/WebRTC fails) ---
+    socketRef.current.on('p2p_relay', (message) => {
+      console.log(`[RELAY] RECEIVED via server: type=${message.type} packet=${message.packetId}`);
+      handleLanPacket({ ...message, via: 'server' });
+    });
+
     // --- WebRTC P2P (Student Side) ---
     socketRef.current.on('webrtc_offer', async (data) => {
-      if (selectedRoleRef.current !== 'student') return;
+      if (selectedRoleRef.current === 'teacher') return;
       console.log('📶 WebRTC P2P Offer received from Teacher:', data.teacherId);
       
-      const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      // Clean up previous peer connection if any to prevent leaks and duplicate connections
+      if (socketRef.current.rtcDC) {
+        try {
+          socketRef.current.rtcDC.onmessage = null;
+          socketRef.current.rtcDC.onopen = null;
+          socketRef.current.rtcDC.onclose = null;
+          socketRef.current.rtcDC.close();
+        } catch (e) {}
+        socketRef.current.rtcDC = null;
+      }
+      if (socketRef.current.rtcPC) {
+        try {
+          socketRef.current.rtcPC.onicecandidate = null;
+          socketRef.current.rtcPC.ondatachannel = null;
+          socketRef.current.rtcPC.onconnectionstatechange = null;
+          socketRef.current.rtcPC.close();
+        } catch (e) {}
+        socketRef.current.rtcPC = null;
+      }
+
+      const pc = new RTCPeerConnection(RTC_CONFIG);
       socketRef.current.rtcPC = pc;
 
       pc.onicecandidate = (event) => {
@@ -2103,16 +2496,16 @@ export default function App() {
             const msg = JSON.parse(msgEvent.data);
             if (msg.type === 'RANDOM_RING_TRIGGER') {
               console.log('🚨 P2P RANDOM RING TRIGGERED INSTANTLY!');
-              // Trigger the existing random ring UI flow
-              const ringPauseTime = Date.now();
-              OfflineTimerService.pauseTimer('random_ring');
-              setRandomRingData({
-                randomRingId: 'p2p_ring_' + Date.now(),
-                teacherId: data.teacherId,
-                timestamp: Date.now(),
-                expiresAt: Date.now() + 60000,
-                ringPauseTime,
-              });
+              try {
+                dc.send(JSON.stringify({ type: 'RANDOM_RING_ACK', ackFor: msg.packetId || 'webrtc' }));
+              } catch (sendErr) {
+                console.warn('Failed sending P2P ACK:', sendErr.message);
+              }
+              handleLanPacket({ type: 'RANDOM_RING_TRIGGER', payload: msg, packetId: msg.packetId || ('webrtc_' + Date.now()), sender: data.teacherId });
+            } else if (msg.type === 'RANDOM_RING_ACCEPTED') {
+              handleLanPacket({ type: 'RANDOM_RING_ACCEPTED', payload: msg, packetId: msg.packetId });
+            } else if (msg.type === 'SESSION_END') {
+              handleLanPacket({ type: 'SESSION_END', payload: msg, packetId: msg.packetId });
             }
           } catch(e) {}
         };
@@ -2130,8 +2523,20 @@ export default function App() {
     });
 
     socketRef.current.on('webrtc_ice_candidate', (data) => {
-      if (socketRef.current.rtcPC && data.candidate) {
-        socketRef.current.rtcPC.addIceCandidate(new RTCIceCandidate(data.candidate));
+      if (selectedRoleRef.current === 'student') {
+        // Student: single rtcPC connection back to teacher
+        if (socketRef.current.rtcPC && data.candidate) {
+          socketRef.current.rtcPC.addIceCandidate(new RTCIceCandidate(data.candidate))
+            .catch(e => console.warn('[P2P] ICE add failed (student):', e.message));
+        }
+      } else if (selectedRoleRef.current === 'teacher') {
+        // Teacher: find the right PC by studentId sent from server
+        const enrollmentNo = data.studentId;
+        const pc = enrollmentNo && teacherRtcConnections.current[enrollmentNo];
+        if (pc && data.candidate) {
+          pc.addIceCandidate(new RTCIceCandidate(data.candidate))
+            .catch(e => console.warn('[P2P] ICE add failed (teacher):', e.message));
+        }
       }
     });
 
@@ -2429,12 +2834,13 @@ export default function App() {
 
     // Live timer broadcast from server (targeted to class room)
     socketRef.current.on('timer_broadcast', (data) => {
-      if (selectedRole !== 'teacher') return;
+      if (selectedRoleRef.current !== 'teacher') return;
       setStudents(prevStudents => {
         const updated = [...prevStudents];
         // server always sends enrollmentNo — match on that only
         const index = updated.findIndex(s => s.enrollmentNo === data.enrollmentNo);
         if (index !== -1) {
+          const wasRunning = updated[index].isRunning;
           updated[index] = {
             ...updated[index],
             timerValue: data.attendedSeconds,
@@ -2447,9 +2853,39 @@ export default function App() {
               attendedSeconds: data.attendedSeconds,
             },
           };
+          // When a student just went active, try to pre-warm P2P to them
+          if (!wasRunning && data.isRunning && data.enrollmentNo) {
+            const dc = teacherDataChannels.current[data.enrollmentNo];
+            if (!dc || dc.readyState !== 'open') {
+              // async — non-blocking
+              if (typeof checkTeacherWifi === 'function') {
+                checkTeacherWifi().then(onWifi => {
+                  if (onWifi && typeof teacherEstablishP2P === 'function') {
+                    teacherEstablishP2P(data.enrollmentNo, updated[index]?.name);
+                  }
+                });
+              }
+            }
+          }
         }
         return updated;
       });
+    });
+
+    // Teacher receives WebRTC answer from student — complete ICE negotiation
+    socketRef.current.on('webrtc_answer', async (data) => {
+      if (selectedRoleRef.current !== 'teacher') return;
+      const enrollmentNo = data.studentId;
+      if (!enrollmentNo) return;
+      const pc = teacherRtcConnections.current[enrollmentNo];
+      if (pc) {
+        try {
+          console.log(`[P2P] Answer received from ${enrollmentNo}`);
+          await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+        } catch (err) {
+          console.warn('[P2P] setRemoteDescription failed:', err.message);
+        }
+      }
     });
 
     // Snapshot of all live students when teacher joins a class room
@@ -2477,6 +2913,13 @@ export default function App() {
         });
         return updated;
       });
+      // Pre-warm P2P connections to active students when teacher gets snapshot
+      // (runs async — won't block UI; only fires if teacher is on WiFi)
+      setTimeout(() => {
+        if (typeof teacherPreWarmP2P === 'function') {
+          teacherPreWarmP2P(liveStudents);
+        }
+      }, 500);
     });
 
     // Listen for BSSID schedule updates (students only)
@@ -2863,6 +3306,7 @@ export default function App() {
   };
 
   const fetchStudents = async (overrideSelection) => {
+    const STUDENTS_CACHE_KEY = '@teacher_students_cache';
     try {
       // Use override (e.g. from filter dialog) or current ref value to avoid stale closures in background tasks
       const effectiveSelection = overrideSelection ?? manualSelectionRef.current;
@@ -2874,7 +3318,10 @@ export default function App() {
           const manualData = await manualResponse.json();
           if (manualData.success) {
             console.log(`✅ Filter: ${manualData.students?.length || 0} students for ${effectiveSelection.branch} Sem ${effectiveSelection.semester}`);
-            setStudents(manualData.students || []);
+            const sList = manualData.students || [];
+            setStudents(sList);
+            // Cache for offline use
+            AsyncStorage.setItem(STUDENTS_CACHE_KEY, JSON.stringify(sList)).catch(() => {});
             joinClassRoom(effectiveSelection.semester, effectiveSelection.branch);
             setCurrentClassInfo({
               subject: 'Manual Selection',
@@ -2908,7 +3355,10 @@ export default function App() {
           if (data.hasActiveClass) {
             console.log(`✅ Found ${data.students?.length || 0} students in current class`);
             console.log(`📚 Current class: ${data.currentClass?.subject} - ${data.currentClass?.branch} Sem ${data.currentClass?.semester}`);
-            setStudents(data.students || []);
+            const sList = data.students || [];
+            setStudents(sList);
+            // Cache for offline use
+            AsyncStorage.setItem(STUDENTS_CACHE_KEY, JSON.stringify(sList)).catch(() => {});
             joinClassRoom(data.currentClass?.semester?.toString(), data.currentClass?.branch);
             setCurrentClassInfo(data.currentClass);
 
@@ -2933,13 +3383,27 @@ export default function App() {
         const response = await fetch(`${GET_VIEW_RECORDS_STUDENTS}?semester=${encodeURIComponent(semester)}&branch=${encodeURIComponent(branch)}`);
         const data = await response.json();
         if (data.success) {
-          setStudents(data.students || []);
+          const sList = data.students || [];
+          setStudents(sList);
+          AsyncStorage.setItem(STUDENTS_CACHE_KEY, JSON.stringify(sList)).catch(() => {});
         }
       }
     } catch (error) {
       console.log('Error fetching students:', error);
-      // Show user-friendly feedback for network errors
       if (selectedRole === 'teacher') {
+        // ── Offline fallback: restore last cached student list ────────────
+        try {
+          const cached = await AsyncStorage.getItem(STUDENTS_CACHE_KEY);
+          if (cached) {
+            const cachedStudents = JSON.parse(cached);
+            if (cachedStudents.length > 0) {
+              console.log(`📦 Offline: restored ${cachedStudents.length} students from cache`);
+              setStudents(cachedStudents);
+              showToast('📦 Offline — showing last known student list', 'warning');
+              return;
+            }
+          }
+        } catch (_) {}
         showToast('⚠️ Could not load students. Check your connection.', 'error');
       }
     }
@@ -3298,28 +3762,47 @@ dayKeys.forEach((dayKey) => {
       return;
     }
 
-    if (!socketRef.current || !socketRef.current.connected) {
-      console.log('⚠️ Socket not connected, reconnecting...');
-      setupSocket();
-      return;
-    }
-
     let finalStatus = status;
     if (!finalStatus) {
       if (running) finalStatus = 'attending';
       else finalStatus = 'absent';
     }
 
+    // ── LAN first (works offline), then WebRTC, then socket ───────────────
+    LanP2PService.sendTimerStateChange(timer, running, finalStatus);
+
+    if (socketRef.current?.rtcDC && socketRef.current.rtcDC.readyState === 'open') {
+      try {
+        socketRef.current.rtcDC.send(JSON.stringify({
+          type: 'TIMER_UPDATE',
+          studentId,
+          timerValue: timer,
+          isRunning: running,
+          status: finalStatus
+        }));
+      } catch (err) {
+        console.warn('[P2P] Failed to send timer update over DataChannel:', err.message);
+      }
+    }
+
+    // ── Socket emit (requires internet — server fallback) ──────────────────
+    if (!socketRef.current || !socketRef.current.connected) {
+      console.log('⚠️ Socket not connected — LAN P2P mode');
+      if (!socketRef.current?.connected) setupSocket();
+      return;
+    }
+
     console.log('📡 Sending timer update:', { studentId, timer, running, status: finalStatus });
 
     socketRef.current.emit('timer_update', {
-      studentId,          // === enrollmentNo always
+      studentId,
       studentName: studentName,
       timerValue: timer,
       isRunning: running,
       status: finalStatus,
       semester,
-      branch
+      branch,
+      via: 'socket',
     });
 
     // Save attendance record when timer completes or student marks present/absent
@@ -3741,11 +4224,12 @@ dayKeys.forEach((dayKey) => {
 
     try {
       // Get stored face embedding
-      const storedEmbedding = await SecureStorage.getFaceEmbedding();
-      if (!storedEmbedding || storedEmbedding.length !== 192) {
+      const faceData = await OfflineTimerService.getStudentFaceData();
+      if (!faceData.success || !faceData.embedding || faceData.embedding.length !== 192) {
         alert('❌ Face Data Not Found\n\nYour face data is not enrolled on this device.\n\nPlease contact your teacher.');
         return;
       }
+      const storedEmbedding = faceData.embedding;
 
       // Run face verification
       const verificationResult = await FaceVerification.verifyFace(storedEmbedding);
@@ -3760,11 +4244,36 @@ dayKeys.forEach((dayKey) => {
       let currentBSSID = null;
       try {
         const wifiResult = await NativeWiFiService.validateWiFiWithPermissions();
-        if (wifiResult && wifiResult.bssid) {
-          currentBSSID = wifiResult.bssid;
+        if (wifiResult && wifiResult.currentBSSID) {
+          currentBSSID = wifiResult.currentBSSID;
         }
       } catch (wifiErr) {
         console.warn('⚠️ WiFi check failed:', wifiErr.message);
+      }
+
+      if (randomRingData.randomRingId && randomRingData.randomRingId.startsWith('p2p_ring_')) {
+        try {
+          if (socketRef.current && socketRef.current.rtcDC && socketRef.current.rtcDC.readyState === 'open') {
+            socketRef.current.rtcDC.send(JSON.stringify({
+              type: 'RANDOM_RING_RESPONSE',
+              studentId,
+              randomRingId: randomRingData.randomRingId,
+              status: 'verified'
+            }));
+          }
+        } catch (err) {
+          console.warn('Failed to send P2P face verify response via DataChannel:', err.message);
+        }
+
+        setRandomRingData(prev => {
+          if (prev) {
+            const pausedSeconds = prev.ringPauseTime ? (_appGetBootMs() - prev.ringPauseTime) / 1000 : 0;
+            OfflineTimerService.resumeTimer('random_ring_face_verified', pausedSeconds);
+          }
+          return null;
+        });
+        alert('✅ Face verified successfully! P2P Ring completed.');
+        return;
       }
 
       // Choose endpoint based on flow path
@@ -4734,8 +5243,393 @@ const onRefreshStudent = async () => {
     }
   };
 
+  // ─── Teacher WebRTC P2P Engine ────────────────────────────────────────────
+
+  /** Check if teacher is currently on WiFi */
+  const checkTeacherWifi = async () => {
+    try {
+      const result = await NativeWiFiService.validateWiFiWithPermissions();
+      console.log('[P2P] validateWiFiWithPermissions result:', result);
+      
+      if (result && result.success) {
+        const onWifi = !!(result.currentBSSID && result.currentBSSID !== 'Not detected' && result.currentBSSID !== 'null');
+        setTeacherIsOnWifi(onWifi);
+        return onWifi;
+      }
+
+      // Handle the case where validateWiFiWithPermissions returned success: false due to location/permission errors.
+      // (It returns an error object instead of throwing).
+      const errMsg = result?.error || '';
+      if (errMsg.includes('Location') || errMsg.includes('location') || errMsg.includes('Permission') || errMsg.includes('permission')) {
+        try {
+          const wifiState = await NativeWiFiService.getWiFiState();
+          const onWifi = !!(wifiState?.isWifiEnabled);
+          console.log('[P2P] Location/Permission issue — using WiFi state fallback, onWifi:', onWifi);
+          setTeacherIsOnWifi(onWifi);
+          return onWifi;
+        } catch (innerErr) {
+          console.log('[P2P] WiFi state fallback failed — assuming WiFi on');
+          setTeacherIsOnWifi(true);
+          return true;
+        }
+      }
+
+      setTeacherIsOnWifi(false);
+      return false;
+    } catch (err) {
+      console.error('[P2P] checkTeacherWifi caught error:', err);
+      setTeacherIsOnWifi(false);
+      return false;
+    }
+  };
+
+  /**
+   * Establish a WebRTC P2P DataChannel from teacher → one student.
+   * Resolves the student's fresh socket ID from the server first.
+   * @param {string} enrollmentNo
+   * @param {string} studentName
+   * @param {function} [onOpen] - optional callback when DC opens
+   */
+  const teacherEstablishP2P = async (enrollmentNo, studentName, onOpen) => {
+    if (!socketRef.current?.connected) {
+      console.warn(`[P2P] Cannot establish new connection to ${enrollmentNo} — socket offline. P2P requires internet for initial signaling.`);
+      return;
+    }
+
+    // Close any stale connection first
+    if (teacherRtcConnections.current[enrollmentNo]) {
+      try { teacherRtcConnections.current[enrollmentNo].close(); } catch {}
+      delete teacherRtcConnections.current[enrollmentNo];
+      delete teacherDataChannels.current[enrollmentNo];
+    }
+
+    // Get fresh socket ID for this student from the server
+    const freshSocketId = await new Promise((resolve) => {
+      const t = setTimeout(() => resolve(null), 4000);
+      socketRef.current.emit('get_student_socket', { enrollmentNo }, ({ socketId }) => {
+        clearTimeout(t);
+        resolve(socketId);
+      });
+    });
+
+    if (!freshSocketId) {
+      console.warn(`[P2P] Student ${enrollmentNo} not online on server`);
+      setTeacherP2PStatus(prev => ({ ...prev, [enrollmentNo]: 'offline' }));
+      return;
+    }
+
+    console.log(`[P2P] Establishing DataChannel → ${enrollmentNo} (${freshSocketId})`);
+    setTeacherP2PStatus(prev => ({ ...prev, [enrollmentNo]: 'connecting' }));
+
+    const pc = new RTCPeerConnection(RTC_CONFIG);
+    teacherRtcConnections.current[enrollmentNo] = pc;
+
+    const dc = pc.createDataChannel('p2p_channel');
+    teacherDataChannels.current[enrollmentNo] = dc;
+
+    dc.onopen = () => {
+      console.log(`[P2P] ✅ DataChannel OPEN → ${enrollmentNo}`);
+      setTeacherP2PStatus(prev => ({ ...prev, [enrollmentNo]: 'open' }));
+      if (onOpen) onOpen(dc);
+    };
+
+    dc.onclose = () => {
+      console.log(`[P2P] DataChannel CLOSED → ${enrollmentNo}`);
+      setTeacherP2PStatus(prev => ({ ...prev, [enrollmentNo]: 'closed' }));
+      delete teacherDataChannels.current[enrollmentNo];
+      delete teacherRtcConnections.current[enrollmentNo];
+    };
+
+    dc.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        console.log(`[P2P] Message from ${enrollmentNo}:`, msg);
+        if (msg.type === 'RANDOM_RING_ACK') {
+          console.log(`[P2P] 🔔 ${enrollmentNo} acknowledged ring! (packet ${msg.ackFor || '?'})`);
+        } else if (msg.type === 'RANDOM_RING_RESPONSE') {
+          console.log(`[P2P] ⚡ ${enrollmentNo} responded: status=${msg.status}`);
+          // Update student status locally for immediate UI feedback
+          setStudents(prev => prev.map(s =>
+            s.enrollmentNo === enrollmentNo
+              ? { ...s, p2pRingStatus: msg.status, p2pRingVerified: msg.status === 'verified' }
+              : s
+          ));
+          // Send acceptance back to student via P2P so their timer resumes
+          // (no internet needed — this travels back over the same DataChannel)
+          try {
+            dc.send(JSON.stringify({
+              type: 'RANDOM_RING_ACCEPTED',
+              enrollmentNo,
+              status: msg.status,
+            }));
+            console.log(`[P2P] ✅ Sent RANDOM_RING_ACCEPTED back to ${enrollmentNo}`);
+          } catch (e) {
+            console.warn(`[P2P] Failed to send acceptance back to ${enrollmentNo}:`, e.message);
+          }
+          Alert.alert(
+            '✅ P2P Ring Response',
+            `${studentName || enrollmentNo}: ${msg.status === 'verified' ? 'Face Verified ✅' : 'Present 🙋'}`,
+            [{ text: 'OK' }]
+          );
+        } else if (msg.type === 'TIMER_UPDATE') {
+          console.log(`[P2P] ⏱️ Timer update from ${enrollmentNo}: ${msg.timerValue}s`);
+          setStudents(prev => prev.map(s => {
+            if (s.enrollmentNo === enrollmentNo) {
+              return {
+                ...s,
+                timerValue: msg.timerValue,
+                isRunning: msg.isRunning,
+                status: msg.status,
+                receivedViaP2P: true, // FLAG for navy blue color
+                attendanceSession: {
+                  ...(s.attendanceSession || {}),
+                  isRunning: msg.isRunning,
+                  status: msg.status,
+                  attendedSeconds: msg.timerValue,
+                },
+              };
+            }
+            return s;
+          }));
+        }
+      } catch {}
+    };
+
+    // ICE candidates → relay via signaling server
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socketRef.current?.connected) {
+        socketRef.current.emit('webrtc_ice_candidate', {
+          targetSocketId: freshSocketId,
+          candidate: event.candidate
+        });
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log(`[P2P] Connection state change for student ${enrollmentNo}: ${pc.connectionState}`);
+      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+        console.log(`[P2P] Cleaning up connection for student ${enrollmentNo} due to connectionState: ${pc.connectionState}`);
+        
+        // Clean up connection references
+        if (teacherDataChannels.current[enrollmentNo]) {
+          try {
+            teacherDataChannels.current[enrollmentNo].onopen = null;
+            teacherDataChannels.current[enrollmentNo].onclose = null;
+            teacherDataChannels.current[enrollmentNo].onmessage = null;
+            teacherDataChannels.current[enrollmentNo].close();
+          } catch {}
+          delete teacherDataChannels.current[enrollmentNo];
+        }
+        if (teacherRtcConnections.current[enrollmentNo]) {
+          try {
+            teacherRtcConnections.current[enrollmentNo].onicecandidate = null;
+            teacherRtcConnections.current[enrollmentNo].onconnectionstatechange = null;
+            teacherRtcConnections.current[enrollmentNo].close();
+          } catch {}
+          delete teacherRtcConnections.current[enrollmentNo];
+        }
+        
+        setTeacherP2PStatus(prev => ({ ...prev, [enrollmentNo]: 'closed' }));
+        
+        // Update students state to remove P2P indicator
+        setStudents(prev => prev.map(s => 
+          s.enrollmentNo === enrollmentNo 
+            ? { ...s, receivedViaP2P: false } 
+            : s
+        ));
+
+        // Trigger re-prewarming after a short delay to reconnect
+        setTimeout(() => {
+          if (typeof teacherPreWarmP2P === 'function') {
+            console.log(`[P2P] Triggering re-prewarm for student ${enrollmentNo}...`);
+            teacherPreWarmP2P();
+          }
+        }, 5000);
+      }
+    };
+
+    // Create & send offer
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socketRef.current.emit('webrtc_offer', {
+        targetSocketId: freshSocketId,
+        offer,
+        teacherId: loginId
+      });
+    } catch (err) {
+      console.error('[P2P] Offer failed:', err.message);
+      setTeacherP2PStatus(prev => ({ ...prev, [enrollmentNo]: 'closed' }));
+    }
+  };
+
+  /**
+   * Smart Random Ring — P2P if teacher is on WiFi, else DB ring.
+   * @param {Object} ringData - { type, count } from RandomRingDialog
+   */
+  const handleSmartRandomRing = async (ringData) => {
+    const onWifi = await checkTeacherWifi();
+    console.log(`[SmartRing] Teacher WiFi: ${onWifi}, type: ${ringData.type}`);
+
+    if (onWifi) {
+      // ── LAN + P2P Ring (primary) ──────────────────────────────────────────
+      let targets = [...(students || [])].filter(s => s.status === 'active' || s.isRunning);
+      if (ringData.type === 'random' && ringData.count && ringData.count < targets.length) {
+        targets = targets.sort(() => Math.random() - 0.5).slice(0, ringData.count);
+      }
+
+      if (!targets.length) {
+        Alert.alert('⚠️ No Active Students', 'No students with active timers found for P2P ring.');
+        return;
+      }
+
+      const ringPayload = {
+        randomRingId: 'ring_' + Date.now(),
+        teacherId: loginId,
+        timestamp: Date.now(),
+        expiresAt: Date.now() + 60000,
+      };
+
+      // 1. LAN UDP broadcast (works fully offline on same Wi-Fi)
+      await initLanP2P('teacher', loginId);
+      await LanP2PService.broadcastReliable('RANDOM_RING_TRIGGER', ringPayload, {
+        targetEnrollmentNos: targets.map(t => t.enrollmentNo),
+        requireAck: false,
+      });
+
+      const isOnline = socketRef.current?.connected;
+
+      // 2. WebRTC DataChannel per student (secondary)
+      const openTargets = targets.filter(s => {
+        const dc = teacherDataChannels.current[s.enrollmentNo];
+        return dc && dc.readyState === 'open';
+      });
+      const needConnectionTargets = targets.filter(s => {
+        const dc = teacherDataChannels.current[s.enrollmentNo];
+        return !dc || dc.readyState !== 'open';
+      });
+
+      if (!isOnline && needConnectionTargets.length > 0 && openTargets.length === 0) {
+        Alert.alert(
+          '📶 LAN Ring Sent',
+          `Random Ring broadcast over Wi-Fi LAN. ${needConnectionTargets.length} student(s) have no WebRTC channel (LAN is primary).`,
+        );
+      } else {
+        Alert.alert('📶 Sending Rings', `Broadcasting to ${targets.length} student(s) via LAN + P2P...`);
+      }
+
+      await Promise.all(targets.map(async (student) => {
+        const enrollmentNo = student.enrollmentNo;
+        const existingDC = teacherDataChannels.current[enrollmentNo];
+
+        const sendRing = (dc) => {
+          try {
+            dc.send(JSON.stringify({ type: 'RANDOM_RING_TRIGGER', ...ringPayload }));
+            console.log(`[P2P] 🔔 Ring sent → ${enrollmentNo}`);
+          } catch (e) {
+            console.warn(`[P2P] Failed to send ring to ${enrollmentNo}:`, e.message);
+          }
+        };
+
+        if (existingDC && existingDC.readyState === 'open') {
+          sendRing(existingDC);
+        } else if (isOnline) {
+          await teacherEstablishP2P(enrollmentNo, student.name, sendRing);
+        }
+      }));
+
+      // 3. Server DB fallback for students still unreachable (requires internet)
+      if (isOnline && needConnectionTargets.length > 0) {
+        console.log(`[SmartRing] Server fallback for ${needConnectionTargets.length} student(s)`);
+        try {
+          const response = await fetch(POST_RANDOM_RING, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: ringData.type,
+              count: ringData.count,
+              teacherId: loginId,
+              teacherName: userData?.name,
+              semester,
+              branch,
+              targetEnrollmentNos: needConnectionTargets.map(s => s.enrollmentNo),
+            }),
+          });
+          const result = await response.json();
+          if (result.success) {
+            console.log(`[SmartRing] Server fallback ring sent to ${result.selectedStudents?.length || 0} student(s)`);
+          }
+        } catch (e) {
+          console.warn('[SmartRing] Server fallback failed:', e.message);
+        }
+      }
+    } else {
+      // ── Normal DB Ring ────────────────────────────────────────────────────
+      console.log('[SmartRing] No WiFi — falling back to DB random ring');
+      try {
+        const response = await fetch(POST_RANDOM_RING, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: ringData.type,
+            count: ringData.count,
+            teacherId: loginId,
+            teacherName: userData?.name,
+            semester,
+            branch
+          })
+        });
+        const result = await response.json();
+        if (result.success) {
+          alert(`✅ Random Ring sent to ${result.selectedStudents?.length || 0} student(s)!`);
+          setActiveRandomRing({
+            _id: result.randomRingId,
+            selectedStudents: result.selectedStudents.map(s => ({
+              studentId: s.id,
+              enrollmentNo: s.enrollmentNo,
+              name: s.name,
+              teacherAction: 'pending',
+              verified: false
+            }))
+          });
+        } else {
+          alert('❌ Failed to send Random Ring: ' + (result.message || result.error));
+        }
+      } catch (error) {
+        alert('❌ Error sending Random Ring. Please check your connection.\n' + error.message);
+      }
+    }
+  };
+
+  /**
+   * Pre-warm P2P connections to all currently active students.
+   * Called when teacher joins a class room / on snapshot.
+   */
+  const teacherPreWarmP2P = async (liveStudentList) => {
+    if (selectedRole !== 'teacher') return;
+    const onWifi = await checkTeacherWifi();
+    if (!onWifi) {
+      console.log('[P2P] Teacher not on WiFi — skipping pre-warm');
+      return;
+    }
+    await initLanP2P('teacher', loginId);
+    const active = (liveStudentList || students || []).filter(
+      s => s.status === 'active' || s.isRunning
+    );
+    console.log(`[P2P] Pre-warming ${active.length} connections...`);
+    for (const s of active) {
+      const dc = teacherDataChannels.current[s.enrollmentNo];
+      if (!dc || dc.readyState !== 'open') {
+        // Small stagger to avoid simultaneous ICE floods
+        await new Promise(r => setTimeout(r, 200));
+        teacherEstablishP2P(s.enrollmentNo, s.name);
+      }
+    }
+  };
+
   // Teacher action handler for random ring accept/reject
   const handleTeacherAction = async (randomRingId, studentId, action) => {
+
     try {
       console.log(`👨‍🏫 Teacher ${action} student`);
       console.log(`   Random Ring ID: ${randomRingId}`);
@@ -5043,7 +5937,7 @@ const onRefreshStudent = async () => {
           theme={theme}
           userRole="teacher"
         />
-        {/* Floating Random Ring Button */}
+        {/* Floating Random Ring Button — shows WiFi dot when P2P is available */}
         <TouchableOpacity
           style={{
             position: 'absolute',
@@ -5066,70 +5960,44 @@ const onRefreshStudent = async () => {
             if (!currentClassInfo || isBreak) {
               Alert.alert(
                 '🔔 Random Ring Restricted',
-                isBreak 
+                isBreak
                   ? 'Random Ring notifications cannot be sent during break times.'
                   : 'Random Ring notifications can only be sent during an active class period.',
                 [{ text: 'OK' }]
               );
               return;
             }
+            // Check WiFi state and refresh indicator before opening dialog
+            checkTeacherWifi();
             setRandomRingDialogOpen(true);
           }}
         >
           <Text style={{ fontSize: 24 }}>🔔</Text>
+          {/* WiFi P2P indicator dot */}
+          {teacherIsOnWifi && (
+            <View style={{
+              position: 'absolute',
+              top: 4,
+              right: 4,
+              width: 10,
+              height: 10,
+              borderRadius: 5,
+              backgroundColor: '#10b981',
+              borderWidth: 1.5,
+              borderColor: '#fff',
+            }} />
+          )}
         </TouchableOpacity>
-        {/* Random Ring Dialog */}
+        {/* Random Ring Dialog — delegates to smart ring handler */}
         <RandomRingDialog
           visible={randomRingDialogOpen}
           onClose={() => setRandomRingDialogOpen(false)}
           onConfirm={async (data) => {
-            console.log('🔔 Random Ring confirmed:', data);
-            try {
-              const response = await fetch(POST_RANDOM_RING, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  type: data.type,
-                  count: data.count,
-                  teacherId: loginId,
-                  teacherName: userData?.name,
-                  semester: semester,
-                  branch: branch
-                })
-              });
-
-              const result = await response.json();
-              if (result.success) {
-                alert(`✅ Random Ring sent to ${result.selectedStudents?.length || 0} student(s)!`);
-                console.log('✅ Random Ring successful:', result);
-
-                // Track active random ring for accept/reject buttons
-                setActiveRandomRing({
-                  _id: result.randomRingId,
-                  selectedStudents: result.selectedStudents.map(s => ({
-                    studentId: s.id, // This is _id from MongoDB
-                    enrollmentNo: s.enrollmentNo,
-                    name: s.name,
-                    teacherAction: 'pending',
-                    verified: false
-                  }))
-                });
-
-                console.log('📌 Active Random Ring set:', {
-                  randomRingId: result.randomRingId,
-                  studentCount: result.selectedStudents.length
-                });
-              } else {
-                alert('❌ Failed to send Random Ring: ' + (result.message || result.error));
-                console.error('❌ Random Ring failed:', result);
-              }
-            } catch (error) {
-              console.error('❌ Error sending Random Ring:', error);
-              alert('❌ Error sending Random Ring. Please check your connection.');
-            }
             setRandomRingDialogOpen(false);
+            await handleSmartRandomRing(data);
           }}
           theme={theme}
+          isP2PAvailable={teacherIsOnWifi}
         />
         {/* Student Profile Dialog */}
         <StudentProfileDialog
@@ -5824,13 +6692,22 @@ const onRefreshStudent = async () => {
                       </View>
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ fontSize: 24, fontWeight: 'bold', color: theme.text }}>
+                      <Text style={{ fontSize: 24, fontWeight: 'bold', color: student.receivedViaP2P ? '#1565C0' : theme.text }}>
                         {formatTime(student.timerValue || 0)}
                       </Text>
                       {student.isRunning && (
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#00ff88', marginRight: 6 }} />
-                          <Text style={{ fontSize: 12, fontWeight: '600', color: '#00ff88' }}>LIVE</Text>
+                          <View style={{
+                            width: 8, height: 8, borderRadius: 4,
+                            backgroundColor: student.receivedViaP2P ? '#1565C0' : '#00ff88',
+                            marginRight: 6
+                          }} />
+                          <Text style={{
+                            fontSize: 12, fontWeight: '600',
+                            color: student.receivedViaP2P ? '#1565C0' : '#00ff88'
+                          }}>
+                            {student.receivedViaP2P ? '📶 P2P' : 'LIVE'}
+                          </Text>
                         </View>
                       )}
                     </View>
@@ -6626,6 +7503,31 @@ const onRefreshStudent = async () => {
                   <TouchableOpacity
                     style={{ backgroundColor: '#ffffff', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 20, flex: 1, alignItems: 'center' }}
                     onPress={async () => {
+                      if (randomRingData.randomRingId && randomRingData.randomRingId.startsWith('p2p_ring_')) {
+                        try {
+                          if (socketRef.current && socketRef.current.rtcDC && socketRef.current.rtcDC.readyState === 'open') {
+                            socketRef.current.rtcDC.send(JSON.stringify({
+                              type: 'RANDOM_RING_RESPONSE',
+                              studentId,
+                              randomRingId: randomRingData.randomRingId,
+                              status: 'present'
+                            }));
+                          }
+                        } catch (err) {
+                          console.warn('Failed to send P2P response via DataChannel:', err.message);
+                        }
+                        
+                        setRandomRingData(prev => {
+                          if (prev) {
+                            const pausedSeconds = prev.ringPauseTime ? (_appGetBootMs() - prev.ringPauseTime) / 1000 : 0;
+                            OfflineTimerService.resumeTimer('random_ring_face_verified', pausedSeconds);
+                          }
+                          return null;
+                        });
+                        alert('✅ P2P Presence Confirmed!');
+                        return;
+                      }
+
                       try {
                         const res = await fetch(POST_ATTENDANCE_RANDOM_RING_RESPONSE, {
                           method: 'POST',
