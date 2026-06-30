@@ -2007,12 +2007,77 @@ export default function App() {
     }
   };
 
-  /** True when ring was sent over LAN/WebRTC — no server DB record exists */
+  /** True when ring was sent over LAN/WebRTC only — no server DB record */
   const isLocalP2PRing = (ringData) => {
     if (!ringData) return false;
     if (ringData.isP2P) return true;
     const id = ringData.randomRingId || '';
-    return id.startsWith('p2p_ring_') || id.startsWith('ring_') || id.startsWith('lan_ring_');
+    // p2p_ring_ / lan_ring_ = offline LAN only. ring_* is also used by server — not P2P-only.
+    return id.startsWith('p2p_ring_') || id.startsWith('lan_ring_');
+  };
+
+  /** Unified random ring verification — P2P/offline first, server when online, local fallback on failure */
+  const processRandomRingVerification = async (ringInfo, status = 'verified') => {
+    const isPresent = status === 'present';
+    const responseStatus = isPresent ? 'present' : 'verified';
+    const resumeReason = isPresent ? 'random_ring_present' : 'random_ring_face_verified';
+
+    if (isLocalP2PRing(ringInfo)) {
+      console.log('[Ring] Local P2P ring — verifying offline');
+      await sendP2PRingResponse(responseStatus, ringInfo);
+      await completeLocalRingVerification(ringInfo, resumeReason);
+      return { success: true, mode: 'p2p' };
+    }
+
+    const hasInternet = OfflineTimerService.hasInternetConnection !== false;
+    if (!hasInternet) {
+      console.log('[Ring] No internet — verifying locally and notifying teacher via LAN');
+      await sendP2PRingResponse(responseStatus, ringInfo);
+      await completeLocalRingVerification(ringInfo, 'random_ring_offline');
+      return { success: true, mode: 'offline_local' };
+    }
+
+    let currentBSSID = null;
+    try {
+      const wifiResult = await NativeWiFiService.validateWiFiWithPermissions();
+      if (wifiResult?.currentBSSID) currentBSSID = wifiResult.currentBSSID;
+      else if (wifiResult?.bssid) currentBSSID = wifiResult.bssid;
+    } catch (_) {}
+
+    try {
+      const endpoint = isPresent
+        ? POST_ATTENDANCE_RANDOM_RING_RESPONSE
+        : (ringInfo.isRejection ? POST_RANDOM_RING_VERIFY_AFTER_REJECTION : POST_RANDOM_RING_VERIFY_DIRECT);
+      const body = isPresent
+        ? {
+            studentId: studentIdRef.current,
+            randomRingId: ringInfo.randomRingId,
+            responseTime: new Date().toISOString(),
+          }
+        : {
+            randomRingId: ringInfo.randomRingId,
+            studentId: studentIdRef.current,
+            bssid: currentBSSID,
+          };
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const result = await res.json();
+      if (result.success) {
+        console.log('[Ring] Server accepted verification');
+        return { success: true, mode: 'server' };
+      }
+      console.warn('[Ring] Server rejected — local fallback:', result.error);
+    } catch (err) {
+      console.warn('[Ring] Server unreachable — local fallback:', err.message);
+    }
+
+    // Server failed or ring not in DB — still resume timer and notify teacher via P2P
+    await sendP2PRingResponse(responseStatus, ringInfo);
+    await completeLocalRingVerification(ringInfo, 'random_ring_server_fallback');
+    return { success: true, mode: 'fallback' };
   };
 
   /** Send ring response to teacher via WebRTC + LAN (works offline) */
@@ -2042,19 +2107,35 @@ export default function App() {
     }
   };
 
-  /** Resume timer and dismiss ring banner after local P2P verification */
-  const completeLocalRingVerification = (ringData, reason) => {
-    setRandomRingData(prev => {
-      const data = prev || ringData;
-      if (data?.ringPauseTime) {
-        const pausedSeconds = (_appGetBootMs() - data.ringPauseTime) / 1000;
-        OfflineTimerService.resumeTimer(reason, pausedSeconds);
-        console.log(`[P2P] Timer resumed after ring (${reason}), paused ${pausedSeconds.toFixed(1)}s`);
-      } else {
-        OfflineTimerService.resumeTimer(reason, 0);
+  /** Resume timer and dismiss ring banner after verification */
+  const completeLocalRingVerification = async (ringData, reason) => {
+    const data = ringData;
+    const pausedSeconds = data?.ringPauseTime
+      ? Math.max(0, (_appGetBootMs() - data.ringPauseTime) / 1000)
+      : 0;
+
+    console.log(`[Ring] Completing local verification (${reason}), paused ${pausedSeconds.toFixed(1)}s`);
+
+    if (OfflineTimerService.isRunning) {
+      if (OfflineTimerService.isPaused) {
+        await OfflineTimerService.resumeTimer(reason, pausedSeconds);
+      } else if (pausedSeconds > 0) {
+        OfflineTimerService.timerSeconds += Math.floor(pausedSeconds);
+        await OfflineTimerService.saveState();
+        OfflineTimerService.notifyListeners({
+          type: 'timer_tick',
+          timerSeconds: OfflineTimerService.timerSeconds,
+        });
       }
-      return null;
-    });
+    }
+
+    setOfflineTimerState(prev => ({
+      ...prev,
+      isRunning: true,
+      isPaused: false,
+      timerSeconds: OfflineTimerService.timerSeconds || prev.timerSeconds,
+    }));
+    setRandomRingData(null);
   };
 
   /** Handle incoming LAN / server-relay P2P packets */
@@ -2774,26 +2855,11 @@ export default function App() {
               return;
             }
 
-            let currentBSSID = null;
-            try {
-              const wifiResult = await NativeWiFiService.validateWiFiWithPermissions();
-              if (wifiResult && wifiResult.bssid) currentBSSID = wifiResult.bssid;
-            } catch (e) { console.warn('⚠️ WiFi check failed:', e.message); }
-
-            const res = await fetch(POST_RANDOM_RING_VERIFY_DIRECT, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                randomRingId: ringInfo.randomRingId,
-                studentId: studentIdRef.current,
-                bssid: currentBSSID,
-              }),
-            });
-            const result = await res.json();
-            if (result.success) {
-              console.log('✅ Auto face verify accepted by server');
-            } else {
-              console.warn('❌ Auto face verify rejected:', result.error);
+            const result = await processRandomRingVerification(ringInfo, 'verified');
+            if (result.success && result.mode !== 'server') {
+              console.log(`✅ Auto verify completed (${result.mode}) — timer resumed`);
+            } else if (result.success) {
+              console.log('✅ Auto verify accepted by server');
             }
           } catch (err) {
             if (err.message === 'VERIFICATION_CANCELLED') {
@@ -4301,48 +4367,18 @@ dayKeys.forEach((dayKey) => {
 
       if (!verificationResult.success || !verificationResult.isMatch) {
         alert(`❌ Face Verification Failed\n\nSimilarity: ${verificationResult.similarityPercentage}%\n\nPlease try again.`);
-        return; // Keep banner open — multiple chances
-      }
-
-      // Face passed — get current BSSID
-      let currentBSSID = null;
-      try {
-        const wifiResult = await NativeWiFiService.validateWiFiWithPermissions();
-        if (wifiResult && wifiResult.currentBSSID) {
-          currentBSSID = wifiResult.currentBSSID;
-        }
-      } catch (wifiErr) {
-        console.warn('⚠️ WiFi check failed:', wifiErr.message);
-      }
-
-      if (isLocalP2PRing(randomRingData)) {
-        await sendP2PRingResponse('verified', randomRingData);
-        completeLocalRingVerification(randomRingData, 'random_ring_face_verified');
-        alert('✅ Face verified! Timer resumed.');
         return;
       }
 
-      // Choose endpoint based on flow path
-      const endpoint = randomRingData.isRejection
-        ? POST_RANDOM_RING_VERIFY_AFTER_REJECTION
-        : POST_RANDOM_RING_VERIFY_DIRECT;
-
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          randomRingId: randomRingData.randomRingId,
-          studentId,
-          bssid: currentBSSID,
-        }),
-      });
-      const result = await res.json();
-
+      const result = await processRandomRingVerification(randomRingData, 'verified');
       if (result.success) {
-        // Timer resume + compensation handled by random_ring_face_verification_success socket event
-        console.log('✅ Face verify accepted by server via', endpoint);
+        if (result.mode === 'server') {
+          console.log('✅ Face verify accepted by server');
+        } else {
+          alert('✅ Face verified! Timer resumed.');
+        }
       } else {
-        alert('❌ Verification failed: ' + (result.error || 'Unknown error'));
+        alert('❌ Verification failed. Please try again.');
       }
 
     } catch (error) {
@@ -7550,31 +7586,15 @@ const onRefreshStudent = async () => {
                   <TouchableOpacity
                     style={{ backgroundColor: '#ffffff', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 20, flex: 1, alignItems: 'center' }}
                     onPress={async () => {
-                      if (isLocalP2PRing(randomRingData)) {
-                        await sendP2PRingResponse('present', randomRingData);
-                        completeLocalRingVerification(randomRingData, 'random_ring_present');
-                        alert('✅ Presence confirmed! Timer resumed.');
-                        return;
-                      }
-
-                      try {
-                        const res = await fetch(POST_ATTENDANCE_RANDOM_RING_RESPONSE, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            studentId,
-                            randomRingId: randomRingData.randomRingId,
-                            responseTime: new Date(_appGetBootMs()).toISOString(),
-                          })
-                        });
-                        const result = await res.json();
-                        if (result.success) {
-                          setRandomRingData(prev => prev ? { ...prev, responded: true } : null);
+                      const result = await processRandomRingVerification(randomRingData, 'present');
+                      if (result.success) {
+                        if (result.mode !== 'server') {
+                          alert('✅ Presence confirmed! Timer resumed.');
                         } else {
-                          alert('❌ Failed: ' + (result.error || 'Unknown error'));
+                          setRandomRingData(prev => prev ? { ...prev, responded: true } : null);
                         }
-                      } catch (e) {
-                        alert('❌ Network error. Try again.');
+                      } else {
+                        alert('❌ Failed. Please try again.');
                       }
                     }}
                   >
