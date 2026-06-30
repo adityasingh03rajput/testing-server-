@@ -2007,6 +2007,56 @@ export default function App() {
     }
   };
 
+  /** True when ring was sent over LAN/WebRTC — no server DB record exists */
+  const isLocalP2PRing = (ringData) => {
+    if (!ringData) return false;
+    if (ringData.isP2P) return true;
+    const id = ringData.randomRingId || '';
+    return id.startsWith('p2p_ring_') || id.startsWith('ring_') || id.startsWith('lan_ring_');
+  };
+
+  /** Send ring response to teacher via WebRTC + LAN (works offline) */
+  const sendP2PRingResponse = async (status, ringData) => {
+    const payload = {
+      type: 'RANDOM_RING_RESPONSE',
+      studentId: studentIdRef.current,
+      randomRingId: ringData?.randomRingId,
+      status,
+    };
+    if (socketRef.current?.rtcDC?.readyState === 'open') {
+      try {
+        socketRef.current.rtcDC.send(JSON.stringify(payload));
+        console.log('[P2P] Sent RANDOM_RING_RESPONSE via WebRTC:', status);
+      } catch (e) {
+        console.warn('[P2P] WebRTC response failed:', e.message);
+      }
+    }
+    try {
+      await LanP2PService.sendMessage('RANDOM_RING_RESPONSE', {
+        studentId: studentIdRef.current,
+        randomRingId: ringData?.randomRingId,
+        status,
+      });
+    } catch (e) {
+      console.warn('[LAN] LAN response failed:', e.message);
+    }
+  };
+
+  /** Resume timer and dismiss ring banner after local P2P verification */
+  const completeLocalRingVerification = (ringData, reason) => {
+    setRandomRingData(prev => {
+      const data = prev || ringData;
+      if (data?.ringPauseTime) {
+        const pausedSeconds = (_appGetBootMs() - data.ringPauseTime) / 1000;
+        OfflineTimerService.resumeTimer(reason, pausedSeconds);
+        console.log(`[P2P] Timer resumed after ring (${reason}), paused ${pausedSeconds.toFixed(1)}s`);
+      } else {
+        OfflineTimerService.resumeTimer(reason, 0);
+      }
+      return null;
+    });
+  };
+
   /** Handle incoming LAN / server-relay P2P packets */
   const handleLanPacket = (pkt) => {
     const type = pkt.type;
@@ -2022,11 +2072,12 @@ export default function App() {
         const ringPauseTime = _appGetBootMs();
         OfflineTimerService.pauseTimer('random_ring');
         setRandomRingData({
-          randomRingId: payload.randomRingId || pkt.packetId || ('lan_ring_' + Date.now()),
+          randomRingId: payload.randomRingId || pkt.packetId || ('p2p_ring_' + Date.now()),
           teacherId: payload.teacherId || pkt.sender,
           timestamp: Date.now(),
           expiresAt: Date.now() + 60000,
           ringPauseTime,
+          isP2P: true,
         });
       } else if (type === 'RANDOM_RING_ACCEPTED') {
         console.log(`[LAN] ✅ RANDOM_RING_ACCEPTED Packet ${pkt.packetId}`);
@@ -2067,6 +2118,19 @@ export default function App() {
           }
           return s;
         }));
+      } else if (type === 'RANDOM_RING_RESPONSE') {
+        const enrollmentNo = payload.studentId || pkt.sender;
+        console.log(`[LAN] 🔔 RANDOM_RING_RESPONSE from ${enrollmentNo}: ${payload.status}`);
+        setStudents(prev => prev.map(s =>
+          s.enrollmentNo === enrollmentNo
+            ? { ...s, p2pRingStatus: payload.status, p2pRingVerified: payload.status === 'verified' }
+            : s
+        ));
+        LanP2PService.sendMessage('RANDOM_RING_ACCEPTED', {
+          enrollmentNo,
+          status: payload.status,
+          randomRingId: payload.randomRingId,
+        }).catch(() => {});
       } else if (type === 'ACK' || pkt.type === 'ACK') {
         // Handled by LanP2PService pendingAcks
       }
@@ -4251,28 +4315,10 @@ dayKeys.forEach((dayKey) => {
         console.warn('⚠️ WiFi check failed:', wifiErr.message);
       }
 
-      if (randomRingData.randomRingId && randomRingData.randomRingId.startsWith('p2p_ring_')) {
-        try {
-          if (socketRef.current && socketRef.current.rtcDC && socketRef.current.rtcDC.readyState === 'open') {
-            socketRef.current.rtcDC.send(JSON.stringify({
-              type: 'RANDOM_RING_RESPONSE',
-              studentId,
-              randomRingId: randomRingData.randomRingId,
-              status: 'verified'
-            }));
-          }
-        } catch (err) {
-          console.warn('Failed to send P2P face verify response via DataChannel:', err.message);
-        }
-
-        setRandomRingData(prev => {
-          if (prev) {
-            const pausedSeconds = prev.ringPauseTime ? (_appGetBootMs() - prev.ringPauseTime) / 1000 : 0;
-            OfflineTimerService.resumeTimer('random_ring_face_verified', pausedSeconds);
-          }
-          return null;
-        });
-        alert('✅ Face verified successfully! P2P Ring completed.');
+      if (isLocalP2PRing(randomRingData)) {
+        await sendP2PRingResponse('verified', randomRingData);
+        completeLocalRingVerification(randomRingData, 'random_ring_face_verified');
+        alert('✅ Face verified! Timer resumed.');
         return;
       }
 
@@ -5484,10 +5530,11 @@ const onRefreshStudent = async () => {
       }
 
       const ringPayload = {
-        randomRingId: 'ring_' + Date.now(),
+        randomRingId: 'p2p_ring_' + Date.now(),
         teacherId: loginId,
         timestamp: Date.now(),
         expiresAt: Date.now() + 60000,
+        isP2P: true,
       };
 
       // 1. LAN UDP broadcast (works fully offline on same Wi-Fi)
@@ -7503,28 +7550,10 @@ const onRefreshStudent = async () => {
                   <TouchableOpacity
                     style={{ backgroundColor: '#ffffff', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 20, flex: 1, alignItems: 'center' }}
                     onPress={async () => {
-                      if (randomRingData.randomRingId && randomRingData.randomRingId.startsWith('p2p_ring_')) {
-                        try {
-                          if (socketRef.current && socketRef.current.rtcDC && socketRef.current.rtcDC.readyState === 'open') {
-                            socketRef.current.rtcDC.send(JSON.stringify({
-                              type: 'RANDOM_RING_RESPONSE',
-                              studentId,
-                              randomRingId: randomRingData.randomRingId,
-                              status: 'present'
-                            }));
-                          }
-                        } catch (err) {
-                          console.warn('Failed to send P2P response via DataChannel:', err.message);
-                        }
-                        
-                        setRandomRingData(prev => {
-                          if (prev) {
-                            const pausedSeconds = prev.ringPauseTime ? (_appGetBootMs() - prev.ringPauseTime) / 1000 : 0;
-                            OfflineTimerService.resumeTimer('random_ring_face_verified', pausedSeconds);
-                          }
-                          return null;
-                        });
-                        alert('✅ P2P Presence Confirmed!');
+                      if (isLocalP2PRing(randomRingData)) {
+                        await sendP2PRingResponse('present', randomRingData);
+                        completeLocalRingVerification(randomRingData, 'random_ring_present');
+                        alert('✅ Presence confirmed! Timer resumed.');
                         return;
                       }
 

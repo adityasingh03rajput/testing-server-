@@ -256,6 +256,13 @@ class LanP2PService {
     await this._sendLan(raw);
   }
 
+  /** Send a typed message over LAN (e.g. RANDOM_RING_RESPONSE from student) */
+  async sendMessage(type, payload) {
+    const raw = this._buildPacket(type, payload);
+    console.log(`[LAN] SEND ${type}`);
+    return this._sendLan(raw);
+  }
+
   /** Immediate timer state change (start/stop/pause) — always sent */
   async sendTimerStateChange(seconds, isRunning, status) {
     this.lastTimerBroadcastAt = Date.now();
