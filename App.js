@@ -634,9 +634,11 @@ export default function App() {
   const socketRef = useRef(null);
   const currentClassRoomRef = useRef(null); // tracks the room teacher is currently in
   const studentIdRef = useRef(null);   // always current studentId for socket handlers
+  const loginIdRef = useRef(null);     // always current teacher loginId for socket handlers
   const selectedRoleRef = useRef(null); // always current role for socket handlers
   const semesterRef = useRef(null);    // always current semester for socket handlers
   const branchRef = useRef(null);      // always current branch for socket handlers
+  const lastSocketTimerEmitRef = useRef(0); // throttle for socket timer fallback
   const manualSelectionRef = useRef(manualSelection);
   const currentClassInfoRef = useRef(null); // always current class for background WiFi checks
   const offlinePeriodRef = useRef(null); // Ref to track current period for socket listeners
@@ -656,6 +658,7 @@ export default function App() {
 
   // Keep refs in sync with state so socket handlers always read current values
   useEffect(() => { studentIdRef.current = studentId; }, [studentId]);
+  useEffect(() => { loginIdRef.current = loginId; }, [loginId]);
   useEffect(() => { selectedRoleRef.current = selectedRole; }, [selectedRole]);
   useEffect(() => { semesterRef.current = semester; }, [semester]);
   useEffect(() => { branchRef.current = branch; }, [branch]);
@@ -728,10 +731,10 @@ export default function App() {
     if (showLogin) return;
     if (selectedRole === 'student' && studentId) {
       initLanP2P('student', studentId);
-    } else if (selectedRole === 'teacher' && loginId && teacherIsOnWifi) {
+    } else if (selectedRole === 'teacher' && loginId) {
       initLanP2P('teacher', loginId);
     }
-  }, [selectedRole, studentId, loginId, teacherIsOnWifi, showLogin]);
+  }, [selectedRole, studentId, loginId, showLogin]);
 
   // Animations
   const glowAnim = useRef(new Animated.Value(0)).current;
@@ -1482,11 +1485,14 @@ export default function App() {
 
               // Helper to broadcast state changes over LAN (primary) + WebRTC (secondary)
               const broadcastP2PUpdate = (seconds, isRunning, status, isStateChange = false) => {
+                // 1) LAN (primary, same Wi-Fi)
                 if (isStateChange) {
                   LanP2PService.sendTimerStateChange(seconds, isRunning, status);
                 } else {
                   LanP2PService.sendTimerUpdate(seconds, isRunning, status);
                 }
+                // 2) WebRTC (secondary, established peer link)
+                let webrtcSent = false;
                 if (
                   socketRef.current?.rtcDC &&
                   socketRef.current.rtcDC.readyState === 'open'
@@ -1499,9 +1505,32 @@ export default function App() {
                       isRunning,
                       status,
                     }));
+                    webrtcSent = true;
                   } catch (err) {
                     console.warn('[P2P] WebRTC timer update failed:', err.message);
                   }
+                }
+                // 3) Server socket (fallback) — guarantees a cross-network teacher always
+                //    sees the timer even with no LAN/WebRTC path. State changes always go;
+                //    ticks are throttled to ~5s and only when WebRTC isn't carrying the value.
+                try {
+                  const now = _appGetBootMs();
+                  const shouldEmit = isStateChange ||
+                    (!webrtcSent && (now - lastSocketTimerEmitRef.current >= 5000));
+                  if (shouldEmit && socketRef.current?.connected && studentIdRef.current) {
+                    lastSocketTimerEmitRef.current = now;
+                    socketRef.current.emit('timer_update', {
+                      studentId: studentIdRef.current,
+                      timerValue: seconds,
+                      isRunning,
+                      status,
+                      semester: semesterRef.current?.toString(),
+                      branch: branchRef.current,
+                      via: 'socket',
+                    });
+                  }
+                } catch (err) {
+                  console.warn('[P2P] socket timer fallback failed:', err.message);
                 }
               };
 
@@ -1584,7 +1613,9 @@ export default function App() {
                   break;
 
                 case 'missed_random_ring': {
-                  const missedRingId = event.ringId || 'unknown';
+                  // OfflineTimerService emits { type, randomRing } — derive a stable id from it
+                  const ring = event.randomRing || {};
+                  const missedRingId = ring.randomRingId || ring._id || ring.id || event.ringId || 'unknown';
                   if (!shownMissedRingIds.current.has(missedRingId)) {
                     shownMissedRingIds.current.add(missedRingId);
                     showToast('🔔 Random ring missed — please respond immediately', 'error', 5000);
@@ -2105,6 +2136,26 @@ export default function App() {
     } catch (e) {
       console.warn('[LAN] LAN response failed:', e.message);
     }
+    // Server socket relay fallback — the teacher is in the class room, so this guarantees
+    // the response reaches them even if LAN UDP and WebRTC both drop the packet.
+    const relaySem = (semesterRef.current || currentClassRoomRef.current?.semester);
+    const relayBranch = (branchRef.current || currentClassRoomRef.current?.branch);
+    if (socketRef.current?.connected && relaySem && relayBranch) {
+      try {
+        socketRef.current.emit('p2p_relay_broadcast', {
+          semester: relaySem.toString(),
+          branch: relayBranch,
+          message: {
+            type: 'RANDOM_RING_RESPONSE',
+            payload: { studentId: studentIdRef.current, randomRingId: ringData?.randomRingId, status },
+            ts: Date.now(),
+          },
+        });
+        console.log('[Ring] Sent RANDOM_RING_RESPONSE via socket relay');
+      } catch (e) {
+        console.warn('[Ring] socket relay response failed:', e.message);
+      }
+    }
   };
 
   /** Resume timer and dismiss ring banner after verification */
@@ -2146,21 +2197,47 @@ export default function App() {
     if (selectedRoleRef.current === 'student') {
       if (type === 'RANDOM_RING_TRIGGER') {
         console.log(`[LAN] 🚨 RANDOM_RING_TRIGGER Packet ${pkt.packetId}`);
+        const isP2PRing = payload.isP2P || pkt.isP2P;
         const currentPeriod = offlinePeriodRef.current;
         const hasActivePeriod = currentPeriod && !currentPeriod.isBreak && currentPeriod.subject;
-        if (!hasActivePeriod) return;
+        if (!hasActivePeriod && !isP2PRing) {
+          console.log('[LAN] Ignoring ring — no active period (non-P2P)');
+          return;
+        }
+        if (!hasActivePeriod && isP2PRing) {
+          console.log('[LAN] Accepting offline P2P ring despite no cached active period');
+        }
 
         const ringPauseTime = _appGetBootMs();
+        const lanRingId = payload.randomRingId || pkt.packetId || ('p2p_ring_' + Date.now());
         OfflineTimerService.pauseTimer('random_ring');
         setRandomRingData({
-          randomRingId: payload.randomRingId || pkt.packetId || ('p2p_ring_' + Date.now()),
+          randomRingId: lanRingId,
           teacherId: payload.teacherId || pkt.sender,
           timestamp: Date.now(),
           expiresAt: Date.now() + 60000,
           ringPauseTime,
           isP2P: true,
         });
+        // Safety auto-resume (parity with the socket ring path) so the timer never
+        // freezes indefinitely if the accept is lost over LAN/WebRTC/socket.
+        setTimeout(() => {
+          setRandomRingData(prev => {
+            if (prev && prev.randomRingId === lanRingId) {
+              console.log('⏰ LAN random ring timeout — resuming timer');
+              const pausedSeconds = prev.ringPauseTime ? (_appGetBootMs() - prev.ringPauseTime) / 1000 : 0;
+              OfflineTimerService.resumeTimer('random_ring_timeout', pausedSeconds);
+              return null;
+            }
+            return prev;
+          });
+        }, 240000);
       } else if (type === 'RANDOM_RING_ACCEPTED') {
+        // Broadcast accept — only act if it's addressed to this student.
+        const acceptedFor = payload.enrollmentNo;
+        if (acceptedFor && acceptedFor !== studentIdRef.current) {
+          return;
+        }
         console.log(`[LAN] ✅ RANDOM_RING_ACCEPTED Packet ${pkt.packetId}`);
         setRandomRingData(prev => {
           if (prev) {
@@ -2180,25 +2257,30 @@ export default function App() {
     } else if (selectedRoleRef.current === 'teacher') {
       if (type === 'TIMER_UPDATE') {
         const enrollmentNo = payload.studentId || pkt.sender;
-        console.log(`[LAN] ⏱️ TIMER_UPDATE from ${enrollmentNo}: ${payload.timerValue}s`);
-        setStudents(prev => prev.map(s => {
-          if (s.enrollmentNo === enrollmentNo) {
-            return {
-              ...s,
-              timerValue: payload.timerValue,
-              isRunning: payload.isRunning,
-              status: payload.status,
-              receivedViaP2P: true,
-              attendanceSession: {
-                ...(s.attendanceSession || {}),
+        console.warn(`[LAN] ⏱️ TIMER_UPDATE from ${enrollmentNo}: ${payload.timerValue}s (running=${payload.isRunning}, status=${payload.status})`);
+        setStudents(prev => {
+          const match = prev.some(s => s.enrollmentNo === enrollmentNo);
+          console.warn(`[LAN] Student ${enrollmentNo} in teacher class list? ${match ? 'YES' : 'NO'}. List: ${prev.map(s => s.enrollmentNo).join(', ')}`);
+          return prev.map(s => {
+            if (s.enrollmentNo === enrollmentNo) {
+              return {
+                ...s,
+                timerValue: payload.timerValue,
                 isRunning: payload.isRunning,
                 status: payload.status,
-                attendedSeconds: payload.timerValue,
-              },
-            };
-          }
-          return s;
-        }));
+                receivedViaP2P: true,
+                lastP2PAt: Date.now(), // stamp so teacher UI shows blue digits for live P2P
+                attendanceSession: {
+                  ...(s.attendanceSession || {}),
+                  isRunning: payload.isRunning,
+                  status: payload.status,
+                  attendedSeconds: payload.timerValue,
+                },
+              };
+            }
+            return s;
+          });
+        });
       } else if (type === 'RANDOM_RING_RESPONSE') {
         const enrollmentNo = payload.studentId || pkt.sender;
         console.log(`[LAN] 🔔 RANDOM_RING_RESPONSE from ${enrollmentNo}: ${payload.status}`);
@@ -2212,6 +2294,20 @@ export default function App() {
           status: payload.status,
           randomRingId: payload.randomRingId,
         }).catch(() => {});
+        // Socket relay fallback so the student's timer resumes even if LAN UDP drops the accept.
+        const accSem = (semesterRef.current || currentClassRoomRef.current?.semester);
+        const accBranch = (branchRef.current || currentClassRoomRef.current?.branch);
+        if (socketRef.current?.connected && accSem && accBranch) {
+          socketRef.current.emit('p2p_relay_broadcast', {
+            semester: accSem.toString(),
+            branch: accBranch,
+            message: {
+              type: 'RANDOM_RING_ACCEPTED',
+              payload: { enrollmentNo, status: payload.status, randomRingId: payload.randomRingId },
+              ts: Date.now(),
+            },
+          });
+        }
       } else if (type === 'ACK' || pkt.type === 'ACK') {
         // Handled by LanP2PService pendingAcks
       }
@@ -2704,7 +2800,7 @@ export default function App() {
       console.log('📥 Received student update:', data);
 
       // For teachers: Instant updates for all students
-      if (selectedRole === 'teacher') {
+      if (selectedRoleRef.current === 'teacher') {
         console.log('👨‍🏫 Teacher received update for student:', data.enrollmentNo);
         console.log('   Update data:', { status: data.status, isRunning: data.isRunning, enrollmentNo: data.enrollmentNo });
 
@@ -2743,7 +2839,7 @@ export default function App() {
     // Listen for Random Ring verification updates (teachers only)
     socketRef.current.on('random_ring_student_verified', (data) => {
       console.log('✅ Random Ring verification update:', data);
-      if (selectedRole === 'teacher' && loginId === data.teacherId) {
+      if (selectedRoleRef.current === 'teacher' && loginIdRef.current === data.teacherId) {
         // Show notification to teacher
         alert(`✅ Student Verified!\n\n${data.studentName} has verified their attendance.\n\nVerified: ${data.verifiedCount}/${data.totalCount}`);
 
@@ -2755,14 +2851,14 @@ export default function App() {
     // Listen for manual marking updates
     socketRef.current.on('student_manually_marked', async (data) => {
       console.log('📡 Student manually marked update:', data);
-      if (selectedRole === 'teacher') {
+      if (selectedRoleRef.current === 'teacher') {
         // If it's the teacher who did it, they already know, but others need refresh
         fetchStudents();
-        if (loginId !== data.markedBy) {
+        if (loginIdRef.current !== data.markedBy) {
           alert(`👨‍🏫 Attendance Update!\n\n${data.studentName} was marked ${data.status} by ${data.markedByName}.`);
         }
-      } else if (selectedRole === 'student') {
-        if (studentId === data.enrollmentNo) {
+      } else if (selectedRoleRef.current === 'student') {
+        if (studentIdRef.current === data.enrollmentNo) {
           console.log(`⚠️ Student manually marked ${data.status} by teacher! Activating Shuttle Relay.`);
           
           // Sync with the server's manual mark state locally
@@ -2907,7 +3003,7 @@ export default function App() {
 
     // Listen for teacher action updates (for teacher dashboard)
     socketRef.current.on('random_ring_teacher_action_update', (data) => {
-      if (selectedRole === 'teacher') {
+      if (selectedRoleRef.current === 'teacher') {
         setActiveRandomRing(prev => {
           if (!prev || prev._id !== data.randomRingId) return prev;
           return {
@@ -2945,7 +3041,7 @@ export default function App() {
     // Listen for face verification after rejection (for teacher dashboard)
     socketRef.current.on('random_ring_face_verified_after_rejection', (data) => {
       console.log('✅ Student verified face after rejection:', data);
-      if (selectedRole === 'teacher') {
+      if (selectedRoleRef.current === 'teacher') {
         setActiveRandomRing(prev => {
           if (!prev || prev._id !== data.randomRingId) return prev;
           return {
@@ -3020,7 +3116,7 @@ export default function App() {
 
     // Snapshot of all live students when teacher joins a class room
     socketRef.current.on('live_state_snapshot', ({ students: liveStudents }) => {
-      if (selectedRole !== 'teacher' || !liveStudents?.length) return;
+      if (selectedRoleRef.current !== 'teacher' || !liveStudents?.length) return;
       setStudents(prevStudents => {
         const updated = [...prevStudents];
         liveStudents.forEach(live => {
@@ -5342,7 +5438,11 @@ const onRefreshStudent = async () => {
       // Handle the case where validateWiFiWithPermissions returned success: false due to location/permission errors.
       // (It returns an error object instead of throwing).
       const errMsg = result?.error || '';
-      if (errMsg.includes('Location') || errMsg.includes('location') || errMsg.includes('Permission') || errMsg.includes('permission')) {
+      if (
+        errMsg.includes('Location') || errMsg.includes('location') ||
+        errMsg.includes('Permission') || errMsg.includes('permission') ||
+        errMsg.includes('disabled') || result?.code === 'WIFI_DISABLED'
+      ) {
         try {
           const wifiState = await NativeWiFiService.getWiFiState();
           const onWifi = !!(wifiState?.isWifiEnabled);
@@ -5360,6 +5460,15 @@ const onRefreshStudent = async () => {
       return false;
     } catch (err) {
       console.error('[P2P] checkTeacherWifi caught error:', err);
+      // Last resort: if WiFi radio is on, allow LAN P2P even when BSSID read fails
+      try {
+        const wifiState = await NativeWiFiService.getWiFiState();
+        if (wifiState?.isWifiEnabled) {
+          console.log('[P2P] BSSID check failed but WiFi radio is on — allowing LAN');
+          setTeacherIsOnWifi(true);
+          return true;
+        }
+      } catch (_) {}
       setTeacherIsOnWifi(false);
       return false;
     }
@@ -5551,17 +5660,24 @@ const onRefreshStudent = async () => {
    */
   const handleSmartRandomRing = async (ringData) => {
     const onWifi = await checkTeacherWifi();
-    console.log(`[SmartRing] Teacher WiFi: ${onWifi}, type: ${ringData.type}`);
+    const isOnline = socketRef.current?.connected;
+    console.log(`[SmartRing] Teacher WiFi: ${onWifi}, socket: ${isOnline}, type: ${ringData.type}`);
 
-    if (onWifi) {
-      // ── LAN + P2P Ring (primary) ──────────────────────────────────────────
-      let targets = [...(students || [])].filter(s => s.status === 'active' || s.isRunning);
+    // Offline or on WiFi → LAN broadcast is primary (works without internet)
+    const canUseLan = onWifi || !isOnline;
+    if (canUseLan) {
+      // When offline, server won't mark students 'active' — use full roster
+      let targets = [...(students || [])].filter(s => s.enrollmentNo);
+      if (isOnline) {
+        const active = targets.filter(s => s.status === 'active' || s.isRunning);
+        if (active.length > 0) targets = active;
+      }
       if (ringData.type === 'random' && ringData.count && ringData.count < targets.length) {
         targets = targets.sort(() => Math.random() - 0.5).slice(0, ringData.count);
       }
 
       if (!targets.length) {
-        Alert.alert('⚠️ No Active Students', 'No students with active timers found for P2P ring.');
+        Alert.alert('⚠️ No Students', 'No students in class list. Load students while online first, or check your filter.');
         return;
       }
 
@@ -5573,82 +5689,88 @@ const onRefreshStudent = async () => {
         isP2P: true,
       };
 
-      // 1. LAN UDP broadcast (works fully offline on same Wi-Fi)
+      console.log(`[SmartRing] LAN ring → ${targets.length} student(s), offline=${!isOnline}`);
+
       await initLanP2P('teacher', loginId);
-      await LanP2PService.broadcastReliable('RANDOM_RING_TRIGGER', ringPayload, {
-        targetEnrollmentNos: targets.map(t => t.enrollmentNo),
-        requireAck: false,
-      });
 
-      const isOnline = socketRef.current?.connected;
-
-      // 2. WebRTC DataChannel per student (secondary)
-      const openTargets = targets.filter(s => {
-        const dc = teacherDataChannels.current[s.enrollmentNo];
-        return dc && dc.readyState === 'open';
-      });
-      const needConnectionTargets = targets.filter(s => {
-        const dc = teacherDataChannels.current[s.enrollmentNo];
-        return !dc || dc.readyState !== 'open';
-      });
-
-      if (!isOnline && needConnectionTargets.length > 0 && openTargets.length === 0) {
-        Alert.alert(
-          '📶 LAN Ring Sent',
-          `Random Ring broadcast over Wi-Fi LAN. ${needConnectionTargets.length} student(s) have no WebRTC channel (LAN is primary).`,
-        );
-      } else {
-        Alert.alert('📶 Sending Rings', `Broadcasting to ${targets.length} student(s) via LAN + P2P...`);
+      // Burst broadcast when fully offline — UDP can be dropped on busy WiFi
+      const burstCount = isOnline ? 1 : 5;
+      for (let i = 0; i < burstCount; i++) {
+        await LanP2PService.broadcastReliable('RANDOM_RING_TRIGGER', ringPayload, {
+          targetEnrollmentNos: targets.map(t => t.enrollmentNo),
+          requireAck: false,
+        });
+        if (i < burstCount - 1) {
+          await new Promise(r => setTimeout(r, 400));
+        }
       }
 
-      await Promise.all(targets.map(async (student) => {
-        const enrollmentNo = student.enrollmentNo;
-        const existingDC = teacherDataChannels.current[enrollmentNo];
+      Alert.alert(
+        '📶 LAN Ring Sent',
+        `Broadcast ${burstCount}x to ${targets.length} student(s) over Wi-Fi${isOnline ? ' + P2P' : ' (offline mode)'}.`,
+      );
 
-        const sendRing = (dc) => {
+      // WebRTC only when socket still up (needs signaling server)
+      if (isOnline) {
+        await Promise.all(targets.map(async (student) => {
+          const enrollmentNo = student.enrollmentNo;
+          const existingDC = teacherDataChannels.current[enrollmentNo];
+          const sendRing = (dc) => {
+            try {
+              dc.send(JSON.stringify({ type: 'RANDOM_RING_TRIGGER', ...ringPayload }));
+              console.log(`[P2P] 🔔 Ring sent → ${enrollmentNo}`);
+            } catch (e) {
+              console.warn(`[P2P] Failed to send ring to ${enrollmentNo}:`, e.message);
+            }
+          };
+          if (existingDC?.readyState === 'open') {
+            sendRing(existingDC);
+          } else {
+            await teacherEstablishP2P(enrollmentNo, student.name, sendRing);
+          }
+        }));
+
+        const needServer = targets.filter(s => {
+          const dc = teacherDataChannels.current[s.enrollmentNo];
+          return !dc || dc.readyState !== 'open';
+        });
+        if (needServer.length > 0) {
           try {
-            dc.send(JSON.stringify({ type: 'RANDOM_RING_TRIGGER', ...ringPayload }));
-            console.log(`[P2P] 🔔 Ring sent → ${enrollmentNo}`);
+            const response = await fetch(POST_RANDOM_RING, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: ringData.type,
+                count: ringData.count,
+                teacherId: loginId,
+                teacherName: userData?.name,
+                semester,
+                branch,
+                targetEnrollmentNos: needServer.map(s => s.enrollmentNo),
+              }),
+            });
+            const result = await response.json();
+            if (result.success) {
+              console.log(`[SmartRing] Server fallback: ${result.selectedStudents?.length || 0} student(s)`);
+            }
           } catch (e) {
-            console.warn(`[P2P] Failed to send ring to ${enrollmentNo}:`, e.message);
+            console.warn('[SmartRing] Server fallback failed:', e.message);
           }
-        };
-
-        if (existingDC && existingDC.readyState === 'open') {
-          sendRing(existingDC);
-        } else if (isOnline) {
-          await teacherEstablishP2P(enrollmentNo, student.name, sendRing);
-        }
-      }));
-
-      // 3. Server DB fallback for students still unreachable (requires internet)
-      if (isOnline && needConnectionTargets.length > 0) {
-        console.log(`[SmartRing] Server fallback for ${needConnectionTargets.length} student(s)`);
-        try {
-          const response = await fetch(POST_RANDOM_RING, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: ringData.type,
-              count: ringData.count,
-              teacherId: loginId,
-              teacherName: userData?.name,
-              semester,
-              branch,
-              targetEnrollmentNos: needConnectionTargets.map(s => s.enrollmentNo),
-            }),
-          });
-          const result = await response.json();
-          if (result.success) {
-            console.log(`[SmartRing] Server fallback ring sent to ${result.selectedStudents?.length || 0} student(s)`);
-          }
-        } catch (e) {
-          console.warn('[SmartRing] Server fallback failed:', e.message);
         }
       }
-    } else {
-      // ── Normal DB Ring ────────────────────────────────────────────────────
-      console.log('[SmartRing] No WiFi — falling back to DB random ring');
+      return;
+    }
+
+    // No WiFi at all — cannot LAN ring
+    if (!isOnline) {
+      Alert.alert(
+        '📶 Offline',
+        'Random Ring over LAN requires classroom Wi-Fi. Connect to Wi-Fi and try again.',
+      );
+      return;
+    }
+
+    // Online + no WiFi detection — server DB ring
       try {
         const response = await fetch(POST_RANDOM_RING, {
           method: 'POST',
@@ -5681,7 +5803,6 @@ const onRefreshStudent = async () => {
       } catch (error) {
         alert('❌ Error sending Random Ring. Please check your connection.\n' + error.message);
       }
-    }
   };
 
   /**
@@ -6775,14 +6896,14 @@ const onRefreshStudent = async () => {
                       </View>
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ fontSize: 24, fontWeight: 'bold', color: student.receivedViaP2P ? '#1565C0' : theme.text }}>
+                      <Text style={{ fontSize: 24, fontWeight: 'bold', color: (student.lastP2PAt && (Date.now() - student.lastP2PAt) < 8000) ? '#1565C0' : theme.text }}>
                         {formatTime(student.timerValue || 0)}
                       </Text>
                       {student.isRunning && (
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                           <View style={{
                             width: 8, height: 8, borderRadius: 4,
-                            backgroundColor: student.receivedViaP2P ? '#1565C0' : '#00ff88',
+                            backgroundColor: (student.lastP2PAt && (Date.now() - student.lastP2PAt) < 8000) ? '#1565C0' : '#00ff88',
                             marginRight: 6
                           }} />
                           <Text style={{

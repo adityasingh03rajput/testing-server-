@@ -1949,6 +1949,19 @@ class OfflineTimerService {
    * @param {string} overridePeriodId - Optional period ID to sync
    */
   async syncToServer(overrideLecture = null, overrideTimerSeconds = null, overridePeriodId = null) {
+    // CAPTURE STATE BEFORE THE try BLOCK so the catch can also access these.
+    // (const declared inside try is block-scoped; referencing it in catch throws a
+    //  ReferenceError, which previously made every failed sync skip queuing -> data loss.)
+    // Use overrides if provided, otherwise use current instance state.
+    const capturedTimerSeconds = overrideTimerSeconds !== null ? overrideTimerSeconds : this.timerSeconds;
+    const capturedLecture = overrideLecture !== null ? overrideLecture : this.currentLecture;
+    const capturedIsRunning = this.isRunning;
+    const capturedIsPaused = this.isPaused;
+    const capturedLectureStartTime = this.lectureStartTime;
+    const capturedPeriodId = overridePeriodId !== null ? overridePeriodId : (capturedLecture?.period
+        ? `P${capturedLecture.period}`
+        : (capturedLecture?.periodId || null));
+
     try {
       this.lastSyncAttempt = _getBootMs() || Date.now();
 
@@ -1960,17 +1973,6 @@ class OfflineTimerService {
       // Use server-synced time for the timestamp sent to server (spoof-proof)
       let syncTimestamp;
       try { syncTimestamp = getServerTime().now(); } catch { syncTimestamp = Date.now(); }
-
-      // CAPTURE STATE AT THE START TO PREVENT CONCURRENT MODIFICATION BUGS
-      // Use overrides if provided, otherwise use current instance state
-      const capturedTimerSeconds = overrideTimerSeconds !== null ? overrideTimerSeconds : this.timerSeconds;
-      const capturedLecture = overrideLecture !== null ? overrideLecture : this.currentLecture;
-      const capturedIsRunning = this.isRunning;
-      const capturedIsPaused = this.isPaused;
-      const capturedLectureStartTime = this.lectureStartTime;
-      const capturedPeriodId = overridePeriodId !== null ? overridePeriodId : (capturedLecture?.period
-          ? `P${capturedLecture.period}`
-          : (capturedLecture?.periodId || null));
 
       // Enforce a hard 10-second timeout so a slow/sleeping server never blocks the interval
       const controller = new AbortController();

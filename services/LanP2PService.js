@@ -153,13 +153,17 @@ class LanP2PService {
   }
 
   _handleIncoming(raw, senderIp, isAckChannel) {
+    console.warn(`[LAN] Raw incoming packet: ${raw} (isAckChannel=${isAckChannel}, senderIp=${senderIp})`);
     const pkt = this._parsePacket(raw);
-    if (!pkt) return;
+    if (!pkt) {
+      console.warn(`[LAN] Failed to parse packet: ${raw}`);
+      return;
+    }
 
     if (pkt.type === 'ACK') {
       const pending = this.pendingAcks.get(pkt.ackFor);
       if (pending) {
-        console.log(`[LAN] ACK Received for Packet ${pkt.ackFor} from ${pkt.sender || senderIp}`);
+        console.warn(`[LAN] ACK Received for Packet ${pkt.ackFor} from ${pkt.sender || senderIp}`);
         clearTimeout(pending.timeout);
         this.pendingAcks.delete(pkt.ackFor);
         pending.resolve(true);
@@ -167,15 +171,20 @@ class LanP2PService {
       return;
     }
 
+    // Ignore our own broadcasts heard back on the shared listen port.
+    if (pkt.sender && this.enrollmentNo && pkt.sender === this.enrollmentNo) {
+      return;
+    }
+
     if (this._isDuplicate(pkt.packetId)) {
-      console.log(`[LAN] Duplicate Packet ${pkt.packetId} — ignored`);
+      console.warn(`[LAN] Duplicate Packet ${pkt.packetId} — ignored`);
       if (this.role === 'student' && senderIp) {
         this._sendAck(pkt, senderIp);
       }
       return;
     }
 
-    console.log(`[LAN] RECEIVED Packet ${pkt.packetId} type=${pkt.type} from ${pkt.sender || senderIp}`);
+    console.warn(`[LAN] RECEIVED Packet ${pkt.packetId} type=${pkt.type} from ${pkt.sender || senderIp}`);
 
     if (this.role === 'student' && senderIp) {
       this._sendAck(pkt, senderIp);

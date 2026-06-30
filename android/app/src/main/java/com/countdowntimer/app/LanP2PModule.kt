@@ -71,9 +71,12 @@ class LanP2PModule(private val reactContext: ReactApplicationContext) :
         }
         try {
             acquireMulticastLock()
-            val socket = DatagramSocket(LAN_BROADCAST_PORT)
-            socket.broadcast = true
+            // reuseAddress / broadcast MUST be set before bind to take effect.
+            // DatagramSocket(port) binds in its constructor, so build it unbound first.
+            val socket = DatagramSocket(null)
             socket.reuseAddress = true
+            socket.broadcast = true
+            socket.bind(InetSocketAddress(LAN_BROADCAST_PORT))
             listenSocket = socket
             listening.set(true)
 
@@ -112,8 +115,9 @@ class LanP2PModule(private val reactContext: ReactApplicationContext) :
             return
         }
         try {
-            val socket = DatagramSocket(LAN_ACK_PORT)
+            val socket = DatagramSocket(null)
             socket.reuseAddress = true
+            socket.bind(InetSocketAddress(LAN_ACK_PORT))
             ackListenSocket = socket
             ackListening.set(true)
 

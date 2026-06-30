@@ -92,7 +92,7 @@ const StudentList = ({
     }
 
     if (selectedFilter === 'all') return true;
-    if (selectedFilter === 'active') return student.status === 'active' || student.status === 'offline';
+    if (selectedFilter === 'active') return student.status === 'active' || student.status === 'attending' || student.status === 'offline';
     if (selectedFilter === 'present') return student.status === 'present';
     if (selectedFilter === 'absent') return student.status === 'absent';
     return true;
@@ -100,7 +100,7 @@ const StudentList = ({
 
   const filterCounts = useMemo(() => ({
     all: students.length,
-    active: students.filter(s => s.status === 'active' || s.status === 'offline').length,
+    active: students.filter(s => s.status === 'active' || s.status === 'attending' || s.status === 'offline').length,
     present: students.filter(s => s.status === 'present').length,
     absent: students.filter(s => s.status === 'absent').length,
   }), [students]);
@@ -131,10 +131,10 @@ const StudentList = ({
       if (aIsManual && !bIsManual) return -1;
       if (!aIsManual && bIsManual) return 1;
 
-      // 3. Status priority (active > present > offline > absent)
-      const statusWeight = { active: 0, present: 1, offline: 2, absent: 3 };
-      const wa = statusWeight[a.status] || 4;
-      const wb = statusWeight[b.status] || 4;
+      // 3. Status priority (attending > active > present > offline > absent)
+      const statusWeight = { attending: 0, active: 1, present: 2, offline: 3, absent: 4 };
+      const wa = statusWeight[a.status] || 5;
+      const wb = statusWeight[b.status] || 5;
       if (wa !== wb) return wa - wb;
 
       // 4. Name alphabetical
@@ -466,7 +466,10 @@ const StudentItem = React.memo(({
     if (intervalRef.current) clearInterval(intervalRef.current);
     if (staleCutoffRef.current) clearTimeout(staleCutoffRef.current);
 
-    if (student.isRunning && student.status === 'active') {
+    // Tick whenever the timer is actually running — gate on the authoritative isRunning
+    // flag, not a specific status label. Live updates carry status 'attending' (not 'active'),
+    // so gating on 'active' froze the digits between packets.
+    if (student.isRunning && student.status !== 'absent' && student.status !== 'offline') {
       intervalRef.current = setInterval(() => {
         const elapsed = Math.floor((Date.now() - baseRef.current.ts) / 1000);
         setDisplaySecs(baseRef.current.secs + elapsed);
@@ -485,6 +488,7 @@ const StudentItem = React.memo(({
 
   const getStatusStyle = (status) => {
     switch (status) {
+      case 'attending':
       case 'active':   return { bg: '#d1fae5', text: '#059669' };
       case 'present':  return { bg: '#dbeafe', text: '#2563eb' };
       case 'absent':   return { bg: '#fee2e2', text: '#dc2626' };
@@ -495,6 +499,7 @@ const StudentItem = React.memo(({
 
   const getStatusLabel = (status) => {
     switch (status) {
+      case 'attending':
       case 'active':   return 'Attending';
       case 'present':  return 'Present';
       case 'absent':   return 'Absent';
@@ -568,6 +573,11 @@ const StudentItem = React.memo(({
                       <Text style={styles.ringSelectedBadgeText}>🔔 Ringed</Text>
                     </View>
                   )}
+                  {!!(student.lastP2PAt && (Date.now() - student.lastP2PAt) < 8000) && (
+                    <View style={[styles.p2pBadge, { backgroundColor: '#1565C015', borderColor: '#1565C030' }]}>
+                      <Text style={[styles.p2pBadgeText, { color: '#1565C0' }]}>📶 LIVE (P2P)</Text>
+                    </View>
+                  )}
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
                   <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
@@ -581,7 +591,9 @@ const StudentItem = React.memo(({
                 </View>
               </View>
               <View style={styles.timerContainer}>
-                <Text style={[styles.timerText, { color: theme.text }]}>{
+                {/* Blue digits when the live value is arriving peer-to-peer (LAN/WebRTC) within
+                    the last 8s; normal color when it's coming through the server-client path. */}
+                <Text style={[styles.timerText, { color: (student.lastP2PAt && (Date.now() - student.lastP2PAt) < 8000) ? '#1565C0' : theme.text }]}>{
                   `${Math.floor(displaySecs / 60).toString().padStart(2, '0')}:${(displaySecs % 60).toString().padStart(2, '0')}`
                 }</Text>
                 {student.lectureSubject ? (
@@ -662,6 +674,8 @@ const styles = StyleSheet.create({
   manualBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
   manualBadgeText: { fontSize: 10, fontWeight: '700' },
   manualReason: { fontSize: 11, fontStyle: 'italic', maxWidth: 120 },
+  p2pBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, borderWidth: 1 },
+  p2pBadgeText: { fontSize: 10, fontWeight: '800' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   paginationModal: { width: '100%', maxHeight: '60%', borderRadius: 24, borderWidth: 1, padding: 20, elevation: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20 },

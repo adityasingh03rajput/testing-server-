@@ -16,7 +16,13 @@ class FaceDetectionHelper(
     private var faceDetector: FaceDetector? = null
 
     init {
-        setupFaceDetector()
+        try {
+            setupFaceDetector()
+        } catch (e: UnsatisfiedLinkError) {
+            onError("Face detection unavailable on this device: ${e.message}")
+        } catch (e: ExceptionInInitializerError) {
+            onError("Face detection unavailable on this device: ${e.cause?.message ?: e.message}")
+        }
     }
 
     private fun setupFaceDetector() {
@@ -32,6 +38,10 @@ class FaceDetectionHelper(
                 .build()
 
             faceDetector = FaceDetector.createFromOptions(context, options)
+        } catch (e: UnsatisfiedLinkError) {
+            onError("Face detection unavailable on this device: ${e.message}")
+        } catch (e: ExceptionInInitializerError) {
+            onError("Face detection unavailable on this device: ${e.cause?.message ?: e.message}")
         } catch (e: Exception) {
             onError("Failed to initialize face detector: ${e.message}")
         }

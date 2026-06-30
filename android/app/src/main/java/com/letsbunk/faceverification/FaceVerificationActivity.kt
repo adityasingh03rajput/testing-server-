@@ -71,13 +71,26 @@ class FaceVerificationActivity : AppCompatActivity() {
 
         cameraExecutor = Executors.newSingleThreadExecutor()
 
-        faceDetectionHelper = FaceDetectionHelper(
-            context   = this,
-            onResults = { },
-            onError   = { error ->
-                runOnUiThread { Toast.makeText(this, error, Toast.LENGTH_SHORT).show() }
-            }
-        )
+        // MediaPipe native libs are only available on ARM devices/emulators.
+        // On x86_64 emulators the .so is missing — catch the link error and
+        // show a friendly message instead of a hard crash.
+        try {
+            faceDetectionHelper = FaceDetectionHelper(
+                context   = this,
+                onResults = { },
+                onError   = { error ->
+                    runOnUiThread { Toast.makeText(this, error, Toast.LENGTH_SHORT).show() }
+                }
+            )
+        } catch (e: UnsatisfiedLinkError) {
+            Toast.makeText(this, "Face verification unavailable on this device.", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        } catch (e: ExceptionInInitializerError) {
+            Toast.makeText(this, "Face verification unavailable on this device.", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
         faceEmbeddingHelper = FaceEmbeddingHelper(this)
         livenessDetector    = LivenessDetector()
         faceComparator      = FaceComparator()
