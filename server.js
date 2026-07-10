@@ -8423,20 +8423,31 @@ app.post('/api/students/bulk', async (req, res) => {
 // Enroll face for existing student
 app.post('/api/enrollment', async (req, res) => {
     try {
-        const { enrollmentNo, faceEmbedding } = req.body;
+        const { enrollmentNo, faceEmbedding, irisEmbedding } = req.body;
 
         // Validation
-        if (!enrollmentNo || !faceEmbedding) {
+        if (!enrollmentNo) {
             return res.status(400).json({ 
                 success: false, 
-                message: 'Missing required fields: enrollmentNo and faceEmbedding' 
+                message: 'Missing required fields: enrollmentNo' 
             });
         }
+        
+        const updateData = {};
+        let updateMessage = '';
 
-        if (!Array.isArray(faceEmbedding) || faceEmbedding.length === 0) {
+        if (faceEmbedding && Array.isArray(faceEmbedding) && faceEmbedding.length > 0) {
+            updateData.faceEmbedding = faceEmbedding;
+            updateData.faceEnrolledAt = new Date();
+            updateMessage = 'Face';
+        } else if (irisEmbedding && Array.isArray(irisEmbedding) && irisEmbedding.length > 0) {
+            updateData.irisEmbedding = irisEmbedding;
+            updateData.irisEnrolledAt = new Date();
+            updateMessage = 'Iris';
+        } else {
             return res.status(400).json({ 
                 success: false, 
-                message: 'Invalid face embedding data' 
+                message: 'Missing faceEmbedding or irisEmbedding data' 
             });
         }
 
@@ -8449,23 +8460,24 @@ app.post('/api/enrollment', async (req, res) => {
             });
         }
 
-        // Update only the face fields — bypass full-document validation so that
+        // Update only the embedding fields — bypass full-document validation so that
         // legacy documents with out-of-enum status values don't block enrollment.
         const updated = await StudentManagement.findOneAndUpdate(
             { enrollmentNo },
-            { $set: { faceEmbedding, faceEnrolledAt: new Date() } },
+            { $set: updateData },
             { new: true, runValidators: false }
         );
 
-        console.log(`✅ Face enrolled for student: ${enrollmentNo} (${updated.name})`);
+        console.log(`✅ ${updateMessage} enrolled for student: ${enrollmentNo} (${updated.name})`);
 
         res.status(201).json({ 
             success: true, 
-            message: `Face enrolled successfully for ${updated.name}`,
+            message: `${updateMessage} enrolled successfully for ${updated.name}`,
             data: {
                 enrollmentNo: updated.enrollmentNo,
                 name: updated.name,
-                faceEnrolledAt: updated.faceEnrolledAt
+                faceEnrolledAt: updated.faceEnrolledAt,
+                irisEnrolledAt: updated.irisEnrolledAt
             }
         });
 
