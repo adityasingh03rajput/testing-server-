@@ -4065,6 +4065,60 @@ app.get('/api/students/:studentId/face-data', async (req, res) => {
     }
 });
 
+// GET /api/students/:studentId/iris-data - Get student's iris embedding for verification
+app.get('/api/students/:studentId/iris-data', async (req, res) => {
+    const startTime = Date.now();
+    const { studentId } = req.params;
+    
+    console.log(`👁️ [IRIS-DATA] Request for student: ${studentId}, IP: ${req.ip}`);
+    
+    try {
+        // Find student by enrollment number
+        const student = await StudentManagement.findOne({ enrollmentNo: studentId });
+        
+        if (!student) {
+            console.log(`❌ [IRIS-DATA] Student not found: ${studentId}`);
+            return res.status(404).json({
+                success: false,
+                error: 'Student not found'
+            });
+        }
+        
+        // Check if iris is enrolled
+        if (!student.irisEmbedding || student.irisEmbedding.length === 0) {
+            console.log(`❌ [IRIS-DATA] No iris enrolled for student: ${studentId}`);
+            return res.status(404).json({
+                success: false,
+                error: 'Iris not enrolled. Please enroll your iris first using the enrollment app.'
+            });
+        }
+        
+        const duration = Date.now() - startTime;
+        console.log(`✅ [IRIS-DATA] Iris data found for student: ${studentId}, Embedding size: ${student.irisEmbedding.length}, Duration: ${duration}ms`);
+        
+        res.json({
+            success: true,
+            irisEmbedding: student.irisEmbedding,
+            enrolledAt: student.irisEnrolledAt || student.createdAt,
+            studentName: student.name,
+            enrollmentNo: student.enrollmentNo,
+            duration: duration
+        });
+        
+    } catch (error) {
+        const duration = Date.now() - startTime;
+        console.error(`❌ [IRIS-DATA] Error fetching iris data for student: ${studentId}, Duration: ${duration}ms, Error: ${error.message}`);
+        
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch iris data',
+            details: error.message,
+            duration: duration
+        });
+    }
+});
+
+
 // POST /api/attendance/offline-sync - Sync offline timer data
 app.post('/api/attendance/offline-sync', async (req, res) => {
     const startTime = Date.now();
@@ -7641,6 +7695,8 @@ app.post('/api/login', loginLimiter, async (req, res) => {
                             photoUrl: user.photoUrl,
                             faceEmbedding: user.faceEmbedding || null, // Include face embedding
                             hasFaceEnrolled: !!user.faceEmbedding,
+                            irisEmbedding: user.irisEmbedding || null,
+                            hasIrisEnrolled: !!user.irisEmbedding,
                             role: 'student'
                         }
                     });
@@ -7758,6 +7814,8 @@ const studentManagementSchema = new mongoose.Schema({
     photoUrl: String,
     faceEmbedding: { type: [Number], default: null }, // Face recognition embedding (192 floats)
     faceEnrolledAt: { type: Date }, // When face was enrolled
+    irisEmbedding: { type: [Number], default: null }, // Iris embedding (1280 floats)
+    irisEnrolledAt: { type: Date }, // When iris was enrolled
     createdAt: { type: Date, default: Date.now },
     isActive: { type: Boolean, default: true }, // Enrollment validity - false = auto-logout
     status: { type: String, enum: ['attending', 'absent', 'present'], default: 'absent' },
